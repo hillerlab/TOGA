@@ -1,0 +1,25 @@
+# IDEs stuff
+.idea/
+.DS_Store
+.vscode/
+.ipynb_checkpoints
+.Rproj.user
+
+# Compiled / binaries
+*.o
+*.so
+modules/chain_filter_by_id
+modules/chain_score_filter
+cesar
+*.dSYM
+CESAR2.0/
+*/.ipynb_checkpoints/
+
+# Python and temp stuff
+__pycache__/*
+*/__pycache__/*
+*.dat
+*.ipynb
+*.tar
+*.log
+*.bdb

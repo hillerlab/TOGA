@@ -1,0 +1,81 @@
+<svg version="1.1"
+xmlns="http://www.w3.org/2000/svg"
+xmlns:xlink="http://www.w3.org/1999/xlink"
+width="PICTURE_WIDTH" height="PICTURE_HEIGHT" viewBox = "0 VBOX PICTURE_WIDTH PICTURE_HEIGHT"
+onclick="mouseclick(evt)">
+
+<script type="text/ecmascript">
+
+<![CDATA[
+    function mouseover(evt, target) { 
+    var gv = document.getElementById("globalVariable");
+    var previoustarget = gv.firstChild.nodeValue;
+    if (previoustarget != "none") 
+    {
+        	document.getElementById(gv.firstChild.nodeValue).setAttributeNS(null, "visibility", "hidden");
+    }
+    document.getElementById(target).setAttributeNS(null, "visibility", "visible");
+    gv.firstChild.nodeValue = target;
+        }
+
+    function mouseclick(evt) { 
+    var gv = document.getElementById("globalVariable");
+    var previoustarget = gv.firstChild.nodeValue;
+    if (previoustarget != "none") {
+        	document.getElementById(gv.firstChild.nodeValue).setAttributeNS(null, "visibility", "hidden");
+        }
+    }
+]]>
+  </script>
+<style type="text/css" >
+
+<![CDATA[
+    rect.anc_exon {
+              EXON_ANC_STYLE
+                  }
+
+    rect.non_anc_exon {
+              EXON_NON_ANC_STYLE
+                    }
+
+    text {
+              font-size: STOP_LABEL_FONTSIZEpx;
+              font-family: FONT_FAMILY;
+          }
+                    ]]>
+</style>
+
+<defs>
+    <text x="150" y="40" id="globalVariable">none</text>
+</defs>
+
+FILE_BUFFER
+
+
+<script type="text/ecmascript">
+<![CDATA[
+function draw_bbox(text_id)
+{
+    var text_elem = document.getElementById(text_id);
+    var offset_px = 2;
+    var offset_py = 0;
+    bbox = text_elem.getBBox();
+    var box = document.createElementNS(document.rootElement.namespaceURI,'rect');
+    box.setAttribute('x', bbox.x - offset_px);
+    box.setAttribute('y', bbox.y - offset_py);
+    box.setAttribute('width', bbox.width + offset_px * 2);
+    box.setAttribute('height', bbox.height + offset_py * 2);
+    box.setAttribute('style','fill: white;'+'stroke: black;'+'stroke-width: 1px;');
+    text_elem.insertBefore(box,text_elem.childNodes[0]);
+
+    var svg = text_elem.parentNode;
+    svg.appendChild(text_elem);
+}
+
+for (var i=1; i < MOUSEOVERCOUNTER; i++)
+{
+draw_bbox("Mouseover" + i);
+}
+]]> 
+</script>
+</svg>
