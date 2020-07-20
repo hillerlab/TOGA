@@ -464,7 +464,7 @@ class Toga:
         """Run decision tree."""
         # define input and output."""
         eprint("Decision tree in progress...")
-        orthologs_file = "orthologs.tsv"
+        orthologs_file = "trans_to_chain_classes.tsv"
         pred_scores_file = "orthology_scores.tsv"
         self.orthologs = os.path.join(self.wd, orthologs_file)
         self.pred_scores = os.path.join(self.wd, pred_scores_file)
@@ -592,7 +592,7 @@ class Toga:
         """Call orthology_type_map.py"""
         # need to combine projections in genes
         query_isoforms_file = os.path.join(self.wd, "query_isoforms.tsv")
-        query_gene_spans = os.path.join(self.wd, "query_gene_spans")
+        query_gene_spans = os.path.join(self.wd, "query_gene_spans.bed")
         get_query_isoforms_data(self.query_annotation, query_isoforms_file, save_genes_track=query_gene_spans)
         eprint("Calling orthology_type_map...")
         skipped_ref_trans = os.path.join(self.wd, "ref_orphan_transcripts.txt")
