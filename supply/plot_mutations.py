@@ -464,7 +464,7 @@ def parse_args():
                      help="If you provide geneID instead of transcript, please also provide "
                           "an isoforms file.")
     app.add_argument("--multi_species", "--ms", action="store_true", dest="multi_species",
-                     help="Please see documentation which is not yet written")
+                     help="Multi-species plot. Pls see README for details")
     if len(sys.argv) < 4:
         app.print_help()
         sys.exit(0)
@@ -479,7 +479,6 @@ def parse_args():
 def get_transcript(bed_file, trans):
     """Find the requested transcript."""
     if bed_file.endswith(".bdb"):
-        # TODO: smarter check for bdb
         db = bsddb3.btopen(bed_file, "r")
         key = trans.encode()
         val = db.get(key)
