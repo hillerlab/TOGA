@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
-"""Join projection in genes for query annotation."""
+"""Join projection in genes for query annotation.
+
+The rules are simple:
+If two transcript have an intersecting exon
+then they belong to the same gene.
+Exons should be on the same strand!
+"""
 import argparse
 import sys
 import os
 from collections import defaultdict
+import networkx as nx
 try:
     from modules.common import flatten
 except ImportError:
@@ -23,171 +30,192 @@ def parse_args():
     return args
 
 
+def read_query_bed(bed_file):
+    """Read query bed, return exons and exon to gene dict."""
+    f = open(bed_file, "r")
+    exon_counter = 0  # each exon gets an unique ID
+    exons_list = []
+    exon_id_to_trans = {}
+    trans_to_range = {}
+
+    for line in f:
+        line_data = line.rstrip().split("\t")
+        # parse bed 12 file according to specification
+        chrom = line_data[0]
+        transcript_name = line_data[3]
+        strand = line_data[5]
+        # we need CDS start, end == thickStart & thickEnd
+        thickStart = int(line_data[6])
+        thickEnd = int(line_data[7])
+        blockCount = int(line_data[9])
+        blockSizes = [int(x) for x in line_data[10].split(',') if x != '']
+        blockStarts = [int(x) for x in line_data[11].split(',') if x != '']
+        trans_range = (chrom, strand, thickStart, thickEnd)
+        trans_to_range[transcript_name] = trans_range
+
+        for i in range(blockCount):
+            # get absolute coordinates for each exon
+            exon_counter += 1  # update ID for new exon
+            exon_abs_start = blockStarts[i] + thickStart
+            exon_abs_end = exon_abs_start + blockSizes[i]
+            exon_data = (exon_counter, chrom, strand, exon_abs_start, exon_abs_end)
+            exons_list.append(exon_data)
+            exon_id_to_trans[exon_counter] = transcript_name
+    f.close()
+    return exons_list, exon_id_to_trans, trans_to_range
+
+
+def split_exons_in_chr_dir(exons_list):
+    """Make a (chr, strand): [exons] dict."""
+    chr_dir_exons_not_sorted = defaultdict(list)
+    for exon in exons_list:
+        exon_id = exon[0]
+        chrom = exon[1]
+        strand = exon[2]
+        start = exon[3]
+        end = exon[4]
+        chr_dir = (chrom, strand)
+        exon_reduced = (exon_id, start, end)
+        chr_dir_exons_not_sorted[chr_dir].append(exon_reduced)
+    # sort exons in each chr_dir track
+    # use start (field 1) as key
+    chr_dir_exons = {k: sorted(v, key=lambda x: x[1])
+                     for k, v in chr_dir_exons_not_sorted.items()}
+    return chr_dir_exons
+
+
 def intersect_ranges(region_1, region_2):
     """Return TRUE if ranges intersect."""
     inter_size = min(region_1[1], region_2[1]) - max(region_1[0], region_2[0])
     return True if inter_size > 0 else False
 
 
-def read_query_bed(bed_file):
-    """Extract everything what is possible from a query bed."""
-    chrom_dir_enrties = defaultdict(list)
-    gene_exons_coord = defaultdict(dict)
-
-    f = open(bed_file, "r")
-    for line in f:
-        bed_info = line[:-1].split("\t")
-        chrom = bed_info[0]
-        chromStart = int(bed_info[1])
-        name = bed_info[3]
-        strand = bed_info[5]
-        thickStart = int(bed_info[6])
-        thickEnd = int(bed_info[7])
-        blockCount = int(bed_info[9])
-        blockSizes = [int(x) for x in bed_info[10].split(',') if x != '']
-        blockStarts = [int(x) for x in bed_info[11].split(',') if x != '']
-        chrom_dir_enrties[(chrom, strand)].append((name, thickStart, thickEnd))
-        # add exon ranges
-        for i in range(blockCount):
-            exon_i_start = blockStarts[i] + chromStart
-            exon_i_end = exon_i_start + blockSizes[i]
-            gene_exons_coord[name][i] = (exon_i_start, exon_i_end)
-    f.close()
-    return chrom_dir_enrties, gene_exons_coord
-
-
-def intersect_genes(gene_1, gene_2):
-    """Return true if at least one exon intersects in both genes."""
-    exons_1 = gene_1.values()
-    exons_2 = gene_2.values()
-    for exon_1 in exons_1:
-        for exon_2 in exons_2:
-            # compare exons one-to-one
-            intersect = intersect_ranges(exon_1, exon_2)
-            if intersect:
-                return True
-    # no intersection detected
-    return False
-
-
-def merge_regions(chrom_dir_enrties, gene_exons_coord):
-    """Split query genes in regions.
-
-    Return query_gene: Region ID dict
-    Also region_ID: coordinates."""
-    region_id = 0
-    region_to_projections = defaultdict(set)
-    # not the best solution ever, but it works:
-    region_range_buffer = {}
-
-    # split genes in region IDs
-    for _, genes in chrom_dir_enrties.items():
-        # chrom dir -> chromosome + strain!
-        region_id += 1  # if we look to a new chrom --> region must be different
-        if len(genes) == 1:  # nothing to intersect with
-            gene = genes[0]  # anyway there is only one gene
-            region_to_projections[region_id].add(gene[0])
+def intersect_exons(chr_dir_exons, exon_id_to_transcript):
+    """Create graph of connected exons."""
+    G = nx.Graph()
+    for exons in chr_dir_exons.values():
+        # this is the same chrom and direction now
+        # add nodes now: to avoid missing transcripts simply
+        # because they dont intersect anything
+        exon_ids = [e[0] for e in exons]
+        transcripts = set(exon_id_to_transcript[x] for x in exon_ids)
+        G.add_nodes_from(transcripts)
+        if len(exons) == 1:
+            # only one exon: nothing to intersect
+            # gene id is on graph now: we can just continue
             continue
-        # there is something to intersect!
-        genes_sorted = sorted(genes, key=lambda x: x[1])
-        # add the first element
-        # first_here = genes[0]
-        first_here = genes_sorted[0]
-        region_to_projections[region_id].add(first_here[0])
-
-        for i in range(1, len(genes_sorted)):
-            # get current and previous transcript
-            # beginning of the gene-oriented
-            current = genes_sorted[i]
-            current_range = (current[1], current[2])
-            prev = genes_sorted[i - 1]
-
-            if not region_range_buffer.get(region_id):
-                # nothing in this region before -> save prev gene region to buffer
-                prev_range = (prev[1], prev[2])
-                region_range_buffer[region_id] = prev_range
-            else:
-                # add previous to buffer, merge these regions
-                buffered = region_range_buffer[region_id]
-                prev_range = (min(buffered[0], prev[1]), max(buffered[1], prev[2]))
-                region_range_buffer[region_id] = prev_range
-
-            ranges_intersect = intersect_ranges(current_range, prev_range)
-
-            # even ranges do not intersect --> goto next region ID
-            if not ranges_intersect:
-                region_id += 1
-                region_to_projections[region_id].add(current[0])
-                continue
-
-            # we are here - let's check if genes intersects with their exons
-            current_exons = gene_exons_coord[current[0]]
-            prev_exons = gene_exons_coord[prev[0]]
-            genes_intersect = intersect_genes(current_exons, prev_exons)
-
-            # genes dont intersect --> goto the next region then
-            if not genes_intersect:
-                region_id += 1
-                region_to_projections[region_id].add(current[0])
-                continue
-            # they do intersect actually
-            region_to_projections[region_id].add(current[0])
-
-    return region_to_projections
+        exons_num = len(exons)
+        for i in range(exons_num - 1):
+            # nearly N^2 algorithm
+            # but actually faster
+            # pick exon i
+            exon_i = exons[i]
+            exon_i_id = exon_i[0]
+            exon_i_start = exon_i[1]
+            exon_i_end = exon_i[2]
+            i_range = (exon_i_start, exon_i_end)
+            i_trans = exon_id_to_transcript[exon_i_id]
+            # then let's look at next exons
+            for j in range(i + 1, exons_num):
+                # exon j exists for sure (first range is up to exons_num - 1)
+                # num of exons is > 1
+                exon_j = exons[j]
+                exon_j_id = exon_j[0]
+                exon_j_start = exon_j[1]
+                exon_j_end = exon_j[2]
+                if exon_j_start > exon_i_end:
+                    # if exon_j start is > exon_i end then we can break
+                    # they are sorted: all next exons start > exon_i end
+                    # and if so, they do not intersect for sure
+                    break
+                # let's check that they intersect
+                j_range = (exon_j_start, exon_j_end)
+                j_trans = exon_id_to_transcript[exon_j_id]
+                they_intersect = intersect_ranges(i_range, j_range)
+                if they_intersect is False:
+                    # don't intersect: nothing to do
+                    continue
+                # if we are here: they intersect
+                # then add the connection
+                G.add_edge(i_trans, j_trans)
+    return G
 
 
-def save_regions_data(reg_to_proj, out_file):
-    """Save regions to projections data."""
-    f = open(out_file, "w") if out_file != "stdout" else sys.stdout
+def parse_components(components, trans_to_range):
+    """Get genes data.
+
+    Each gene has the following data:
+    1) It's ID
+    2) Included transcripts
+    3) Genic range.
+    """
+    genes_data = []
+    for num, component in enumerate(components, 1):
+        gene_id = f"reg_{num}"
+        # get transcripts and their ranges
+        transcripts = set(component.nodes())
+        regions = [trans_to_range[t] for t in transcripts]
+        # define gene range, chrom and strand are same everywhere
+        # just get them from the 0'st region
+        reg_0 = regions[0]
+        gene_chrom = reg_0[0]
+        gene_strand = reg_0[1]
+        # start and end -> just min of starts and max of ends
+        starts = [r[2] for r in regions]
+        ends = [r[3] for r in regions]
+        gene_start = min(starts)
+        gene_end = max(ends)
+        # pack everything
+        gene_range = (gene_chrom, gene_strand, gene_start, gene_end)
+        gene_data = {"ID": gene_id, "range": gene_range, "transcripts": transcripts}
+        genes_data.append(gene_data)
+    return genes_data
+
+
+def save_isoforms(genes_data, output):
+    """Save isoforms data."""
+    f = open(output, "w") if output != "stdout" else sys.stdout
     f.write("Region_ID\tProjection_ID\n")
-    for reg_num, projections in reg_to_proj.items():
-        for proj_id in projections:
-            f.write(f"reg_{reg_num}\t{proj_id}\n")
-    f.close() if out_file != "stdout" else None
+    for gene_datum in genes_data:
+        gene_id = gene_datum["ID"]
+        transcripts = gene_datum["transcripts"]
+        for transcript in transcripts:
+            f.write(f"{gene_id}\t{transcript}\n")
+    f.close() if output != "stdout" else None
 
 
-def get_regions_ranges(region_to_proj, chrom_to_ranges):
-    """We like to save region ID (gene) to range data."""
-    proj_to_grange = {}
-    proj_to_chrom = {}
-    for chr_reg, p_ranges in chrom_to_ranges.items():
-        chrom = chr_reg[0]
-        for p_range_named in p_ranges:
-            p_name = p_range_named[0]
-            p_range = (p_range_named[1], p_range_named[2])
-            proj_to_grange[p_name] = p_range
-            proj_to_chrom[p_name] = chrom
-    region_id_to_range = {}
-    for region_id, projections in region_to_proj.items():
-        chrom = proj_to_chrom[iter(projections).__next__()]
-        granges = [proj_to_grange[x] for x in projections]
-        granges_vals = flatten(granges)
-        reg_start = min(granges_vals)
-        reg_end = max(granges_vals)
-        region_id_to_range[region_id] = (chrom, reg_start, reg_end)
-    return region_id_to_range
+def save_regions(genes_data, output):
+    """Save gene ranges bed6 file, if required."""
+    if output is None:
+        # no, not required
+        return
+    f = open(output, "w") if output != "stdout" else sys.stdout
+    for gene_datum in genes_data:
+        gene_id = gene_datum["ID"]
+        gene_range = gene_datum["range"]
+        chrom, strand, start, end = gene_range
+        f.write(f"{chrom}\t{start}\t{end}\t{gene_id}\t0\t{strand}\n")
+    f.close() if output != "stdout" else None
 
 
-def save_bed4(region_id_to_range, bed_out):
-    """Save bed file containing predicted genes ranges."""
-    f = open(bed_out, "w") if bed_out != "stdout" else sys.stdout
-    for region_id, grange in region_id_to_range.items():
-        reg_str = f"reg_{region_id}"
-        chrom = grange[0]
-        start = grange[1]
-        end = grange[2]
-        f.write(f"{chrom}\t{start}\t{end}\t{reg_str}\n")
-    f.close() if bed_out != "stdout" else None
-
-    
 def get_query_isoforms_data(query_bed, query_isoforms, save_genes_track=None):
     """Create isoforms track for query."""
-    chrom_dir_enrties, gene_exons_coord = read_query_bed(query_bed)
-    region_to_proj = merge_regions(chrom_dir_enrties, gene_exons_coord)
-    save_regions_data(region_to_proj, query_isoforms)
-    if save_genes_track:
-        region_to_range = get_regions_ranges(region_to_proj, chrom_dir_enrties)
-        save_bed4(region_to_range, save_genes_track)
+    # extract all exons
+    # exon is: <ID, chrom, strand, start, end>
+    # + table exon_ID -> corresponding gene
+    exons_list, exon_id_to_transcript, trans_to_range = read_query_bed(query_bed)
+    # get (chr, dir) -> [exons] dict (sorted)
+    # because exons from different
+    chr_dir_to_exons = split_exons_in_chr_dir(exons_list)
+    # the main part -> get exon intersections
+    conn_graph = intersect_exons(chr_dir_to_exons, exon_id_to_transcript)
+    # split graph into connected components
+    # if two transcripts are in the same componen -> they belong to the same gene
+    components = list(nx.connected_component_subgraphs(conn_graph))
+    # get data for each merged gene
+    genes_data = parse_components(components, trans_to_range)
+    save_isoforms(genes_data, query_isoforms)
+    save_regions(genes_data, save_genes_track)
 
 if __name__ == "__main__":
     args = parse_args()

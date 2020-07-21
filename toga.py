@@ -2,7 +2,7 @@
 """Master script for the TOGA pipeline.
 
 Perform all operations from the beginning to the end.
-This is a version for internal hillerlab usage!
+If you need to call TOGA: most likely this is what you need.
 """
 import argparse
 import sys
@@ -40,7 +40,7 @@ class Toga:
         """Initiate toga class."""
         self.t0 = dt.now()
         # check if all files TOGA needs are here
-        self.temp_files = []  # remove at the end
+        self.temp_files = []  # remove at the end, list of temp files
         self.__modules_addr()
         self.__check_dependencies()
         self.__check_completeness()
@@ -62,6 +62,8 @@ class Toga:
         # filter chain in this folder
         chain_filename = chain_basename.replace(".gz", "")  # cut gz
         self.chain = os.path.join(self.wd, chain_filename)
+        # there is an assumption that people will usually use .chain file
+        # extension for chain files
         index_file = os.path.basename(self.chain).replace(".chain", ".bdb")
         self.chain_index_file = os.path.join(self.wd, index_file)
 
@@ -327,12 +329,8 @@ class Toga:
 
     def __find_two_bit(self, db):
         """Find a 2bit file."""
-        # TODO: in public release must be simplified
         if os.path.isfile(db):
             return db
-        with_alias = f"/projects/hillerlab/genome/gbdb-HL/{db}/{db}.2bit"
-        if os.path.isfile(with_alias):
-            return with_alias
         self.die(f"Two bit file {db} not found! Abort")
 
     def run(self):
@@ -446,7 +444,6 @@ class Toga:
         self.para = True
         # if we are here --> we are on cluster most likely
         # define project name for para based on the current time
-        # TODO: in public release: require action
         time_now = str(dt.now()).split()[1].split(":")
         para_proj_name = f"{self.project_name}_CHAINS_at_{time_now[0]}_{time_now[1]}"
         para_cmd = f'para make {para_proj_name} {self.chain_cl_jobs_combined} -q="short"'
@@ -531,22 +528,23 @@ class Toga:
 
     def __run_cesar_jobs(self):
         """Call CESAR jobs."""
-        # TODO: in public release -> request action
         eprint("Calling CESAR jobs.")
 
         if not self.para:
+            # do not run this in parallel on cluster then
             self.__call_proc(f"chmod +x {self.cesar_combined}")
             self.__call_proc(self.cesar_combined)
             return  # exit the function
 
         # make it with para
-        if self.cesar_buckets == "0":  # only one para call for alle
+        if self.cesar_buckets == "0":  # a single batch of CESAR jobs
             time_now = str(dt.now()).split()[1].split(":")
             para_proj_name = f"{self.project_name}_CESAR_at_{time_now[0]}_{time_now[1]}"
             para_cmd = f'para make {para_proj_name} {self.cesar_combined} -q="day"'
             self.__call_proc(para_cmd)
 
-        else:  # call in more sophisticated way
+        else: 
+            # call in more sophisticated way using CESAR buckets
             from modules.run_cesar_buckets import run_cesar_buckets
             temps = run_cesar_buckets(self.cesar_buckets,
                                       self.project_name,
@@ -606,7 +604,7 @@ class Toga:
                            save_skipped=skipped_ref_trans)
 
     def __merge_rejection_logs(self):
-        """Merge rejection logs in a single file."""
+        """Merge files containing data about rejected transcripts/genes."""
         rejected_log = os.path.join(self.wd,
                                     "genes_rejection_reason.tsv")
 
