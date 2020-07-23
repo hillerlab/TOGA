@@ -54,13 +54,12 @@ ln -s Parasol_LSF_Slurm/paraLSF.perl para
 
 See "Para on cluster" section for details.
 
-This repository also contains data for a wide-scale test.
-To call it, please make sure that you have genome sequences for human and mouse in the 2bit format.
+This repository also contains sample data to perform a wide-scale test.
+To do so, please download genome sequences for human (GRCh38/hg38) and mouse (GRCm38) in the 2bit format.
 Then call the following:
 
 ```shell
-./toga.py test_input/hg38.mm10.chr11.chain test_input/hg38.genCode27.chr11.bed ${human_2bit} ${mouse_2bit} \
---chn 10 --project_name test_out --kt -i supply/hg38.wgEncodeGencodeCompV34.isoforms.txt --cjn 200 --ms --cb 2,4
+./run_test.sh normal  ${path_to_human_2bit} ${path_to_mouse_2bit}
 ```
 
 If something doesn't work, most likely you:
@@ -294,10 +293,6 @@ You can also provide gzipped chain file, then please make sure that the filename
 ends with ".chain.gz".
 
 Please make sure that each chain you provide has a unique identifier!
-
-##### Obtaining chains
-
-To be filled.
 
 #### Reference and query genome sequences
 

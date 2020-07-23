@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-if [ "$#" -ne 1 ];
+if [ "$#" -lt 1 ];
 then
-    echo "Usage: $0 [MODE: micro/normal]"
+    echo "Usage: $0 [MODE: micro/normal] [if normal: paths to human and mouse 2 bit files]"
     exit 0
 fi
 
@@ -37,12 +37,19 @@ then
 elif [ $1 = "normal" ];
 then
     echo "Running widescale test"
-    echo "Run on cluster only!"
+
+    hg38_2bit=$2
+    mm10_2bit=$3
+    if [ "$#" -lt 3 ]; then
+        echo "For widescale test please define paths to hg38 and mm10 2bit files"
+        echo "Such as: $0 normal hg38.2bit mm10.2bit"
+        exit 0
+    fi
     test_bed="test_input/hg38.genCode27.chr11.bed"
     test_chain="test_input/hg38.mm10.chr11.chain"
 
     cmd="./toga.py  ${test_chain} ${test_bed} \
-         hg38 mm10 \
+         ${hg38_2bit} ${mm10_2bit} \
          --chn 10 --project_name ${test_out} \
          --kt -i supply/hg38.wgEncodeGencodeCompV34.isoforms.txt \
          --cjn 200 --ms --cb 2,4 \
