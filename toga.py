@@ -237,10 +237,10 @@ class Toga:
         u_in_b = t_in_bed.difference(t_in_i)
         if len(u_in_b) != 0:
             extra_t_list = "\n".join(list(u_in_b)[:100])
-            err_msg = f"Error! There are {len(u_in_b)} transctipts in the bed file absent in the isoforms file!" \
+            err_msg = f"Error! There are {len(u_in_b)} transctipts in the bed file absent in the isoforms file! " \
                       f"There are the transctipts (first 100):\n{extra_t_list}"
-            # self.die(err_msg)
-            eprint(err_msg)
+            self.die(err_msg)
+            # eprint(err_msg)
         else:
             eprint("Isoforms file is OK")
 
@@ -329,8 +329,12 @@ class Toga:
 
     def __find_two_bit(self, db):
         """Find a 2bit file."""
+        # TODO: in public release must be simplified
         if os.path.isfile(db):
             return db
+        with_alias = f"/projects/hillerlab/genome/gbdb-HL/{db}/{db}.2bit"
+        if os.path.isfile(with_alias):
+            return with_alias
         self.die(f"Two bit file {db} not found! Abort")
 
     def run(self):
