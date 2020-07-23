@@ -65,7 +65,7 @@ def intersect(ch_block, be_block):
 
 
 def overlap_select(bed, chain):
-    """Entry point."""
+    """Python implementation of some overlapSelect (kent) functionality."""
     ranges = parse_bed(bed)
     genes = [x[2] for x in ranges]
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Retrieve exons in the query genome."""
+"""CESAR2.0 wrapper.
+
+Retrieve exons in the query genome.
+"""
 import argparse
 import os
 import sys
@@ -30,13 +33,14 @@ complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G', 'N': 'N',
 
 STOPS = {"TAG", "TGA", "TAA"}
 LOCATION = os.path.dirname(os.path.abspath(__file__))
-# LOCATION = os.getcwd()
 
 acceptor_site = ("ag", )
 donor_site = ("gt", "gc", )
-# Hillerlab-oriented constants
-two_bit_templ = "/projects/hillerlab/genome/gbdb-HL/{0}/{0}.2bit"
+
+# alias; works for Hillerlab-only
+two_bit_templ = "/projects/hillerlab/genome/gbdb-HL/{0}/{0}.2bit" 
 chain_alias_template = "/projects/hillerlab/genome/gbdb-HL/{0}/lastz/vs_{1}/axtChain/{0}.{1}.allfilled.chain.gz"
+
 flatten = lambda l: [item for sublist in l for item in sublist]
 
 # connect shared lib; define input and output data types
@@ -64,7 +68,7 @@ DEL_PEN = -1
 AA_FLANK = 15
 SS_SIZE = 2
 
-# genetic code
+# genetic code: also need this
 AA_CODE = {"TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L",
            "TCT": "S", "TCC": "S", "TCA": "S", "TCG": "S",
            "TAT": "Y", "TAC": "Y", "TAA": "*", "TAG": "*",
@@ -83,12 +87,11 @@ AA_CODE = {"TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L",
            "GGT": "G", "GGC": "G", "GGA": "G", "GGG": "G",
            "---": "-", "NNN": "X"}
 
+# CESAR2.0 necessary files location
 FIRST_CODON_PROFILE = "extra/tables/human/firstCodon_profile.txt"
 LAST_CODON_PROFILE = "extra/tables/human/lastCodon_profile.txt"
 ACC_PROFILE = "extra/tables/human/acc_profile.txt"
 DO_PROFILE = "extra/tables/human/do_profile.txt"
-# EQ_ACC_PROFILE = "extra/tables/human/eq_acc_profile.txt"
-# EQ_DO_PROFILE = "extra/tables/human/eq_donor_profile.txt"
 EQ_ACC_PROFILE = os.path.join(LOCATION, "supply", "eq_acc_profile.txt")
 EQ_DO_PROFILE = os.path.join(LOCATION, "supply", "eq_donor_profile.txt")
 
@@ -191,7 +194,7 @@ def read_bed(gene, bed_file):
     # regular parising of a bed-12 formatted file
     bed_info = bed_track.split("\t")
 
-    # if not 12 fields - wrong input
+    # if not 12 fields -> then input is wrond
     die("Error! Bed-12 required!", 1) if len(bed_info) != 12 else None
     bed_data = {}
     bed_data["chrom"] = bed_info[0]
@@ -1042,7 +1045,9 @@ def compute_percent_id(seq_1, seq_2):
 
 def make_blosum_matrix():
     """Make python object with BLOSUM matrix."""
-    MATRIX = defaultdict(dict)
+    # fill this matrix:
+    # key will be amino_acid_1 -> amino_acid_2
+    matrix = defaultdict(dict)
     num = 0
     alphabet = []
     f = open(BLOSUM_FILE, "r")
@@ -1059,16 +1064,15 @@ def make_blosum_matrix():
         row_char = alphabet[num]
         for subnum, score in enumerate(scores):
             col_char = alphabet[subnum]
-            MATRIX[row_char][col_char] = score
+            matrix[row_char][col_char] = score
         num += 1
     f.close()
-    return MATRIX
+    return matrix
 
 
 def get_blosum_score(seq_1, seq_2, matrix):
-    """Return BLOSUM score."""
+    """Comnpute BLOSUM score."""
     score = 0
-    # TODO: insertion and deletion penalties!
     for ch1, ch2 in zip(seq_1, seq_2):
         # a gap or not a gap
         if ch1 == "-" and ch2 == "-":
@@ -1079,6 +1083,7 @@ def get_blosum_score(seq_1, seq_2, matrix):
             continue
         elif ch1 != "-" and ch2 == "-":
             score += DEL_PEN
+        # this should never happed
         # if ch1 == "-" or ch2 == "-":
         #     score += GAP_SCORE
         #     continue
@@ -1093,17 +1098,27 @@ def translate_codons(codons_list):
     ref_AA_seq = []
     que_AA_seq = []
     for codon in codons_list:
+        # extract codon sequences for reference and query
         ref_nuc_seq = codon["ref_codon"]
         que_nuc_seq = codon["que_codon"]
+        # if there are any gaps -> remove them
         ref_only_let_nul = ref_nuc_seq.replace("-", "")
+        # anyways it's possible that we cannot translate the codon, reasons are various
+        # maybe there's N somewhere in the codon, or it's frameshifted
         ref_only_let = AA_CODE.get(ref_only_let_nul, "X") if len(ref_only_let_nul) > 0 else "-"
-        full_codons = len(que_nuc_seq) // 3
+        # in case if N query codons correspond to a single reference codon
+        # there is guarantee that ref_sequence has only one codon
+        # for query -> it's unknown
+        full_codons = len(que_nuc_seq) // 3  # get number of codons
+        # fill extra codons (that are not in ref but are in query) with gaps:
         ref_AA = list("-" * (full_codons - 1) + ref_only_let)
         in_frame = len(que_nuc_seq) % 3 == 0
         if not in_frame:
             # in this case we don't know exact AA sequence in query
+            # X -> frameshifted codon
             que_AA = list("X" * full_codons)
         else:
+            # possible N query codons: split query sequence into pieces of 3 characters
             que_codons = parts(que_nuc_seq, 3)
             que_AA = [AA_CODE.get(c, "X") for c in que_codons]
         ref_AA_seq.extend(ref_AA)
@@ -1112,8 +1127,7 @@ def translate_codons(codons_list):
 
 
 def compute_score(codon_data):
-    """Compute BLOSUM80 score."""
-    # TODO: do this only once:
+    """Compute BLOSUM score per exon."""
     blosum_matrix = make_blosum_matrix()
     # go exon_by_exon
     # extract all possible exon nums and sort them
@@ -1128,38 +1142,47 @@ def compute_score(codon_data):
     target_AAs_all = []
     exon_score = {}
     # check stops in split codons
+    # exon_number: sequence -> one for reference (tar), another for query (que)
     exon_to_seq_tar = defaultdict(str)
     exon_to_seq_que = defaultdict(str)
     for codon in codon_data:
         exon_num = codon["q_exon_num"]
-        split = codon["split_"]
+        split = codon["split_"]  # if split codon it's bit tricky
         if split == 0:
+            # not a split codon: the codon lies in some exon entirely
             exon_to_seq_tar[exon_num] += codon["ref_codon"]
             exon_to_seq_que[exon_num] += codon["que_codon"]
         else:
+            # codon is split between 2 exons (I hope not 3)
             tar_before = codon["ref_codon"][:split]
             que_before = codon["que_codon"][:split]
             tar_after = codon["ref_codon"][split:]
             que_after = codon["que_codon"][split:]
+            # split this codon and add different parts to different exons
             exon_to_seq_tar[exon_num - 1] += tar_before
             exon_to_seq_tar[exon_num] += tar_after
             exon_to_seq_que[exon_num - 1] += que_before
             exon_to_seq_que[exon_num] += que_after
-    
+
     for exon_num in exon_to_seq_tar.keys():
+        # exon sequences extracted, now compute scores per exon
         tar_exon = exon_to_seq_tar[exon_num]
         que_exon = exon_to_seq_que[exon_num]
         perc_id = compute_percent_id(tar_exon, que_exon)
-        # exon_score[exon_num] = perc_id
-        exon_pid[exon_num] = perc_id
+        exon_pid[exon_num] = perc_id  # pid: nucleotide %ID
 
+        # for BLOSUM we need AA sequence
+        # for AA sequence we need complete codons
         codons_in_exon = [x for x in codon_data
                           if x["q_exon_num"] == exon_num
                           and x["split_"] == 0]
         codons_in_exon_w_splice = [x for x in codon_data if x["q_exon_num"] == exon_num]
 
         if len(codons_in_exon) == 0:
-            exon_blosum[exon_num] = 50
+            # possible that there are no full codons in the exon
+            # like here: AT ----- G CGA AAA
+            # Exon 1 consists on 2 letters: AT
+            exon_blosum[exon_num] = 50  # 50 if default value then
             continue
 
         ref_codons = [x["ref_codon"].replace("-", "") for x in codons_in_exon]
@@ -1168,10 +1191,10 @@ def compute_score(codon_data):
         __que_codons = [x["que_codon"] for x in codons_in_exon]
 
         if len(ref_codons) == 0:  # exon containing only split codons
+            # TODO: check whether the previous condition is actualy needed
             exon_score[exon_num] = 50  # default value in this case
             continue
-        # it must be a value for this key, if not -> something is wrong
-        # it will fail with an error
+
         ref_AA, que_AA = translate_codons(codons_in_exon)
         ref_AA_s_, que_AA_s_ = translate_codons(codons_in_exon_w_splice)
         # returns lists
@@ -1179,26 +1202,28 @@ def compute_score(codon_data):
         que_AA_s = "".join(que_AA_s_)
         prot_sequences[exon_num] = {"ref": ref_AA_s, "que": que_AA_s}
 
-        # ref_AA = [AA_CODE.get(x, "X") if x != "" else "-" for x in ref_codons]
         # different rule for query, it's possible that value is absent
-        # que_AA = [AA_CODE.get(x, "X") if x != "" else "-" for x in que_codons]
         target_AAs_all.extend(ref_AA)  # keep the entire target AA seq for sanity checks
         # get absolute and maximal BLOSUM scores
         verbose("Computing BLOSUM score for: ")
         verbose(str(ref_AA))
         verbose(str(que_AA))
+        # blosum score: the blosum score of ref VS query
+        # max: reference VS reference
+        # it is not ACTUALLY max, but in 99% cases it is
+        # in other -> doesn't matter
         blosum_score = get_blosum_score(ref_AA, que_AA, blosum_matrix)
         max_blosum_score = get_blosum_score(ref_AA, ref_AA, blosum_matrix)
         if max_blosum_score > 0:
             rel_blosum_score = (blosum_score / max_blosum_score) * 100
-        else:  # should never happen, BUT
+        else:
+            # for veeery short exons everything might happen
             rel_blosum_score = 0
             eprint(f"Warning! Max blosum score < 0!")
         rel_blosum_score = rel_blosum_score if rel_blosum_score >= 0 else 0
         verbose(f"Max BLOSUM score is: {max_blosum_score}")
         verbose(f"Absolute BLOSUM score is: {blosum_score}")
         verbose(f"Relative BLOSUM score is: {rel_blosum_score}")
-        # exon_score[exon_num] = rel_blosum_score
         exon_blosum[exon_num] = rel_blosum_score
     return exon_pid, exon_blosum, prot_sequences
 

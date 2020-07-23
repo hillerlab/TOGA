@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a computational unit for a batch of jobs.
+"""Script to run chain classfication job.
 
 Extract features from each chain to gene intersection.
 Loads a list of chain: genes tasks and calls
@@ -18,9 +18,8 @@ __version__ = "1.0"
 __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
-FLANK_SIZE = 10000
-COMBINED_BED_ID = "COMBINED"
-# TODO: fix verbosity!
+FLANK_SIZE = 10000  # gene flank size -> for flank ali feature
+COMBINED_BED_ID = "COMBINED"  # placeholder gene name for artificial tracks
 
 
 def eprint(*lines):
@@ -46,10 +45,8 @@ def parse_args():
     app = argparse.ArgumentParser()
     app.add_argument("input_file", type=str, help="File containing chain to genes lines."
                      "Also you can use \"chain [genes]\" as a single argument.")
-    # app.add_argument("bed_index", type=str, help="Bed sqlite3 db")
     app.add_argument("bed_file", type=str, help="BDB file containing annotation tracks.")
     app.add_argument("chain_file", type=str, help="BDB file containing chains.")
-    # app.add_argument("chain_index", type=str, default=None, help="Sqlite db")
     app.add_argument("--verbose", "-v", action="store_true", dest="verbose", help="Verbose messages.")
     app.add_argument("--extended", "-e", action="store_true", dest="extended",
                      help="Write the output in extended (human readable) format. "
@@ -155,7 +152,10 @@ def bed12_to_ranges(bed):
 
 
 def bedCov_ranges(ranges, chrom):
-    """Return a set of exons without overlaps."""
+    """Return a set of exons without overlaps.
+    
+    Python re-implementation of bedCov (kent) functionality.
+    """
     ranges_filtered, pointer = [ranges[0]], 0  # initial values for filter
     gene = COMBINED_BED_ID # if there is a mixture of genes - no ID anyway
     nested = False  # default value
@@ -340,7 +340,7 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
 
 
 def extract_cds_lines(all_bed_lines):
-    """Extract bed lines with CDS mark."""
+    """Extract bed lines with names end with _CDS."""
     selected = []
     for line in all_bed_lines.split("\n"):
         if line == "":
@@ -401,17 +401,23 @@ def chain_feat_extractor(chain, genes, chain_file, bed_file,
     cds_bed_lines = extract_cds_lines(bed_lines_extended)
     nested = check_nest(work_data, cds_bed_lines)  # check if the genes are nested
 
-    if not nested:  # 99% cases go here
+    if not nested: 
+        # 99% cases go here
+        # there are no nested genes
         get_features(work_data, result, bed_lines_extended)
-    else:  # another case, firstly need to make bed track with no intersections
+    else: 
+        # another case, firstly need to make bed track with no intersections
         # and only after that call this function with flag NESTED for updated bed file
         exons4_to_bed12(work_data)
         bed_lines_extended += work_data["nested"] + "\n"
         get_features(work_data, result, bed_lines_extended, nested=True)
     # make a tuple with chain, genes and time output
-    if not extended:  # provide short version of output
+    if not extended:
+        # provide short version of output
         output = make_output(work_data, result, t0)
-    else:  # provide extended
+    else: 
+        # provide extended output
+        # human-readable version
         output = extended_output(result, t0)
     return output
 
@@ -420,18 +426,24 @@ def main():
     """Entry point."""
     t0 = dt.now()
     args = parse_args()
+    # read input: meaning chain ids and gene names
+    # there are 2 ways how they could be provided:
+    # 1) Just a file, each line contains chain id and genes
+    # 2) an argument: "chain ,-sep list of genes"
     batch = read_input(args.input_file)
-    pointer, task_size = 0, len(batch)
+    task_size = len(batch)
     # call main processing tool
-    for chain, genes in batch.items():
-        pointer += 1
+    for jnum, (chain, genes) in enumerate(batch.items(), 1):
+        # one unit: one chain + intersected genes
+        # call routine that extracts chain feature
         unit_output = chain_feat_extractor(chain, genes, args.chain_file, args.bed_file,
                                            verbose_arg=args.verbose, extended=args.extended)
         chain_output, genes_output, time_output = unit_output
+        # save output:
         sys.stdout.write(chain_output)
         sys.stdout.write(genes_output)
         sys.stdout.write(time_output)
-        sys.stderr.write(f"Job {pointer}/{task_size} done\r") if args.verbose else None
+        sys.stderr.write(f"Job {jnum}/{task_size} done\r") if args.verbose else None
     sys.stderr.write(f"Total job time: {dt.now() - t0}\n") if args.verbose else None
     sys.exit(0)
 

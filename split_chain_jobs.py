@@ -172,15 +172,18 @@ def get_chroms():
 def get_intersections():
     """Make an array of intersections between genes and alignments."""
     verbose("Splitting the jobs.")
+    # this function will get all chain X bed track intersections
     chain_genes_raw, skipped = chain_bed_intersect(WORK_DATA["chain_file"],
                                                    WORK_DATA["bed_file"])
     chain_genes = {k: ",".join(v) + "," for k, v in chain_genes_raw.items()}
     del chain_genes_raw
+    # skipped genes do not intersect any chain
+    # please note that chains with too low score are likely filtered out
     return chain_genes, skipped
 
 
 def get_template():
-    """Create a template for command."""
+    """Create a template for chain classification commands."""
     template = CHAIN_RUNNER + " {0} "
     # in case of using a nodes-associated disk I cannot use original filenames
     bed_to_templ = WORK_DATA["bed_index"]
@@ -193,8 +196,14 @@ def get_template():
 
 def make_commands(intersection):
     """Shuffle the data and create joblist."""
+    # order - list of chain IDS
     order = list(intersection.keys())
-    random.shuffle(order)  # I need a random order of lines
+    # need to randomize the order of chains
+    # most likely their list was sorted by chain ID
+    # and the higher is chainID the longer it is
+    # with randomization all jobs will require more or less the same amount of time
+    # otherwise we get some veeeery long jobs and some too short
+    random.shuffle(order)
     # fill the command list with chain ids and genes
     commands = [f"{c}\t{intersection.get(c)}" for c in order]
     return commands
@@ -202,14 +211,14 @@ def make_commands(intersection):
 
 def split_commands(commands):
     """Split the commands into N cluster jobs."""
-    verbose("There are {0} commands".format(len(commands)))
+    verbose(f"There are {len(commands)} commands")
     if WORK_DATA["job_size"]:  # size of cluster job is pre-defined
         job_size = WORK_DATA["job_size"]
     else:  # if was not defined - compute the size of cluster job
         job_size = (len(commands) // WORK_DATA["jobs_num"]) + 1
     verbose(f"Split commands with size of {job_size} for each cluster job")
     batch = parts(commands, n=job_size)
-    verbose("There are {} cluster jobs".format(len(batch)))
+    verbose(f"There are {len(batch)} cluster jobs")
     return batch
 
 
@@ -232,8 +241,8 @@ def save(template, batch):
         # save this finally
         with open(job_path, "w") as f:
             f.write("\n".join(jobs) + "\n")
-    # save the jobs_file file
 
+    # save the jobs_file file
     # add > line for stdout and 2> for stderr (if required)
     f = open(WORK_DATA["jobs_file"], "w")
     for num, path in filenames.items():
@@ -244,9 +253,9 @@ def save(template, batch):
         jobs_file_line = "{0} {1} {2}\n".format(cmd, stdout_part, stderr_part)
         f.write(jobs_file_line)
     # make executable
-    rc = subprocess.call("chmod +x {0}".format(WORK_DATA["jobs_file"]), shell=True)
-    if rc != 0:
-        die("Error! chmod +x {0} failed".format(WORK_DATA["jobs_file"]))
+    rc = subprocess.call(f"chmod +x {WORK_DATA['jobs_file']}", shell=True)
+    if rc != 0:  # just in case
+        die(f"Error! chmod +x {WORK_DATA['jobs_file']} failed")
     f.close()
 
 
@@ -256,6 +265,7 @@ def main():
     check_args(args)  # check if all the files, dependencies etc are correct
     intersections, skipped = get_intersections()  # intersect chains and beds
     if args.rejected:
+        # skipped: genes that do not intersect any chain
         save_rejected_genes(skipped, args.rejected)
     commands = make_commands(intersections)  # shuffle and create set of commands
     batch = split_commands(commands)  # split the commands into cluster jobs

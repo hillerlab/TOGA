@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Just create a trained model."""
+"""Script to train XGBoost models."""
 import xgboost as xgb
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
@@ -17,41 +17,45 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 def train_on(X, y, save_to, name=None):
     """Train model on the X and y given."""
-    # models parametets
+    # models parametets, work fine for both multi and single exon models
     n_trees = 50
     max_depth = 3
     learning_rate = 0.1
-    # create and cross-validate model
+    # create and fit the model, also add cross-validation
     model = xgb.XGBClassifier(n_estimators=n_trees,
                               max_depth=max_depth,
                               learning_rate=learning_rate)
     kfold = StratifiedKFold(n_splits=5, random_state=777, shuffle=True)
     results = cross_val_score(model, X, y, cv=kfold)
     model.fit(X, y)
-    if name:
+    if name:  # some verbosity
         print(f"{name} model: ")
         print(f"Training on {len(X)} samples")
         print(f"Using features: {X.columns}")
     print("Accuracy: {0:.3f} {1:.3f}".format(results.mean() * 100, results.std() * 100))
-    joblib.dump(model, save_to)
+    joblib.dump(model, save_to)  # save the model
     print(f"Model saved to: {save_to}")
 
 
-# load dataset, defile where is what
+# load dataset, defile where is what: input and output files
+# training data is in the repository
 t0 = dt.now()
 file_location = os.path.dirname(__file__)
 models_dir = "models"
 train_tsv = "train.tsv"
 se_model_dat = "se_model.dat"
 me_model_dat = "me_model.dat"
-
 train_set = os.path.join(file_location, models_dir, train_tsv)
 se_model_path = os.path.join(file_location, models_dir, se_model_dat)
 me_model_path = os.path.join(file_location, models_dir, me_model_dat)
+
+# load dataframe
 df = pd.read_csv(train_set, header=0, sep="\t")
 print(f"Training dataset size: {len(df)}")
 
 # define which columns to drop in SE and ME models
+# there are too many columns in the trainins data
+# single and multi-exon models require different feature sets
 se_drop_in_X = ["gene", "gene_overs", "chain", "synt", "gl_score", 
                 "chain_len", "exon_cover", "intr_cover", "gene_len",
                 "ex_num", "ex_fract", "intr_fract", "chain_len_log",
@@ -62,10 +66,12 @@ me_drop_in_X = ["gene", "gene_overs", "chain", "synt", "gl_score",
                 "ex_num", "ex_fract", "intr_fract", "chain_len_log",
                 "y", "exon_perc", "single_exon"]
 
-# get X, y for SE and ME models
+# split overall dataframe into two frames:
+# one for 1-exon genes, another for multi-exon
 df_se = df[df["single_exon"] == 1]
 df_me = df[df["single_exon"] == 0]
 
+# create X and y for both models
 X_se = df_se.copy()
 X_se = X_se.drop(se_drop_in_X, axis=1)
 y_se = df_se["y"]
