@@ -23,7 +23,7 @@ git clone https://github.com/hillerlab/TOGA.git
 cd TOGA
 # install CESAR, compile C code, install necessary libraries
 ./configure.sh
-# run a test
+# run a test, it will take about a minute
 ./run_test.sh micro
 ```
 
@@ -31,20 +31,16 @@ If you see something like this at the very end, TOGA is almost ready to go:
 
 ```txt
 Orthology class sizes:
-one2zero: 12
-Done! Estimated time: 0:00:07.369752
+one2one: 3
+Done! Estimated time: 0:01:02.800084
 Program finished with exit code 0
-chrM 7012 7678 ENST00000361739.1-2.770 692 + 7012 7678 159,129,112 1 666, 0,
-chrM 9876 10173 ENST00000361335.1-2.770 690 + 9876 10173 159,129,112 1 297, 0,
-chrM 11705 13565 ENST00000361567.1-2.770 638 + 11705 13565 159,129,112 1 1860, 0,
-chrM 13557 14070 ENST00000361681.1-2.770 615 - 13557 14070 159,129,112 1 513, 0,
-chrM 5327 6863 ENST00000361624.1-2.770 766 + 5327 6863 159,129,112 1 1536, 0,
-chrM 7926 8607 ENST00000361899.1-2.770 709 + 7926 8607 159,129,112 1 681, 0,
-chrM 7765 7969 ENST00000361851.1-2.770 594 + 7765 7969 159,129,112 1 204, 0,
+JH567521 299723 336583 ENST00000618101.1169 879 + 299723 336583 0,0,200 7 28,923,130,173,200,179,248, 0,1256,6085,6677,19146,21311,36612,
+JH567521 463144 506100 ENST00000262455.1169 711 - 463144 506100 0,200,255 8 102,103,142,112,117,58,116,185, 0,1982,30295,31351,36911,38566,41322,42771,
+JH567521 395878 449234 ENST00000259400.1169 942 + 395878 449234 0,0,200 7 123,66,226,116,51,87,240, 0,11871,38544,45802,45994,52305,53116,
 Success!
 ```
 
-If something is wrong and you get something different at the end please see the "troubleshooting section".
+If something is wrong and you get something different at the end please see the "troubleshooting" section.
 
 If you are planning to run TOGA on cluster and your cluster is managed by SLURM or LSF then do the following:
 

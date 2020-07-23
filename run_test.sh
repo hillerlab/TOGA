@@ -24,8 +24,8 @@ if [ $1 = "micro" ];
 then
     echo "Running test in the micro mode"
     eval "rm -rf micro_test_out"
-    cmd="./toga.py test_input/hg38.mm10.chrM.chain test_input/hg38.chrM.bed \
-         test_input/hg38.chrM.2bit test_input/mm10.chrM.2bit \
+    cmd="./toga.py test_input/align_micro_sample.chain test_input/annot_micro_sample.bed \
+         test_input/hg38.micro_sample.2bit test_input/dasNov3.JH567521.2bit \
          --pn micro_test_out  --kt \
          --cjn 1 --chn 1 --ms \
          --no_para
