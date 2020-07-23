@@ -1,8 +1,25 @@
 /*
-For a chain and target range return blocks that
-cover only the requested range; some sort of subchain in other words.
+To be compiled as a shared library.
+Function to be called: extract_subchain
+
+Extact chain blocks that intersect the requested region.
 You can request subchain for the target or the query genome.
 Usage: extract_subchain [chain] [q/t] [target/query genome range]
+
+Arguments:
+chain -> string, a chain itself
+mode_cd -> char, "q" or "t" -> stands or "query" or "target" genome
+search_region -> string formatted as chrom:start-end
+                 Region in the query or reference (depending on the mode param)
+                 Function extracts chain blocks that intersect this region
+
+Output structure:
+list of strings
+each string except the last one contains the following:
+    chain block start and end in the reference, chain block start and end in the query
+    values are space-separated
+    each of those chain blocks intersect the region of interest (which is specified)
+The last string is "END"
 
 Author: Bogdan Kirilenko, 2020;
 */
@@ -54,7 +71,7 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
 
     // variables describing the block
     // varialbes called as pointers BUT
-    // they are not pointers!
+    // they are not pointers! (in C-meaning)
     int t_start_pointer = 0;
     int q_start_pointer = 0;
     int blockTStarts = 0; 
@@ -85,7 +102,7 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
         }
 
         // parse head if it wasn't
-        // it must happen at the first line
+        // it must happen to the first line
         if (!head_catched)
         {
             head_catched = true;  // should happen only once
@@ -100,7 +117,7 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
             // read chain file docs for more information
             if ((!in_chain_head.tStrand && mode) || (!in_chain_head.qStrand && !mode))
             {
-                int temp = request_region.start;  // yes I know the way is stupid
+                int temp = request_region.start;
                 int req_chrom_size = mode ? in_chain_head.tSize : in_chain_head.qSize;
                 request_region.start = req_chrom_size - request_region.end;
                 request_region.end = req_chrom_size - temp;
@@ -108,12 +125,14 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
 
             // check chrom, it the requested region has a different chrom,
             // it is defenitely wrong!
+            // if we are interested in the reference region at chrom 1
+            // and provided chain aligned to chrom 2 -> something is definitely wrong!
             if (mode && strcmp(request_region.chrom, in_chain_head.tName) != 0)
             {
                 fprintf(stderr, "Error! Target genome chrom differs in chain and requested region!\n");
                 break;
             }
-            // check for both target and query genome ranges
+            // check this also for the query
             else if (!mode && strcmp(request_region.chrom, in_chain_head.qName) != 0)
             {
                 fprintf(stderr, "Error! Query genome chrom differs in chain and requested region!\n");
@@ -123,6 +142,7 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
 
         // we are reading a block, so update variables
         struct Block block = parse_block(curLine);
+        // convert to absolute coordinates
         blockTStarts = t_start_pointer;
         blockQStarts = q_start_pointer;
         blockTEnds = blockTStarts + block.size;
@@ -134,13 +154,18 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
         if (nextLine) *nextLine = '\n'; 
         curLine = nextLine ? (nextLine + 1) : NULL;
 
-        // depending on mode we are interested in eather the target
-        // or the query genome
+        // depending on mode we are interested in we look at
+        // either the target or the query genome
         req_block_starts = mode ? blockTStarts : blockQStarts;
         req_block_ends = mode ? blockTEnds : blockQEnds;
 
-        // if we're not reading but we just reached the region of interest, then
-        // start reading
+        // these conditions are here to check whether anything of this is true:
+        // 1) we haven't read the chain yet but just reached the region of interest
+        // 2) we finished reading already and are outside the region of interest
+        // conceptually, these conditions are mutually exclusive
+
+        // if we're not reading yet but we just reached the region of interest
+        // then start reading
         if (!reading && req_block_ends >= request_region.start)
         {
             // ---chainchainchainchainchain------
@@ -160,14 +185,15 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
             // we have already read the region of interest
             // ---chainchainchainchainchain------
             // ----regionregion------------------
-            //                 ^ we are here
+            //                     ^ we are here
+            // we can simply stop reading chain then
             break;
         }
 
         if (reading)
         {
-            // just continue reading the chain, now we are in the overlap
-            // we have already read the region of interest
+            // we are reading the chain now
+            // need to add a block in the result
             // ---chainchainchainchainchain------
             // ----regionregion------------------
             //          ^ we are here
@@ -183,9 +209,12 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
                 answer = (char**)realloc(answer, sizeof(char*) * arr_size);
             }
         }
+
+        // if not reading: just go to the next block
+        // no need to write this condition
     }
     // finish answer with END
-    // will be simpler to parse the output
+    // will be simpler to parse the output in the python func
     answer[rows_added] = (char*)malloc(MAXCHAR * sizeof(char));
     sprintf(answer[rows_added], "END");
     return answer;

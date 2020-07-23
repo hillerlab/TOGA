@@ -1,7 +1,16 @@
 /*
-For a chain and a set of genic regions in the target region given
-returns a set of corresponding regions in the query genome.
-You can expand a range in the query genome tuning shift variable.
+To be compiled as a shared library
+chain_coords_converter funtion
+For a chain and a list of regions in the reference genome
+make a list of corresponding regions in the query genome
+Briefly: project regions through a chain
+
+Input:
+chain -> string containing chain (header + blocks)
+shift -> integer > 0: number of flanking blocks; the bigger is shift
+         the bigger are corresponding regions in the query
+regions num -> integer > 0, number of reference genome regions
+granges -> list of strings, each string: reference genome region
 
 Author: Bogdan Kirilenko, 2020;
 */
@@ -27,9 +36,11 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
         // parse regions; their format should be chrom:start-end
         int reg_index = i;
         char *current_region = granges[i];
+        // format requires 2 splits: by : and then by -
         char *reg_split = strtok(current_region, ":");
         strcpy(t_regions[reg_index].chrom, reg_split);
         reg_split = strtok(NULL, ":");
+
         char *split_range = strtok(reg_split, "-");
         t_regions[reg_index].start = strtol(split_range, NULL, NUM_BASE);
         split_range = strtok(NULL, "-");
@@ -39,7 +50,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
     for (int i = 0; i<regions_num; i++)
     {
         // check that start < end in each region
-        // if it's now -> swith them
+        // if that not true -> swith them
         if (t_regions[i].start > t_regions[i].end)
         {
             // this is an extraordinary situation, so let user know about this
@@ -51,10 +62,13 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
     }  // end regions checking
 
     // global search iterables
+    // about most of them: they are arrays, one per region
     bool head_catched = false;  // flag; true if header was parsed
     bool starts_found[regions_num];
     bool ends_found[regions_num];
     bool finished[regions_num];
+
+    // need to do memset here
     memset(starts_found, false, regions_num * sizeof(bool));
     memset(ends_found, false, regions_num * sizeof(bool));
     memset(finished, false, regions_num * sizeof(bool));
@@ -83,8 +97,9 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
     int blockQEnds = 0;
     int prevBlockQEnds = 0;
 
+    // this is how we can read a string
+    // line-by-line (lines separated by \n)
     char * curLine = chain;
-
 
     while(curLine)
     {
@@ -100,6 +115,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
         {
             // chain head should be catched only once
             // because we operate with a single chain
+            // which is also produced by TOGA
             head_catched = true;
             head = parse_head(curLine);
             t_start_pointer = head.tStart;
@@ -108,6 +124,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
             prevBlockQEnds = head.qStart;  // init previous block end with the chain's start
 
             for (int i = 0; i < regions_num; i++)
+            // go region-by-region
             {
                 if (strcmp(t_regions[i].chrom, head.tName) != 0)
                 {
@@ -145,15 +162,18 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
             }  // end region checking
         }  // end chain header parsing
 
-        // if the chain is over
         // each chain ends with double /n
         else if (strcmp(curLine, "\n") == 0) 
         {
+            // if the chain is over -> break
+            // because the input consists on a single chain
             break;
         }
 
         // now we're parsing each block
         struct Block block = parse_block(curLine);
+        // convert relative block coordinates to
+        // absolute coords
         blockTStarts = t_start_pointer;
         blockQStarts = q_start_pointer;
         blockTEnds = blockTStarts + block.size;
@@ -162,7 +182,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
         q_start_pointer = blockQEnds + block.dq;
 
         // then restore newline-char, just to be tidy
-        if (nextLine) *nextLine = '\n';    
+        if (nextLine) *nextLine = '\n';
         curLine = nextLine ? (nextLine + 1) : NULL;
 
         // need to make >= 1 not > 0 because unsigned
@@ -202,14 +222,13 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
             }  // do not search the end before we find the start
 
             // parse ends
-            // if shift == N > 0 then we need to handle +/- N blocks
+            // if shift = N is > 0 then we need to add +/- N blocks
             // up and downstream
             if (shift > 0)
             {
                 if (starts_found[i] && !ends_found[i] && blockTEnds > t_regions[i].end)
                 {
                     ends_found[i] = true;
-                    // printf("%d %d %d\n", t_region.end, blockTStarts, blockTEnds);
                     ks[i] = 0;  // I will use this pointer to get this position + SHIFT
                 }
 
@@ -227,7 +246,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
             {
                 // a bit more complicated in case if no shift required
                 if (starts_found[i] && !ends_found[i] && blockTStarts > t_regions[i].end)
-                {  // ends in intetblock region
+                {  // reference region ends between the chain blocks
                     ends_found[i] = true;
                     ends_in_q[i] = prevBlockQEnds;
                     finished[i] = true;
@@ -235,7 +254,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
                 }
                 else if (starts_found[i] && !ends_found[i] && blockTEnds >= t_regions[i].end)
                 {
-                    // ends inside a block
+                    // reference region ends inside a block
                     ends_found[i] = true;
                     int delta = t_regions[i].end - blockTStarts;
                     ends_in_q[i] = blockQStarts + delta;
@@ -243,7 +262,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
                 }
             }
         }  // end mapping this block with regions
-
+        // current block will be the previous in the next iteration
         prevBlockQEnds = blockQEnds;
 
         // if all blocks are finished -> nothing could switch this flag to false
@@ -268,13 +287,14 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
         if (!head.qStrand)
         {   
             // if strand is negative we need to reverse coordinates
-            int temp = starts_in_q[i];  // yes I know the way is stupid
+            int temp = starts_in_q[i];
+            // not the most elegant way, yes
             starts_in_q[i] = head.qSize - ends_in_q[i];
             ends_in_q[i] = head.qSize - temp;
         }
     }
 
-    // convert 1\0 (C) to +\- (human-readable)
+    // convert 1\0 (strand) to +\- (human-readable)
     char *tStrand = (head.tStrand == 1) ? "+" : "-";
     char *qStrand = (head.qStrand == 1) ? "+" : "-";
     
@@ -285,7 +305,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
         answer[i] = malloc(MAXCHAR * sizeof(char));
     }
 
-    // the first cell -> general chain info
+    // save general chain info in the first line of answer
     sprintf(answer[0], "chain %s %s %d %d %d %s %s %d %d %d\n",
             head.tName, tStrand, head.tSize, head.tStart, head.tEnd,
             head.qName, qStrand, head.qSize, head.qStart, head.qEnd);
@@ -293,6 +313,11 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
     for (int i = 0; i < regions_num; i++)
     {
         // write regions strings to answer array
+        // each line contains:
+        // region number (ordered as in the granges array)
+        // region in the reference
+        // corresponding region in the query
+        // fields are tab-separated
         sprintf(answer[i + 1],
                 "%d\t%s:%d-%d\t%s:%d-%d\n",
                 i, head.qName, starts_in_q[i], ends_in_q[i],

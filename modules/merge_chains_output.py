@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Parse raw chain runner output.
 
-Builds a table with features.
-Read readme for more info.
+Chain features extraction steps results in numerous files.
+This script merges these files and then
+builds s table containing chain features.
 """
 import argparse
 import os
@@ -76,9 +77,9 @@ def read_isoforms(isoforms_file):
     for line in f:
         line_info = line[:-1].split()
         gene = line_info[0]
-        transs = [x for x in line_info[1].split(",") if x != ""]
-        # we need correspondence TRANSCRIPT -to- GENE
-        for trans in transs:
+        transcripts = [x for x in line_info[1].split(",") if x != ""]
+        # we need TRANSCRIPT -to- GENE dict
+        for trans in transcripts:
             isoforms[trans] = gene
     f.close()
     return isoforms
@@ -92,14 +93,14 @@ def read_bed_data(bed_file):
     for line in f:
         # parse tab-separated bed file
         all_bed_info = line.rstrip().split("\t")
-        cds_track = make_cds_track(line)  # keep CDS track
+        cds_track = make_cds_track(line)  # we need CDS only
         cds_bed_info = cds_track.rstrip().split("\t")
     
         if len(all_bed_info) != 12 or len(cds_bed_info) != 12:
-            # if there are not 12 fields - no guarantee that is parse what I want
+            # if there are not 12 fields - no guarantee that we parse what we want
             die(f"Error! Bed12 file {bed_file} is corrupted!")
 
-        # extract fields that I need
+        # extract fields that we need
         chromStart = int(all_bed_info[1])  # gene start
         chromEnd = int(all_bed_info[2])    # and end
         # blocks represent exons
@@ -108,18 +109,15 @@ def read_bed_data(bed_file):
         # data to save
         gene_len = abs(chromStart - chromEnd)
 
-        # for decision tree I will need number of exons an numbers
-        # of bases in exonic and intronic fractions
+        # for decision tree I will need number of exons
+        # and number of bases in exonic and intronic fractions
         exons_num = len(all_blockSizes)
-        exon_fraction = sum(all_blockSizes)
-        cds_fraction = sum(cds_blockSizes)
-        # utr_exons_fract = exon_fraction - cds_fraction
-        # gene_without_urt_exons = gene_len - utr_exons_fract
-    
+        exon_fraction = sum(all_blockSizes)  # including UTR
+        cds_fraction = sum(cds_blockSizes)  # CDS only
         intron_fraction = gene_len - exon_fraction
         gene_name = all_bed_info[3]
 
-        # save the parsed data
+        # save the data
         result[gene_name] = {"gene_len": gene_len,
                              "exon_fraction": cds_fraction,
                              "intron_fraction": intron_fraction,
@@ -163,7 +161,8 @@ def process_chain_line(chain_line):
     target["chain_Q_len"] = chain_line[5]
     target["chain_len"] = chain_line[10]
 
-    # these values are more complex:
+    # these values are more complex
+    # there are comma-separated pairs of values (TRANSCRIPT, VALUE),
     target["local_exos"] = parse_pairs(chain_line[6])
     target["coverages"] = parse_pairs(chain_line[7])
     target["introns"] = parse_pairs(chain_line[8])
@@ -172,7 +171,7 @@ def process_chain_line(chain_line):
 
 
 def load_results(results_dir):
-    """Load and sort the results."""
+    """Load and sort the chain feature extractor results."""
     verbose("Loading the results...")
     results_files = os.listdir(results_dir)
     verbose(f"There are {len(results_files)} result files to combine")
@@ -185,14 +184,14 @@ def load_results(results_dir):
     genes_counter, chain_counter = 0, 0  # count chain and genes lines
 
     for results_file in results_files:
+        # there are N files: read them one-by-one
         path = os.path.join(results_dir, results_file)
         f = open(path, "r")
-
         for line in f:
             # read file line-by-line
-            line_data = line[:-1].split("\t")
+            line_data = line.rstrip().split("\t")
             # define the class of this line
-
+            # a line could be either gene or chain-related
             if line_data[0] == "genes":
                 # process as a gene line
                 chain, genes = process_gene_line(line_data)
@@ -204,14 +203,14 @@ def load_results(results_dir):
                 # add this chain-related dict to the global one
                 chain_raw_data.update(the_chain_related)
                 chain_counter += 1
-
-        # do not forget to closethe file
+        # do not forget to close the file
         f.close()
 
     verbose(f"Got {len(chain_genes_data)} keys in chain_genes_data")
     verbose(f"Got {len(chain_raw_data)} keys in chain_raw_data")
     verbose(f"There were {genes_counter} genes lines and {chain_counter} chain lines")
     # actually, these values must be equal
+    # just a sanity check
     if not genes_counter == chain_counter:
         eprint(f"WARNING! genes_counter and chain_counter hold different "
                f"values:\n{genes_counter} and {chain_counter} respectively")
@@ -297,14 +296,15 @@ def save(data, output):
 
 def merge_chains_output(bed_file, isoforms, results_dir,
                         output, exon_cov_chains=False):
-    """Chains output merger."""
+    """Chains output merger core function."""
     # read bed file, get gene features
     bed_data = read_bed_data(bed_file)
-    # load isoforms data if required
+    # load isoforms data if provided
     isoforms = read_isoforms(isoforms) if isoforms else None
     # read result files from unit
     chain_genes_data, chain_raw_data = load_results(results_dir)
     # I need this dict reverted actually
+    # not chain-genes-data but gene-chains-data
     genes_data = revert_dict(chain_genes_data)
 
     # combine all the data into one gene-oriented dictionary
@@ -313,7 +313,7 @@ def merge_chains_output(bed_file, isoforms, results_dir,
                             genes_data,
                             exon_cov_chains,
                             isoforms)
-    # save this stuff
+    # save this data
     save(combined_data, output)
     # finish the program
     eprint(f"Estimated_time: {format(dt.now() - t0)}")

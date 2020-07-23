@@ -1,4 +1,4 @@
-"""Common functions."""
+"""TOGA common functions."""
 # in progress
 import sys
 import sqlite3
@@ -16,29 +16,36 @@ def parts(lst, n=3):
 
 
 def bedExtractID(index_file, gene_ids):
-    """Extract chain from BDB file."""
+    """Extract a bed track from a BDB file."""
     db = bsddb3.btopen(index_file, "r")
+    # accept both a list of gene_ids (type=list) and a single gene_id (type=str)
     if type(gene_ids) != str:
         keys = [str(gene_id).encode() for gene_id in gene_ids]
     else:
         keys = [str(gene_ids).encode()]
+    # keys are a list for consistency (even if a single gene id provided)
     bed_lines = "".join([db.get(key).decode("utf-8") for key in keys if db.get(key)])
     db.close()
     if len(bed_lines) == 0:
+        # if nothing found -> there must be an error
         sys.stderr.write("Error! Bed tracks not found! (bedExtractID)")
         sys.exit(1)
     return bed_lines
 
 
 def bedExtractIDText(bed_file, gene_ids_param):
-    """Extract bed-12 tracks according the gene names."""
+    """Extract bed-12 tracks from a text bed file."""
+    # the function accepts both a list of gene_ids (type=list)
+    # and a single gene_id (type=string)
     if type(gene_ids_param) != str:  # so it's list
         gene_ids = set(gene_ids_param)
     else:
         gene_ids = set([gene_ids_param])
+    # gene_ids is a set for consistency; even if a single gene id provided
     output = []
     f = open(bed_file, "r")
     for line in f:
+        # read line-by-line and catch lines with gene_id in the gene_ids set
         gene_id = line.split("\t")[3]
         if gene_id not in gene_ids:
             continue
@@ -48,30 +55,37 @@ def bedExtractIDText(bed_file, gene_ids_param):
 
 
 def make_cds_track(line):
-    """Trim UTRs from bed track."""
+    """Trim UTRs from a bed track."""
     line_data = line.rstrip().split("\t")
     if len(line_data) != 12:
         sys.exit(f"Error! Bed line:\n{line}\nis a not bed-12 formatted line!")
+    # parse bed12 line according to the specification
     chrom = line_data[0]
     chromStart = int(line_data[1])
     chromEnd = int(line_data[2])
     name = line_data[3]  # gene_name usually
-    name += "_CDS"
+    name += "_CDS"  # mark that UTRs are trimmed
     bed_score = int(line_data[4])  # never used
-    strand = line_data[5]  # otherwise:
-    # strand = True if line_data[5] == '+' else False
+    strand = line_data[5]
     thickStart = int(line_data[6])
     thickEnd = int(line_data[7])
     itemRgb = line_data[8]  # never used
     blockCount = int(line_data[9])
+    # chrom start and end define the entire transcript location
+    # this includes both UTRs and CDS
+    # thick start and end limit the CDS only
     blockSizes = [int(x) for x in line_data[10].split(',') if x != '']
     blockStarts = [int(x) for x in line_data[11].split(',') if x != '']
     blockEnds = [blockStarts[i] + blockSizes[i] for i in range(blockCount)]
+    # block starts are given in the relative coordinates -> need to convert them
+    # into absolute coordinates using chromstart
     blockAbsStarts = [blockStarts[i] + chromStart for i in range(blockCount)]
     blockAbsEnds = [blockEnds[i] + chromStart for i in range(blockCount)]
+    # arrays for blocks with trimmed UTRs
     blockNewStarts, blockNewEnds = [], []
 
     for block_num in range(blockCount):
+        # go block-by-block
         blockStart = blockAbsStarts[block_num]
         blockEnd = blockAbsEnds[block_num]
 
@@ -80,32 +94,42 @@ def make_cds_track(line):
             continue
         elif blockStart >= thickEnd:
             continue
-
-        # remove UTRs
+        
+        # if we are here: this is not an entirely UTR exon
+        # it migth intersect the CDS border or to be in the CDS entirely
+        # remove UTRs: block start must be >= CDS_start (thickStart)
+        # block end must be <= CDS_end (thickEnd)
         blockNewStart = blockStart if blockStart >= thickStart else thickStart
         blockNewEnd = blockEnd if blockEnd <= thickEnd else thickEnd
+        # save blocks with updated coordinates
+        # also convert them back to relative coordinates with - thickStart
+        # after the update thickStart/End are equal to chromStart/End
         blockNewStarts.append(blockNewStart - thickStart)
         blockNewEnds.append(blockNewEnd - thickStart)
 
+    # blockCount could change due to entirely UTR exons
     blockNewCount = len(blockNewStarts)
+    # this is also a subject to change
     blockNewSizes = [blockNewEnds[i] - blockNewStarts[i]
-                        for i in range(blockNewCount)]
+                     for i in range(blockNewCount)]
 
+    # save the updated bed line with trimmed UTRs
     new_track = [chrom, thickStart, thickEnd, name, bed_score,
-                    strand, thickStart, thickEnd, itemRgb, blockNewCount,
-                    ",".join([str(x) for x in blockNewSizes]) + ",",
-                    ",".join([str(x) for x in blockNewStarts]) + ","]
+                 strand, thickStart, thickEnd, itemRgb, blockNewCount,
+                 ",".join([str(x) for x in blockNewSizes]) + ",",
+                 ",".join([str(x) for x in blockNewStarts]) + ","]
     new_line = "\t".join([str(x) for x in new_track])
     return new_line
 
 
 def chainExtractID(index_file, chain_id):
-    """Extract chain from BDB file."""
+    """Extract chain from a BDB file by id."""
     db = bsddb3.btopen(index_file, "r")
     key = str(chain_id).encode()
     chain_data_enc = db.get(key)
     if not chain_data_enc:
-        sys.stderr.write("Error! Chain {} not found in the bdb. Abort\n".format(chain_id))
+        # throw an error if a chain with given ID not found
+        sys.stderr.write(f"Error! Chain {chain_id} not found in the bdb. Abort\n")
         sys.exit(1)
     chain_data = chain_data_enc.decode("utf-8")
     db.close()
@@ -118,7 +142,13 @@ def flatten(lst):
 
 
 def split_proj_name(proj_name):
-    """Split projection name."""
+    """Split projection name.
+    
+    Projections named as follows: ${transcript_ID}.{$chain_id}.
+    This function splits projection back into transcript and chain ids.
+    We cannot just use split("."), because there migth be dots
+    in the original transcript ID.
+    """
     proj_name_split = proj_name.split(".")
     q_num_str = proj_name_split[-1]
     trans_name = ".".join(proj_name_split[:-1])

@@ -315,13 +315,6 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
         assert local_exo >= 0
         assert local_exo <= 1
         result["local_exos"] += "{0}={1},".format(gene, local_exo)
-        # verbose(f"Gene: {gene}")
-        # verbose(f"blocks_v_gene: {blocks_v_gene}")
-        # verbose(f"blocks_v_exons: {blocks_v_exons}")
-        # verbose(f"blocks_v_cds: {blocks_v_cds}")
-        # verbose(f"blocks_v_introns: {blocks_v_introns}")
-        # verbose(f"blocks_v_flanks: {blocks_v_flanks}")
-        # assert local_exo <= 1.0  # should never happen
         # increase synteny if > 0 CDS bases covered
         if blocks_v_cds > 0:
             result["chain_synteny"] += 1
@@ -334,7 +327,6 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
     # do not forget about global feature
     # chain_glob_bases -= chain_utr_exon_bases  # ignore UTR exons!
     chain_cds_bases = local_exo_dict[COMBINED_BED_ID] if nested else chain_cds_bases
-    # print(chain_exon_bases / chain_glob_bases if chain_exon_bases != 0 else 0)
     result["global_exo"] = chain_cds_bases / chain_glob_bases if chain_glob_bases != 0 else 0
     result["CDS_to_Qlen"] = chain_cds_bases / work_data["chain_QLen"] if work_data["chain_QLen"] != 0 else 0
 

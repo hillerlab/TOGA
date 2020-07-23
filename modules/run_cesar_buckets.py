@@ -19,19 +19,6 @@ ITER_DURATION = 120  # seconds between each para check
 kill = lambda process: process.kill()
 
 
-def popen_timeout(command, timeout):
-    p = subprocess.Popen(command, stdout=PIPE, stderr=PIPE, shell=True)
-    for t in range(timeout):
-        time.sleep(1)
-        if p.poll() is not None:
-            out = p.communicate()[0].decode("utf-8")
-            print(out)
-            rc = p.returncode
-            return out, rc
-    p.kill()
-    return "Timeout error", -1
-
-
 def run_cesar_buckets(cesar_buckets, project_name, cesar_combined, wd):
     """Run CESAR jobs in several buckets."""
     t0 = dt.now()
@@ -69,6 +56,7 @@ def run_cesar_buckets(cesar_buckets, project_name, cesar_combined, wd):
     iter_num = 0
     while True:
         # YES, I know it is a bad idea to use such the constructions
+        # run until all jobs are done
         all_done = True
         for p in processes:
             # check if each process is still running

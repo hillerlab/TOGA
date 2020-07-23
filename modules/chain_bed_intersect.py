@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Find all genic intersections for chain X bed.
+"""Find all intersections between chains and transcripts CDS.
 
-Writes to stdout the following table:
+Requires a bed and a chain file as input.
+Produces the following table:
 chain_id<tab>comma-separated list of ovrelapped genes.
 """
 import sys
@@ -19,15 +20,25 @@ def flatten(lst):
     return [item for sublist in lst for item in sublist]
 
 
-def parse_chain(chain):
-    """Return chrom: ranges from chain file."""
-    # I need the headers only
+def parse_chain(chain_file):
+    """Read chain file.
+    
+    For each chromosome save a list of corresponding chains
+    and their genomic ranges.
+    """
+    # save dict {chrom: list of (chain_id, start, end)} here:
     chrom_range = defaultdict(list)
-    cmd = "cat {0} | grep chain".format(chain)
+    # I need the headers only
+    # each chain header starts with "chain" word
+    # TODO: maybe do it without grep? Not sure.
+    cmd = f"cat {chain_file} | grep chain"
     headers = subprocess.check_output(cmd, shell=True).decode("utf-8")
+
     for header in headers.split("\n"):
+        # parse chain headers one-by-one
         if len(header) == 0:
             continue
+        # space-separated fields
         header_info = header.split()
         chrom = header_info[2]
         start = int(header_info[5])
@@ -38,19 +49,27 @@ def parse_chain(chain):
 
 
 def parse_bed(bed):
-    """Return chrom: ranges from bed file."""
+    """Read bed file.
+    
+    For each chromosome save a list of corresponding transcripts
+    and their genomic ranges.
+    """
     chrom_range = defaultdict(list)
     f = open(bed, "r")
     for line in f:
+        # parse bed-12 formatted file
         line_info = line.split("\t")
         chrom = line_info[0]
+        # fields 1 and 2 -> start and end of the transcript body
+        # fields 6 & 7 - start and end of the transcript CDS
         # start = int(line_info[1])
         # end = int(line_info[2])
+
         # count only CDS!
         start = int(line_info[6])
         end = int(line_info[7])
-        gene = line_info[3]
-        chrom_range[chrom].append((gene, start, end))
+        transcript_id = line_info[3]
+        chrom_range[chrom].append((transcript_id, start, end))
     f.close()
     return chrom_range
 
@@ -63,14 +82,21 @@ def intersect(range_1, range_2):
 def find_first(chains, beds):
     """Find indexes for the first intersection."""
     if len(chains) == 0 or len(beds) == 0:
+        # there are no chains || beds in this chrom:
+        # nothing we can dc
         return 0, 0
-    if intersect(chains[0], beds[0]) > 0:  # no need to search
+    if intersect(chains[0], beds[0]) > 0:
+        # no need to search
+        # first chain intersects first bed
         return 0, 0
+    # get first transcript start and first chain end
     first_bed_start, _ = beds[0][1], beds[0][2]
     _, first_chain_end = chains[0][1], chains[0][2]
+
     if first_chain_end < first_bed_start:
         # we have lots of chains in the beginning not intersecting beds
         for i in range(len(chains)):
+            # let's go chain-by-chain until we reach first transcript
             if intersect(chains[i], beds[0]) > 0:
                 return i, 0
             elif chains[i][1] > beds[0][2]:
@@ -79,6 +105,7 @@ def find_first(chains, beds):
                 return 0, 0
     else:  # lots of beds in the beginning not covered by chains
         for i in range(len(beds)):
+            # go transcript-by-transcript until we reach any chain
             if intersect(chains[i], beds[0]) > 0:
                 return 0, i
             elif beds[i][1] > chains[0][2]:
@@ -88,7 +115,10 @@ def find_first(chains, beds):
 
 
 def overlap(chains, beds):
-    """Return intersections for chain: bed."""
+    """Return intersections for chain: bed.
+    
+    Works on pre-sorted bed tracks and chains
+    located on the same chromosome."""
     # init state, find FIRST bed intersecting the FIRST chain
     chain_beds = defaultdict(list)
     chain_init, start_with = find_first(chains, beds)
@@ -97,10 +127,12 @@ def overlap(chains, beds):
     bed_num = None
 
     if chains_num == 0 or bed_len == 0:
-        # check if there are chains and beds in this chrom
+        # check if there are chains and beds on this chrom
+        # if there is no chains and beds: nothing to intersect
         return {}
+
     for i in range(chain_init, chains_num):
-        FLAG = False  # was intersection or not?
+        FLAG = False  # was there an intersection or not?
         FIRST = True
         chain = chains[i]
         while True:
@@ -142,40 +174,57 @@ def overlap(chains, beds):
                     # and all intersections are saved
                     # --> proceed to the next chain
                     break
-
     return chain_beds
 
 
 def chain_bed_intersect(chain, bed):
-    """Entry point."""
+    """Intersect bed and chain files.
+    
+    Return chain: intersected transcripts dict and
+    list of transcripts not intersected by any chain.
+    """
     # get list of chrom: ranges for both
-    skipped = []
+    skipped = []  # list of genes that were skipped because they don't intersect any chain
+    # read bed and chain files for the beginning
     chain_data = parse_chain(chain)
     bed_data = parse_bed(bed)
 
+    # we have 2 dicts: chrom: genes and chrom: chains
+    # sets of chromosomes in the bed and chain files might differ
+    # we are interested in the sets intersection only
+    # if there is chrom Y in the bed file but not chrom Y in the chain file
+    # -> for sure no chrom Y genes would be intersected by any chain
     chroms = list(set(bed_data.keys()).intersection(chain_data.keys()))
-    # to save beds that are skipped at this stage:
+    # save transcript IDs that lie on chromosomes not found in the chain file:
     only_bed_chroms = list(set(bed_data.keys()).difference(chain_data.keys()))
     genes_rejected = [x[0] for x in flatten([bed_data[chr] for chr in only_bed_chroms])]
     for gene in genes_rejected:
         skipped.append((gene, "chromosome is not aligned"))
 
-    if len(chroms) == 0:
+    if len(chroms) == 0:  # no chromosomes appear in the bed and the chain file
+        # for sure there is something wrong with the input data
         sys.exit("Error! No common chromosomes between the bed and chain files found!")
-    chain_bed_dict = {}  # out answer
+    chain_bed_dict = {}  # dict for result
 
     # main loop
     for chrom in chroms:
-        # sort the ranges
+        # go chromosome-by-chromosome
+        # of course a transcript on the chromosome 1 will never intersect
+        # a chain on the chromosome 2
+        
+        # algorithm is a bit tricky and takes O(NlogN)
+        # pre-sort genes and chains
         bed_ranges = sorted(bed_data[chrom], key=lambda x: x[1])
         gene_at_chrom = set(x[0] for x in bed_ranges)
         chain_ranges = sorted(chain_data[chrom], key=lambda x: x[1])
+        # the intersection itself happens there:
         chrom_chain_beds = overlap(chain_ranges, bed_ranges)
         # get genes that are not intersected with any chain
         genes_in = set(flatten(v for v in chrom_chain_beds.values()))
         genes_out = gene_at_chrom.difference(genes_in)
         for gene in genes_out:
             skipped.append((gene, "no intersecting chains"))
+        # add results to the main dict:
         chain_bed_dict.update(chrom_chain_beds)
     return chain_bed_dict, skipped
 

@@ -210,6 +210,8 @@ TOGA will skip transcripts that do not satisfy this criteria.
 TOGA would skip non-coding transcripts.
 - Avoid any pseudogenes in the reference annotations.
 - Also, try to avoid merged and incomplete transcripts.
+- Make sure that transcript identifiers are unique, e.g. avoid cases where two or more
+transcripts have the same identifier.
 
 ##### Optional but highly recommended: Isoform data
 

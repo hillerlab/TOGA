@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Using metadata given, create transcript confidence level."""
+"""Using exons metadata, estimate projection confidence level."""
 import argparse
 import sys
 from collections import defaultdict
+
+__author__ = "Bogdan Kirilenko, 2020."
+__version__ = "1.0"
+__email__ = "kirilenk@mpi-cbg.de"
+__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+
 
 META_DATA_FIELDS_NUM = 12
 
@@ -30,6 +36,8 @@ def get_exon_marks(meta_data_file):
     f = open(meta_data_file, "r")
     for num, line in enumerate(f, 1):
         line_data = line.rstrip().split("\t")
+        # meta data file contains information about each
+        # projected exon, such as exon class, %id, etc
         if line_data[0] == "":
             # a gap
             continue
@@ -42,22 +50,27 @@ def get_exon_marks(meta_data_file):
         elif line_data[0] == "gene":
             # header
             continue
+        # parse a line, we need just a projection and exon class (mark)
         transcript = line_data[0]
         chain = line_data[2]
-        transcript_key = f"{transcript}.{chain}"
+        projection_id = f"{transcript}.{chain}"
         exon_mark = line_data[11]
-        transcript_exon_marks[transcript_key].append(exon_mark)
+        transcript_exon_marks[projection_id].append(exon_mark)
     f.close()
     return transcript_exon_marks
 
 
 
 def get_transcript_score(ort_scores_file):
-    """Read orthology scores."""
+    """Read orthology scores.
+    
+    There are scores for each chain-transcript pair
+    assigned by XGBoost classifier."""
     result = {}
     f = open(ort_scores_file, "r")
-    _ = f.__next__()  # skip header
+    f.__next__()  # skip header
     for line in f:
+        # a simple 3 columns tab-separated tsv
         line_data = line.rstrip().split("\t")
         transcript = line_data[0]
         chain = line_data[1]
@@ -69,23 +82,30 @@ def get_transcript_score(ort_scores_file):
 
 
 def classify_transcripts(meta_data_file, ort_score_file, hq_threshold, output):
-    """Classify transcripts."""
-    # first, get exon marks
+    """Classify transcripts core function."""
+    # first, get exon marks (how confident are we about any projected exon)
     transcript_exon_marks = get_exon_marks(meta_data_file)
     transcripts_scores = get_transcript_score(ort_score_file)
     # ther get transcript classes
     result = {}
     for trans, marks in transcript_exon_marks.items():
+        # classify projections
         trans_score = transcripts_scores[trans]
         if "LQ" in marks:
+            # any of exons is low-confidence -> the entire projection is low confidence
             t_mark = "low_confidence"
         elif "NA" in marks:
+            # anything N/A in marks -> for sure partial (low confidence also)
             t_mark = "partial"
         elif all(x == "HQ" for x in marks) and trans_score >= hq_threshold:
+            # only if all exons are high-confidence we say the projection is high-confidence
+            # TODO: implement not so strict rules
             t_mark = "high_confidence"
         else:
+            # the rest: average (medium) confidence
             t_mark = "average_confidence"
-        result[trans] = t_mark  
+        result[trans] = t_mark
+    # once projections classified: save the data
     save(result, output)
 
 def save(transcript_class, output_file):

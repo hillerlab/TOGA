@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Create a bed file + a fasta file."""
+"""Merge and process CESAR output files.
+
+After the CESAR part there would appear numerous files.
+This script applies parse_cesar_bdb function to each file
+and then does the following:
+1) Bed annotation track for query.
+2) Nucleotide and protein fasta files.
+3) Saves exons metadata into a tsv file.
+4) Saves a list of problematic projections.
+"""
 import sys
 import argparse
 import os
@@ -51,10 +60,13 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
                        meta_data_arg, skipped_arg, prot_arg,
                        output_trash):
     """Merge multiple CESAR output files."""
+    # check that input dir is correct
     die(f"Error! {input_dir} is not a dir!") \
         if not os.path.isdir(input_dir) else None
+    # get list of bdb files (output of CESAR part)
     bdbs = [x for x in os.listdir(input_dir) if x.endswith(".bdb")]
 
+    # initiate lists for different types of output:
     bed_summary = []
     fasta_summary = []
     trash_summary = []
@@ -65,12 +77,16 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
     task_size = len(bdbs)
     # extract data for all the files
     for num, bdb_file in enumerate(bdbs):
+        # parse bdb files one by one
         bdb_path = os.path.join(input_dir, bdb_file)
-        try:
+        try:  # try to parse data
             parsed_data = parse_cesar_bdb(bdb_path)
         except AssertionError:
+            # if this happened: some assertion was violated
+            # probably CESAR output data is corrupted
             sys.exit(f"Error! Failed reading file {bdb_file}")
 
+        # unpack parsed data tuple:
         bed_lines = parsed_data[0]
         trash_exons = parsed_data[1]
         fasta_lines = parsed_data[2]
@@ -79,12 +95,13 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         skip = parsed_data[5]
 
         if len(bed_lines) == 0:
+            # actually should not happen, but can
             eprint(f"Warning! {bdb_file} is empty")
             continue  # it is empty
+        
+        # append data to lists
         bed_summary.append("\n".join(bed_lines) + "\n")
         fasta_summary.append(fasta_lines)
-
-        # exons_left_summary.append(exons_left)
         trash_summary.append("".join(trash_exons))
         meta_summary.append(meta_data)
         skipped.append(skip)
@@ -99,6 +116,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         eprint("! merge_cesar_output.py:")
         die("No projections found! Abort.")
 
+    # save bed, fasta and the rest
     with open(output_bed, "w") as f:
         f.write("".join(bed_summary))
     with open(output_fasta, "w") as f:
@@ -111,6 +129,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         f.write("\n".join(prot_summary))
 
     if output_trash:
+        # if requested: provide trash annotation
         f = open(output_trash, "w")
         f.write("".join(trash_summary))
         f.close()

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""For a target and queue files given make orthology map."""
+"""For a target and queue files given make orthology map.
+
+Create a table that shows orthology relationships between
+reference and query genes. Divide them as one2one, one2many, etc.
+"""
 import argparse
 import sys
 from collections import defaultdict
@@ -88,9 +92,12 @@ def read_loss_data(loss_file):
     f = open(loss_file, "r")
     for line in f:
         line_data = line.rstrip().split("\t")
+        # GLP data: entry type (projection, trans or gene), name ans status
         entry_type = line_data[0]
         if entry_type != "PROJECTION":
+            # we need only projections data
             continue
+        # save projection status
         proj = line_data[1]
         status = line_data[2]
         proj_to_status[proj] = status
@@ -100,7 +107,7 @@ def read_loss_data(loss_file):
 
 def filter_query_transcripts(transcripts, paralogs, trans_to_status):
     """Keep intact orthologous transcripts."""
-    filt_transcripts = []
+    filt_transcripts = []  # save transcripts we keep
     print(f"Extracted {len(transcripts)} query transcripts")
     for trans in transcripts:
         is_paral = trans in paralogs
@@ -120,23 +127,32 @@ def get_t_trans_to_projections(que_projections):
     """Make transcript: projections dict."""
     trans_to_proj = defaultdict(list)
     for proj in que_projections:
+        # just need to split projection name to get transcript ID
         trans, _ = split_proj_name(proj)
         trans_to_proj[trans].append(proj)
     return trans_to_proj
 
 
 def connect_genes(t_trans_to_gene, t_trans_to_q_proj, q_proj_to_q_gene):
-    """Create orthology relationships graph."""
-    o_graph = nx.Graph()
+    """Create orthology relationships graph.
+    
+    Nodes are reference and query genes.
+    If nodes are connected -> they are orthologs.
+    """
+    o_graph = nx.Graph()  # init the graph
     genes = set(t_trans_to_gene.values())
     o_graph.add_nodes_from(genes)
     q_genes_all = []
     print(f"Added {len(genes)} reference genes on graph")
-    conn_count = 0
+    conn_count = 0  # connections counter
     for t_trans, t_gene in t_trans_to_gene.items():
+        # we know ref gene: ref transcripts relation by default
+        # also we already know transcript-to-projections (trivial)
         projections = t_trans_to_q_proj[t_trans]
+        # from projections (query transcripts) we know query gene ids
         q_genes = set(q_proj_to_q_gene[p] for p in projections)
         for q_gene in q_genes:
+            # we can connect all of those q_genes with the reference gene
             conn_count += 1
             q_genes_all.append(q_gene)
             o_graph.add_edge(t_gene, q_gene)
@@ -151,9 +167,13 @@ def extract_orth_connections(graph, r_genes_all, q_genes_all):
     orth_connections = []
     graph_components = nx.connected_component_subgraphs(graph)
     for component in graph_components:
+        # each component contains some reference and query gene ids
+        # and they are orthologs
         nodes = component.nodes()
+        # split all nodes into ref and query gene ids:
         r_genes = [n for n in nodes if n in r_genes_all]
         q_genes = [n for n in nodes if n in q_genes_all]
+        # to define the class we need sizes of these groups:
         r_len = len(r_genes)
         q_len = len(q_genes)
         if q_len == 0:
@@ -168,8 +188,10 @@ def extract_orth_connections(graph, r_genes_all, q_genes_all):
             c_class = MANY2MANY
         else:
             raise RuntimeError("impossible")
+        # create connection object and save it
         conn = {"r_genes": r_genes, "q_genes": q_genes, "c_class": c_class}
         orth_connections.append(conn)
+    # count different orthology classes
     class_list = [c["c_class"] for c in orth_connections]
     print(f"Detected {len(class_list)} orthology components")
     class_count = Counter(class_list)
@@ -182,8 +204,9 @@ def extract_orth_connections(graph, r_genes_all, q_genes_all):
 def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_projections, out):
     """Save orthology data."""
     f = open(out, "w") if out != "stdout" else sys.stdout
+    # write the header
     f.write("t_gene\tt_transcript\tq_gene\tq_transcript\torthology_class\n")
-    non_orthologous_isoforms = []
+    non_orthologous_isoforms = []  # to save reference transcripts that don't have orthologs
 
     for conn in orth_connections:
         # connection: class + GENES
@@ -217,7 +240,7 @@ def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_pro
                     # and last, each trascript can be projected > once
                     proj_q_gene = q_trans_to_gene[proj]
                     f.write(f"{ref_gene}\t{ref_transcript}\t{proj_q_gene}\t{proj}\t{conn_class}\n")
-        
+    # close file and return non-orthologous reference isoforms
     f.close() if out != "stdout" else None
     return non_orthologous_isoforms
 
@@ -225,24 +248,31 @@ def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_pro
 def orthology_type_map(ref_bed, que_bed, out, ref_iso=None, que_iso=None,
                        paralogs_arg=None, loss_data=None, save_skipped=None):
     """Make orthology classification track."""
-    q_trans_paralogs = read_paralogs(paralogs_arg)
-    ref_transcripts = extract_names_from_bed(ref_bed)
-    que_transcripts_all = extract_names_from_bed(que_bed)
+    q_trans_paralogs = read_paralogs(paralogs_arg)  # do not include paralogs
+    ref_transcripts = extract_names_from_bed(ref_bed)  # list of reference transcripts
+    que_transcripts_all = extract_names_from_bed(que_bed)  # list of query transcripts
     if loss_data is None:
         # no loss data: assume everything is intact
         trans_to_L_status = {x: "I" for x in que_transcripts_all}
-    else:
+    else:  # we do add only I, PI and G projections
         trans_to_L_status = read_loss_data(loss_data)
+    # remove I/PI/G or paralogous transcripts
     que_transcripts = filter_query_transcripts(que_transcripts_all,
                                                q_trans_paralogs,
                                                trans_to_L_status)
+    # read reference and query isoform files; orthology is a story about genes
     r_gene_to_trans, r_trans_to_gene = read_isoforms(ref_iso, ref_transcripts)
     q_gene_to_trans, q_trans_to_gene = read_isoforms(que_iso, que_transcripts_all)
     r_genes_all = set(r_gene_to_trans.keys())
     q_genes_all = set(q_gene_to_trans.keys())
+    # make transcript to projections dict:
     t_trans_to_projections = get_t_trans_to_projections(que_transcripts)
+    # create graph to connect orthologous transcripts
     o_graph = connect_genes(r_trans_to_gene, t_trans_to_projections, q_trans_to_gene)
+    # if a group of reference and query genes are in the same connected component
+    # then they are orthologs
     orth_connections = extract_orth_connections(o_graph, r_genes_all, q_genes_all)
+    # save data, get list of transcript that were not projected
     not_saved = save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_projections, out)
     if save_skipped:
         # save transcripts of orthologous genes that don't have any projection

@@ -1,6 +1,6 @@
 /*
-For a chain file and minimal score writes to stdout
-only those chains that have score more than required.
+Filter chain file: extract only those that have a score > min_score
+Write output to stdout
 Usage: chain_score_filter [chain_file] [minimal_score]
 
 Author: Bogdan Kirilenko, 2020;
@@ -18,11 +18,12 @@ Author: Bogdan Kirilenko, 2020;
 #define NUM_BASE 10
 
 
-uint64_t chain_score(char *header_string)
+uint64_t get_chain_score(char *header_string)
 {
     // parse chain header, we need a field num 1.
     // fields are separated with space
     char *split_head = strtok(header_string, " ");
+    // initiate vars with default values
     uint64_t score = 0;
     uint8_t field = 0;
 
@@ -46,13 +47,14 @@ uint64_t chain_score(char *header_string)
 int main(int argc, char **argv)
 {
     // what if the number of arguments is wrong?
+    // then show usage and quit
     if (argc != ARGS_NUM)
     {
         fprintf(stderr, "Usage: %s [chain_file] [min_score]\n", argv[0]);
         return 0;
     }
 
-    // check that second arg is a number
+    // check that the second arg is numeric
     if (strspn(argv[2], "0123456789") != strlen(argv[2]))
     {
         fprintf(stderr, "Error! Second arg must be numeric, got %s\n", argv[2]);
@@ -74,24 +76,33 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // we will read file line-by-line
+    // some lines are headers, the rest -> are blocks
+    // we read a chain header and extract the score
+    // if score is > min_score, we print the header and all blocks
+    // beneath this header, until we get to the next one
+    // then we repeat the first step again
+
     char buff[MAXCHAR];  // file reading buffer
     bool reading = false;  // if true: we are reading a chain with
                            // score > required minimal
-    uint64_t score = 0;
-    uint64_t passed = 0;
+    uint64_t score = 0;  // current chain score, initiate with 0
+    uint64_t passed = 0;  // count chains that passed the filter
 
     while (fgets(buff, MAXCHAR, chain) != NULL)
     {
         if (strncmp("chain", buff, CHAIN_WORD_LEN) == 0)
         {
-            // it is a header
+            // it is a header, starts with "chain"
+            // need to extract chain score
             char header[MAXCHAR];
             strcpy(header, buff);
-            score = chain_score(header);
+            score = get_chain_score(header);
             
-            // if this happened -> print the header
-            // as a part of the chain
+            // compare score to the min score
             if (score > min_score){
+                // if this happened -> print the header
+                // as a part of the chain
                 printf("%s", buff);
                 // reading true -> will print all blocks
                 // belonging to this chain
@@ -100,6 +111,7 @@ int main(int argc, char **argv)
                 ++passed;
             // if score < required then
             // reading flag is false
+            // skip all lines until we reach the next header
             } else {reading = false;}
 
         } else if (reading) {
@@ -108,8 +120,9 @@ int main(int argc, char **argv)
             printf("%s", buff);
         }
         // else: no reading -> do nothing
-    }
+    }  // stop reading file, we can close it now
     fclose(chain);
+
     if (passed == 0)
     {
         // if we counted 0 chains that passed the filter, the user should be warned at least

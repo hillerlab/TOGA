@@ -13,26 +13,14 @@ __version__ = "1.0"
 __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
-# TODO: revise this
-PID_ANN_THR = 45
-BLOSUM_ANN_THR = 25
+# constants
 MAX_SCORE = 1000
 MAX_COLOR = 255
 PID_HQ_THR = 65
 BLOSUM_HQ_THR = 35
-
 Q_HEADER_FIELDS_NUM = 12
 
-# thresholds for exon classification
-HQ_PID = 75
-HQ_BLOSUM = 65
-
-AB_INCL_PID = 25
-AB_INCL_BLOSUM = 25
-
-C_INCL_PID = 65
-C_INCL_BLOSUM = 50
-
+# header for exons meta data file
 META_HEADER = "\t".join("gene exon_num chain_id act_region exp_region"
                         " in_exp pid blosum gap class paralog q_mark".split())
 
@@ -81,10 +69,11 @@ def read_fasta(fasta_line, v=False, show_headers=False, rm=""):
         eprint("ERROR! Cesar output is corrupted")
         eprint(f"Issue detected in the folling string:\n{fasta_line}")
         die("Abort")
-    # assert fasta_data[0] == ""  # if a file starts with > it should be empty
     del fasta_data[0]  # remove it "" we don't need that
     sequences = {}  # accumulate data here
     order = []  # to have ordered list
+    # there is no guarantee that dict will contain elements in the
+    # same order as they were added
 
     for elem in fasta_data:
         raw_lines = elem.split("\n")
@@ -97,7 +86,6 @@ def read_fasta(fasta_line, v=False, show_headers=False, rm=""):
         fasta_content = "".join(lines)
         sequences[header] = fasta_content
         order.append(header)
-
     return sequences, order
 
 
@@ -144,47 +132,54 @@ def read_paralogs_log(paralog_log_file):
 
 
 def parse_cesar_bdb(arg_input, v=False):
-    """Entry point."""
-    in_ = open(arg_input, "r")
+    """Parse CESAR bdb file core function."""
+    in_ = open(arg_input, "r")  # read cesar bdb file
     # two \n\n divide each unit of information
     content = [x for x in in_.read().split("\n\n") if x]
     in_.close()
+    # GLP-related data is already filtered out by cesar_runner
 
     # initiate collectors
-    bed_lines = []
-    skipped = []
-    pred_seq_chain = {}
-    t_exon_seqs = defaultdict(dict)
-    exons_left = defaultdict(list)
-    wrong_exons = []
-    all_meta_data = [META_HEADER]
-    prot_data = []
-    exon_class_data = []
+    bed_lines = []  # save bed lines here
+    skipped = []  # save skipper projections here
+    pred_seq_chain = {}  # for nucleotide sequences to fasta
+    t_exon_seqs = defaultdict(dict)  # reference exon sequences
+    exons_left = defaultdict(list)  # exons that are not deleted
+    wrong_exons = []  # exons that are predicted but actually deleted/missing
+    all_meta_data = [META_HEADER]  # to collect exons meta data
+    prot_data = []  # protein sequences
+    exon_class_data = []  # exons classification
 
     for elem in content:
-        # one elem - one CESAR call (one gene and >=1 chains)
-        # now loop gene-by-genew
+        # one elem - one CESAR call (one ref transcript and >=1 chains)
+        # now loop gene-by-gene
         gene = elem.split("\n")[0][1:]
         eprint(f"Reading gene {gene}") if v else None
-        # error = False
         cesar_out = "\n".join(elem.split("\n")[1:])
+        # basically this is a fasta file with headers
+        # saturated with different information
         sequences, order = read_fasta(cesar_out, v=v)
+        # initiate dicts to fill later
         ranges_chain, chain_dir = defaultdict(dict), {}
         pred_seq_chain[gene] = defaultdict(dict)
         exon_lens, chain_raw_scores = {}, defaultdict(list)
         chain_pid_scores, chain_blosum_scores = defaultdict(list), defaultdict(list)
         chain_classes = defaultdict(list)
 
+        # split fasta headers in different classes
+        # query, ref and prot sequence headers are explicitly marked
         query_headers = [h for h in order if h.endswith("query_exon")]
         ref_headers = [h for h in order if h.endswith("reference_exon")]
         prot_ids = [h for h in order if "PROT" in h]
 
-        # parse reference exons
+        # parse reference exons, quite simple
         for header in ref_headers:
             # one header for one exon
+            # fields look like this:
+            # FIELD_1 | FIELD_2 | FIELD_3\n
             header_fields = [s.replace(" ", "") for s in header.split("|")]
-            exon_num = int(header_fields[1])
-            exon_seq = sequences[header]
+            exon_num = int(header_fields[1])  # 0-based!
+            exon_seq = sequences[header]  # header is also a key for seq dict
             seq_len = len(exon_seq)
             t_exon_seqs[gene][exon_num] = exon_seq
             exon_lens[exon_num] = seq_len
@@ -195,52 +190,54 @@ def parse_cesar_bdb(arg_input, v=False):
             prot_line = f">{prot_id}\n{prot_seq}\n"
             prot_data.append(prot_line)
 
+        # will need this for score computation (deprecated)
         gene_len = sum(exon_lens.values())
-
         # get gene: exons dict to trace deleted exons
         gene_chain_exon_status = defaultdict(dict)
 
-        for num, header in enumerate(query_headers):
+        # parse query headers
+        for header in query_headers:
             header_fields = [s.replace(" ", "") for s in header.split("|")]
             if len(header_fields) != Q_HEADER_FIELDS_NUM:
-                continue  # ref exon
+                continue  # ref exon?
 
-            # extract metadata
+            # extract metadata, parse query header
             trans = header_fields[0]
             exon_num = int(header_fields[1])
             chain_id = int(header_fields[2])
             exon_region = read_region(header_fields[3])
-            pid = float(header_fields[4])
+            pid = float(header_fields[4])  # nucleotide %ID
             blosum = float(header_fields[5])
-
-            is_gap = header_fields[6]
-            exon_class = header_fields[7]
-            exp_region_str = header_fields[8]
-            in_exp = header_fields[9]
+            is_gap = header_fields[6]  # asm gap in the expected region
+            exon_class = header_fields[7]  # how it aligns to chain
+            exp_region_str = header_fields[8]  # expected region
+            in_exp = header_fields[9]  # detected in the expected region or not
             in_exp_b = True if in_exp == "INC" else False
 
+            # fill dictionaries
             chain_pid_scores[chain_id].append(pid)
             chain_blosum_scores[chain_id].append(blosum)
             chain_classes[chain_id].append(exon_class)
+            # mark that it's paralogous projection:
             para_annot = True if header_fields[10] == "True" else False
-            stat_key = (trans, chain_id)
+            stat_key = (trans, chain_id)  # projection ID
+
+            # classify exon, check whether it's deleted/missing
             exon_decision, q_mark = classify_exon(exon_class, in_exp_b, pid, blosum)
             exon_class_track = (trans, str(chain_id), str(exon_num), header_fields[3], q_mark)
-            exon_class_data.append(exon_class_track)
+            exon_class_data.append(exon_class_track)  # save exon-related data
 
-            # time to classify exons
-            try:
+            try:  # time to get exon score (normalize to exon length)
                 exon_score = int(pid / 100 * exon_lens[exon_num])
             except KeyError:
-                # error = True
                 pid, exon_score = 0, 0
             
             if exon_decision is False:
-                # too bad exon
-                wrong_exons.append(header)
+                # exon is deleted/missing
+                wrong_exons.append(header)  # save this data
                 gene_chain_exon_status[stat_key][exon_num] = False
                 chain_raw_scores[chain_id].append(0)
-            else:
+            else:  # exon is not deleted
                 chain_raw_scores[chain_id].append(exon_score)
                 # get/write necessary info
                 gene_chain_exon_status[stat_key][exon_num] = True
@@ -249,7 +246,7 @@ def parse_cesar_bdb(arg_input, v=False):
                 ranges_chain[chain_id][exon_num] = exon_region
                 pred_seq_chain[gene][chain_id][exon_num] = sequences[header]
                 exons_left[(gene, chain_id)].append(str(exon_num))
-
+            # collect exon meta-data
             meta_data = "\t".join([gene, header_fields[1], header_fields[2],
                                    header_fields[3], exp_region_str,
                                    in_exp, header_fields[4], header_fields[5], is_gap,
@@ -261,55 +258,44 @@ def parse_cesar_bdb(arg_input, v=False):
             any_exons_left = any(stat.values())
             if any_exons_left:
                 continue
-            # no exons left for the particular name
-            # need to log it
+            # projection has no exons: log it
             name_ = f"{name[0]}.{name[1]}"
             skipped.append(f"{name_}\tall exons are deleted.")
 
         # make bed regions
         for chain_id in chain_dir.keys():
-            # go gene.chain-by-gene.chain
-            # get chain score
+            # go projection-by-projection
+            # in this chunk we operate with the same projection
+            # change only chains
             chain_r_score = sum(chain_raw_scores[chain_id])
             chain_score = int(MAX_SCORE * (chain_r_score / gene_len))
-            chain_pids = chain_pid_scores[chain_id]
-            chain_blosums = chain_blosum_scores[chain_id]
-            chain_cls = chain_classes[chain_id]
 
-            # check if gene is high confident\quality
-            pid_HQ = all(x >= PID_HQ_THR for x in chain_pids)
-            blosum_HQ = all(x >= BLOSUM_HQ_THR for x in chain_blosums)
-            class_HQ = all(x == "A" for x in chain_cls)
-            HQ = pid_HQ and blosum_HQ and class_HQ
-
+            # assemble bed data
             blockStarts, blockSizes = [], []
             ranges = ranges_chain[chain_id]
-            name = f"{gene}.{chain_id}"
-            stat_key = (gene, chain_id)
-            if HQ:  # add mark that it's high quality gene
-                # name = f"HQ_{name}"
-                # TODO: implement this better
-                pass
+            name = f"{gene}.{chain_id}"  # projection name for bed file
+            stat_key = (gene, chain_id)  # projection identifier for dicts
 
             if len(ranges) == 0:
-                # this gene is completely missed
+                # this gene is completely missing
                 skipped.append(f"{name}\tall exons are deleted.")
                 continue
             direct = chain_dir[chain_id]
             exon_nums = sorted(ranges.keys()) if direct \
                 else sorted(ranges.keys(), reverse=True)
 
-            # naming convention as on UCSC browser site
+            # get basic coordinates
             chrom = ranges[exon_nums[0]]["chrom"]
             chromStart = ranges[exon_nums[0]]["start"] if direct \
                 else ranges[exon_nums[0]]["end"]
             chromEnd = ranges[exon_nums[-1]]["end"] if direct \
                 else ranges[exon_nums[-1]]["start"]
 
-            score = chain_score
-            thickStart = chromStart  # for now
+            score = chain_score  # TODO: check whether we need that
+            # we do not predict UTRs: thickStart/End = chromStart/End
+            thickStart = chromStart
             thickEnd = chromEnd
-            itemRgb = get_itemRgb(score)
+            itemRgb = get_itemRgb(score)  # TODO: seems to be unnecessary
             strand = "+" if direct else "-"
             blockCount = len(exon_nums)
 
@@ -339,12 +325,15 @@ def parse_cesar_bdb(arg_input, v=False):
         # write target gene info
         t_gene_seq_dct = t_exon_seqs.get(gene)
         if t_gene_seq_dct is None:
-            eprint(f"Warning! Missed data for {gene}")
-            skipped.append(f"{gene}\tmissed data after cesar stage")
+            # no sequence data for this transcript?
+            eprint(f"Warning! Missing data for {gene}")
+            skipped.append(f"{gene}\tmissing data after cesar stage")
             continue
+        # We have sequence fragments split between different exons
         t_exon_nums = sorted(t_gene_seq_dct.keys())
         t_header = ">ref_{0}\n".format(gene)
         t_seq = "".join([t_gene_seq_dct[num] for num in t_exon_nums]) + "\n"
+        # append data to fasta strings
         fasta_lines += t_header
         fasta_lines += t_seq
 
@@ -352,16 +341,17 @@ def parse_cesar_bdb(arg_input, v=False):
         for chain_id, exon_seq in chain_exon_seq.items():
             track_header = ">{0}.{1}\n".format(gene, chain_id)
             exon_nums = sorted(exon_seq.keys())
+            # also need to assemble different exon sequences
             seq = "".join([exon_seq[num] for num in exon_nums]) + "\n"
             fasta_lines += track_header
             fasta_lines += seq
 
-    # re-format wrong exons to bed-6 lines
-    # to make it possible to save them and visualize
-    # in the browser
+    # save corrupted exons as bed-6 track
+    # to make it possible to save them and visualize in the browser
     trash_exons = []
     for elem in wrong_exons:
         elem_fields = [s.replace(" ", "") for s in elem.split("|")]
+        # need to fill the following:
         # chrom, start, end, name, score, strand
         gene_name = elem_fields[0]
         exon_num = elem_fields[1]
@@ -374,6 +364,7 @@ def parse_cesar_bdb(arg_input, v=False):
         bed_6 = "\t".join([chrom, start, end, label, score, strand]) + "\n"
         trash_exons.append(bed_6)
 
+    # join output strings
     meta_str = "\n".join(all_meta_data) + "\n"
     skipped_str = "\n".join(skipped) + "\n"
     prot_fasta = "".join(prot_data)
@@ -393,7 +384,8 @@ def main():
     prot_fasta = parsed_data[4]
     skipped = parsed_data[5]
 
-    if args.bed:  # save bed
+    # and save this (as a standalone script)
+    if args.bed:
         f = open(args.bed, "w") if args.bed != "stdout" else sys.stdout
         f.write("\n".join(bed_lines) + "\n")
         f.close() if args.bed != "stdout" else None
@@ -413,12 +405,12 @@ def main():
         f.write(exons_meta)
         f.close() if args.exons_metadata != "stdout" else None
 
-    if args.prot_fasta:
+    if args.prot_fasta:  # save protein fasta
         f = open(args.prot_fasta, "w") if args.prot_fasta != "stdout" else sys.stdout
         f.write(prot_fasta)
         f.close() if args.prot_fasta != "stdout" else None
 
-    if args.skipped:
+    if args.skipped:  # save data of skipped projections
         f = open(args.skipped, "w") if args.skipped != "stdout" else sys.stdout
         f.write(skipped)
         f.close()
