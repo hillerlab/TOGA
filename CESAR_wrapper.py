@@ -233,7 +233,7 @@ def find_chain_file(ref_name, chain_arg):
     if os.path.isfile(chain_arg):
         # not an alias -> just return it
         return chain_arg
-    # not a chain path
+    # not a chain path/ Hillerlab-specific place!
     chain_path = chain_alias_template.format(ref_name, chain_arg)
     die(f"Error! File {chain_path} not found! Please set the chain path explicitly.", 1) \
         if not os.path.isfile(chain_path) else None
@@ -704,9 +704,9 @@ def intersect_exons_blocks_gaps(exon_coordinates, subchain_blocks, gap_coordinat
                                                                                          gap[0],
                                                                                          gap[1]))
     # get missed exons to exclude
-    missed_exons = [e for e in exon_coordinates.keys() if not exon_num_blocks.get(e)]
-    verbose("Exons:\n{}\nare not covered by chain".format(", ".join([str(e) for e in missed_exons]))) \
-        if len(missed_exons) > 0 else None
+    missing_exons = [e for e in exon_coordinates.keys() if not exon_num_blocks.get(e)]
+    verbose("Exons:\n{}\nare not covered by chain".format(", ".join([str(e) for e in  missing_exons]))) \
+        if len( missing_exons) > 0 else None
     verbose(f"Flank size is: {flank}")
     for exon_num in sorted(exon_num_blocks.keys()):
         verbose(f"Exon {exon_num} intersects blocks {exon_num_blocks.get(exon_num)}")
@@ -727,7 +727,7 @@ def intersect_exons_blocks_gaps(exon_coordinates, subchain_blocks, gap_coordinat
         q_cov_ok = lo_ <= q_cov <= hi_
         cond_sat_ = t_cov_ok is True and q_cov_ok is True
         aa_sat[exon_num] = True if cond_sat_ else False
-    return exon_num_blocks, fl_exon_num_blocks, block_gaps, missed_exons, exon_flank_coordinates, \
+    return exon_num_blocks, fl_exon_num_blocks, block_gaps,  missing_exons, exon_flank_coordinates, \
         marginal_cases, aa_sat
 
 
@@ -1569,44 +1569,52 @@ def realign_exons(args):
     """Entry point."""
     memlim = float(args["memlim"]) if args["memlim"] != "Auto" else None
     # read gene-related data
-    bed_data = read_bed(args["gene"], args["bdb_bed_file"])
+    bed_data = read_bed(args["gene"], args["bdb_bed_file"])  # extract gene data from bed file
+    # parse gene bed-track: get exon coordinates, sequences and splice sites
     exon_coordinates, exon_sequences, s_sites = get_exons(bed_data, args["tDB"])
+    # read chain IDs list:
     chains = [int(x) for x in args["chains"].split(",") if x != ""]if args["chains"] != "region" else []
+    # get path to the chain file (most likely just arg)
     chain_file = find_chain_file(args["ref"], args["bdb_chain_file"]) \
         if args["chains"] != "region" else args["bdb_chain_file"]
-    # there are two ways in general
 
-    # check if there are stop codons
+    # check if there are stop codons in reference -> we either mask them or halt execution
     exon_sequences, sec_codons = check_ref_exons(exon_sequences, args["mask_stops"])
-    # otherwise, it we're not calling genome alignment way \ through CESAR:
-    prepared_exons = prepare_exons_for_cesar(exon_sequences)  # formatting required
+    # CESAR require some formatting of the reference exon sequences:
+    prepared_exons = prepare_exons_for_cesar(exon_sequences)
+
     # read chain-related data
     query_sequences, query_loci, inverts = {}, {}, {}
     gene_range = "{0}:{1}-{2}".format(bed_data["chrom"], bed_data["chromStart"], bed_data["chromEnd"])
     chain_exon_gap, chain_exon_class, chain_exon_exp_reg, chain_missed = {}, {}, {}, {}
-    aa_block_sat_chain = {}
+    aa_block_sat_chain = {}  # one of dicts to mark exceptionally good exon predictions
 
     for chain_id in chains:  # in region more this part is skipped
         verbose("\nReading chains...####")  # only one place where I need chain data
         # extract chain and coordinates of locus; extract sequence from query genome
         chain_str = get_chain(chain_file, chain_id)
+        # most likely we need only the chain part that intersects the gene
+        # and skip the rest:
         search_locus, subch_locus, chain_data = chain_cut(chain_str,
                                                           gene_range,
                                                           args["gene_flank"],
                                                           args["extra_flank"])
         chain_qStrand = chain_data[2]
 
-        # this query seq for CESAR! For calling
+        # this call of make_query_seq is actually for extracting
+        # query sequence for CESAR:
         query_seq, directed = make_query_seq(chain_id, search_locus, args["qDB"],
                                              chain_qStrand, bed_data["strand"])
         # this is extended query seq (larger locus) for assembly gaps search only!
+        # We do not call CESAR for this _query_seq_ext sequence
         _query_seq_ext, directed = make_query_seq(chain_id, subch_locus, args["qDB"],
                                                   chain_qStrand, bed_data["strand"])
 
-        if args["ic"]:
+        if args["ic"]:  # invert complement required for some reason
             query_seq = invert_complement(query_seq)
             _query_seq_ext = invert_complement(_query_seq_ext)
         if len(query_seq) > args["query_len_limit"] > 0:
+            # query length limit exceeded:
             verbose(f"Skipping chain {chain_id} - too long")
             continue
 
@@ -1622,10 +1630,11 @@ def realign_exons(args):
                                                              gap_coordinates,
                                                              args["exon_flank"],
                                                              args["uhq_flank"])
+        # parse block_intersection_out -> there are many different data:
         exon_blocks = block_intersection_out[0]
         flanked_exon_blocks = block_intersection_out[1]
         blocks_gaps = block_intersection_out[2]
-        missed_exons = block_intersection_out[3]
+        missing_exons = block_intersection_out[3]
         exon_flank_coordinates = block_intersection_out[4]
         margin_cases = block_intersection_out[5]
         aa_block_sat = block_intersection_out[6]
@@ -1633,21 +1642,23 @@ def realign_exons(args):
 
         # classify exons, get expected regions
         exon_class, exon_exp_region = classify_predict_exons(exon_blocks, subchain_blocks, margin_cases)
-        # exon_gap = find_exons_gaps(exon_flank_coordinates, flanked_exon_blocks,
-        #                            subchain_blocks, blocks_gaps, gap_coordinates)
+        # check wheter any exon intersects assembly gap in the corresponding region
         exon_gap = find_exons_gaps(exon_coordinates, exon_blocks,
                                    subchain_blocks, blocks_gaps, gap_coordinates)
-        # save stuff in glob variables
+        # possibly there are multiple chains
+        # save data for this particulat chain:
         chain_exon_gap[chain_id] = exon_gap
         chain_exon_class[chain_id] = exon_class
         chain_exon_exp_reg[chain_id] = exon_exp_region
-        chain_missed[chain_id] = missed_exons
+        chain_missed[chain_id] =  missing_exons
         query_sequences[chain_id] = query_seq
         query_loci[chain_id] = search_locus
         inverts[chain_id] = directed
         aa_block_sat_chain[chain_id] = aa_block_sat
 
-    if not chains:  # it is possible in the case of "region" mode
+    if not chains:
+        # it is possible in the case of "region" mode
+        # possible if CESAR wrapper is used as a standalone script
         # a region given directly
         verbose("Working in the region mode")
         region_chrom, region_start_end = chain_file.replace(",", "").split(":")
@@ -1661,8 +1672,7 @@ def realign_exons(args):
         query_seq, directed = make_query_seq("-1", search_locus,
                                              args["qDB"], region_strand,
                                              bed_data["strand"])
-
-        # save the stuff
+        # mimic the chain parsing result:
         chain_exon_gap = None
         chain_exon_class[-1] = {}
         chain_exon_exp_reg[-1] = {}
@@ -1671,15 +1681,24 @@ def realign_exons(args):
         query_loci[-1] = search_locus
         inverts[-1] = directed
 
-    # predict amount of memory
+    # some queries might be skipped -> we can eventually skip all of them
+    # which means that there is nothing to call CESAR on
+    # then it's better to halt the execution
     die("No queries left") if len(query_sequences.keys()) == 0 else None
+    # predict the amount of memory
     qlength_max = max([len(v) for v in query_sequences.values()])
     memory = memory_check(bed_data["blockSizes"], qlength_max, args["estimate_memory"])
     verbose(f"\nExpecting a memory consumption of: {memory} GB".format(memory))
     # arrange input for CESAR and save it
-    cesar_in_filename, istemp = make_in_filename(args["cesar_input_save_to"])
     # istemp is True if /dev/shm is in use; flag to remove that
+    cesar_in_filename, istemp = make_in_filename(args["cesar_input_save_to"])
+    # check whether some reference splice sites are non-canonical
+    # doesn't apply to single-exon genes
     ref_ss_data = analyse_ref_ss(s_sites) if len(exon_sequences) != 1 else None
+    # there are two sources of U12 introns data:
+    # 1) U12 file provided at the very beginning
+    # 2) If splice site in reference is non canonical -> we also threat this as U12
+    #    even if this splice site is not in the U12 data
     append_U12(args["u12"], args["gene"], ref_ss_data)
     make_cesar_in(prepared_exons, query_sequences, cesar_in_filename, ref_ss_data)
     # run cesar itself
@@ -1690,33 +1709,35 @@ def realign_exons(args):
         with open(args["cesar_output"], "r") as f:
             cesar_raw_out = f.read()
     os.remove(cesar_in_filename) if istemp else None  # wipe temp if temp
-    # save raw output and close if required
+    # save raw CESAR output and close if required
     save(cesar_raw_out, args["raw_output"], t0) if args["raw_output"] else None
-    # process the output
+    # process the output, extract different features per exon
     proc_out = process_cesar_out(cesar_raw_out, exon_sequences, query_loci, inverts)
-    query_exon_sequences = proc_out[0]
-    pIDs = proc_out[1]
-    pBl = proc_out[2]
-    query_coords = proc_out[3]
-    exon_num_corr = proc_out[4]
-    prot_s = proc_out[5]
-    aa_cesar_sat = proc_out[6]
+    query_exon_sequences = proc_out[0]  # sequences of predicted exons in query
+    pIDs = proc_out[1]  # nucleotide %IDs
+    pBl = proc_out[2]  # BLOSUM scores for protein sequences
+    query_coords = proc_out[3]  # genomic coordinates in the query
+    exon_num_corr = proc_out[4]  # correspondence between exon numbers in ref / query
+                                 # in case of intron deletion
+    prot_s = proc_out[5]  # protein sequences in query
+    aa_cesar_sat = proc_out[6]  # says whether an exon has outstanding quality
     aa_eq_len = aa_eq_len_check(exon_sequences, query_exon_sequences)
     
     if chains:
         # if and only if there are chains, it's possible to extract
+        # another check for exceptional exons
         chain_exon_class = get_a_plus(chain_exon_class, aa_cesar_sat, aa_block_sat_chain, aa_eq_len)
+    # time to arrange all these data altogether
     final_output, chain_ex_inc = arrange_output(args["gene"], exon_sequences, query_exon_sequences,
                                                 pIDs, pBl, query_coords, chain_exon_gap,
                                                 chain_exon_class, chain_exon_exp_reg, exon_num_corr,
                                                 chain_missed, args['paral'])
     exon_to_len = {k + 1: len(v) for k, v in exon_sequences.items()}
     verbose(f"Exon lens are: {exon_to_len}")
+    # this is for inact mutations check:
     chain_to_exon_to_properties = (chain_exon_class, chain_exon_gap, pIDs,
                                    pBl, chain_missed, chain_ex_inc, exon_to_len)
-
-
-    if args["check_loss"]:
+    if args["check_loss"]:  # call inact mutations scanner,
         loss_report = inact_mut_check(cesar_raw_out,
                                       v=VERBOSE,
                                       gene=args["gene"],
@@ -1724,10 +1745,10 @@ def realign_exons(args):
                                       ref_ss=ref_ss_data,
                                       sec_codons=sec_codons,
                                       no_fpi=args["no_fpi"])
-    else:
+    else:  # do not call inact mut scanner
         loss_report = None
 
-    # don't understand why do I need this:
+    # save protein and text output
     save_prot(args["gene"], prot_s, args["prot_out"])
     save(final_output, args["output"], t0, loss_report)
     sys.exit(0)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a bunch of CESAR/GA jobs, save output in BDB."""
+"""Run a batch of CESAR jobs and save the output."""
 import argparse
 import sys
 import subprocess
@@ -54,10 +54,10 @@ def main():
     # read jobs
     with open(args.jobs_file, "r") as f:
         # text file, a command per line
-        jobs = [x[:-1] for x in f.readlines()]
+        jobs = [x.rstrip() for x in f.readlines()]
     jobs_num = len(jobs)
-    out = open(args.output, "w")
 
+    out = open(args.output, "w")  # handle output file
     gene_loss_data = []  # list to keep gene loss detector out
     rejected = []  # keep genes that were skipped at this stage + reason
 
@@ -67,7 +67,7 @@ def main():
         job_out = call_job(job)
         if job_out == 1:
             # a job failed with code 1 -> send the signal upstream
-            # should never happen
+            # abort execution, write what job exactly failed
             sys.stderr.write(f"Error! Job {job} failed!\n")
             sys.exit(1)
 
@@ -95,8 +95,9 @@ def main():
                                    and not line.startswith("!")]
             job_out = "\n".join(job_out_cesar_lines)
 
+        # write output
         out.write(f"#{gene}\n")
-        out.write(job_out + "\n")
+        out.write(f"{job_out}\n")
         eprint(f"{num + 1} / {jobs_num} done", end="\r")
 
     out.close()
@@ -113,13 +114,15 @@ def main():
             g_loss_report = elem[1]
             f.write(f"GENE: {gene}\n")
             f.write(g_loss_report)
-            f.write("\n\n")
+            f.write("\n\n")  # separator for diff genes
         f.close()
 
     if args.rejected_log:
+        # save list of unprocessed genes + reasons
         f = open(args.rejected_log, "w")
         f.write("".join(rejected))
         f.close()
+
     sys.exit(0)
 
 

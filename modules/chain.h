@@ -2,9 +2,12 @@
 */
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
+#include <stdio.h>
+
 #define MAXCHAR 255
 
-// all the necessary stuff from chain header
+// all the necessary data from chain header
 struct Chain_info{
     char tName[MAXCHAR];
     int tSize;
@@ -18,19 +21,31 @@ struct Chain_info{
     int qEnd;
 };
 
+// also chain block data struct
 struct Block{
     int size;
     int dt;
     int dq;
 };
 
+// struct describing genic region CHROM START END
+struct Regions
+{
+    char chrom[MAXCHAR];
+    int start;
+    int end;
+};
+
 // parse chain header and return all values from it
 // read chain file format explanation for extra info
 struct Chain_info parse_head(char *header_string)
 {
-    struct Chain_info head = {};
+    struct Chain_info head = {};  // init empty struct
+    // space-separated fields:
     char *split_head = strtok(header_string, " ");
     short int field = 0;
+    // field 0 - just word "chain"
+    // field 1 - chain score -> ignore this
     while(split_head) {
         switch (field)
         {
@@ -73,7 +88,6 @@ struct Chain_info parse_head(char *header_string)
     return head;
 }
 
-
 // parse chain block
 // pls read chain docs for more information
 struct Block parse_block(char *block_string)
@@ -97,12 +111,3 @@ struct Block parse_block(char *block_string)
     }
     return block;
 }
-
-
-// struct describing genic region CHROM START END
-struct Regions
-{
-    char chrom[MAXCHAR];
-    int start;
-    int end;
-};
