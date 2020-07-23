@@ -58,10 +58,13 @@ ln -s Parasol_LSF_Slurm/paraLSF.perl para
 
 See "Para on cluster" section for details.
 
-Then you may call a full-scale test:
+This repository also contains data for a wide-scale test.
+To call it, please make sure that you have genome sequences for human and mouse in the 2bit format.
+Then call the following:
 
 ```shell
-./run_test.sh normal
+./toga.py test_input/hg38.mm10.chr11.chain test_input/hg38.genCode27.chr11.bed ${human_2bit} ${mouse_2bit} \
+--chn 10 --project_name test_out --kt -i supply/hg38.wgEncodeGencodeCompV34.isoforms.txt --cjn 200 --ms --cb 2,4
 ```
 
 If something doesn't work, most likely you:
@@ -74,7 +77,7 @@ If something doesn't work, most likely you:
 ### Troubleshooting
 
 TOGA's configure script automatically tries to install all dependencies.
-If you encounter error messages related to these three depenedencies, please see below for help.
+If you encounter error messages related to these three dependencies, please see below for help.
 
 1) BerkeleyDB (database itself and python package)
 2) XGBoost
@@ -135,7 +138,7 @@ ln -s Parasol_LSF_Slurm/paraSlurm.perl para
 
 In turn, for LSF cluster use paraLSF.perl
 
-If something doesn't work and you like to configure managing cluster jobs youself then
+If something doesn't work and you like to configure managing cluster jobs yourself then
 please have a look at the following functions in the toga.py script:
 
 1) __chain_genes_run: this function pushes cluster jobs to extract chain features
@@ -163,7 +166,7 @@ Then TOGA waits until these jobs are done (para process returns 0) and merges th
 
 Please note that joblist_name should be unique for each batch of jobs.
 
-If you have have created a symlink to para but TOGA still cannot find it then
+If you have created a symlink to para but TOGA still cannot find it then
 add directory with "para" to $PATH.
 TOGA uses "para", not "./para" or "paraSlurm.perl".
 
@@ -207,7 +210,7 @@ Some advice about your reference annotation:
 
 - Please make sure that the length of the CDS of your annotations is divisible by 3.
 TOGA will skip transcripts that do not satisfy this criteria.
-- This is higly recommended that CDS of your transcripts start with ATG and end with a canonical stop codon.
+- This is highly recommended that CDS of your transcripts start with ATG and end with a canonical stop codon.
 - Your transcripts are coding, meaning that thickStart and thickEnd are not equal.
 TOGA would skip non-coding transcripts.
 - Avoid any pseudogenes in the reference annotations.
@@ -217,7 +220,7 @@ TOGA would skip non-coding transcripts.
 
 One gene can have multiple isoforms.
 TOGA can handle more than one isoform per gene, meaning it is not necessary to reduce the
-transcript data to the the isoform with the longest CDS.
+transcript data to the isoform with the longest CDS.
 Isoform data is optional, but if available increases annotation completeness and gene loss determination accuracy.
 If you do not provide isoforms data, TOGA will treat each transcript in the bed12 file as a separate gene.
 
@@ -294,7 +297,7 @@ You can find chain file format specification here:
 You can also provide gzipped chain file, then please make sure that the filename
 ends with ".chain.gz".
 
-Please make sure that each chain you provide has an unique identifier!
+Please make sure that each chain you provide has a unique identifier!
 
 ##### Obtaining chains
 
@@ -317,7 +320,7 @@ the bed12 file, not "chromosome_1" or just "1".
 To call TOGA use toga.py script.
 It accepts the following arguments:
 
-#### Positional, mandatory argments
+#### Positional, mandatory arguments
 
 1) Chain file containing the genome alignment.
 2) Bed file containing reference genome annotation.
@@ -329,7 +332,7 @@ It accepts the following arguments:
 ##### -h, --help
 
 Show help message and exit.
-Calling ./toga.py wihout arguments does the same.
+Calling ./toga.py without arguments does the same.
 
 ##### --project_folder PROJECT_FOLDER
 
@@ -349,7 +352,7 @@ which is not recommended.
 ##### --min_score MIN_SCORE
 
 Do not consider chains that have a score lower than this threshold.
-Defult value is 15000.
+Default value is 15000.
 
 ##### --no_chain_filter, --ncf
 
@@ -414,8 +417,7 @@ Of course, you will find such genes in the log.
 
 Where CESAR_BUCKETS is a comma-separated list of integers, such as "5,15,50".
 This is the evolution of previous parameter.
-You can split CESAR jobs into different buckets dependining on their
-memory requirements.
+You can split CESAR jobs into different buckets according to their memory requirements.
 Imagine you need to call CESAR for 1000 genes.
 900 of the cluster jobs will require less than 10Gb of RAM and the rest
 require from 10 to 100Gb.
@@ -457,7 +459,7 @@ at this stage!
 ##### --no_fpi
 
 A flag.
-Consider long frame-preserving indels as inactivationg mutations.
+Consider long frame-preserving indels as inactivating mutations.
 
 ## Output reading
 
@@ -491,7 +493,7 @@ The color code is:
 2) Brown - PG, paralogous projection
 3) Grey - M and PM, missing and partially missing
 4) Red - L, clearly lost.
-5) Salmon - "grey", neiter intact nor lost.
+5) Salmon - "grey", neither intact nor lost.
 6) Light blue - PI, partially intact.
 7) Blue - I, intact.
 
@@ -520,7 +522,7 @@ one2one, one2many, many2one, many2many and one2zero.
 
 This file contains gene loss pipeline classification for each
 projection, transcript and gene.
-TOGA identidies the following classes:
+TOGA identifies the following classes:
 
 1) N - no data due to technical reasons (such as CESAR memory requirements)
 2) PG - no orthologous chains identified, TOGA projected transcripts via paralogous
@@ -534,26 +536,22 @@ for being list.
 this is intact.
 8) I - clearly intact.
 
-### Intermediate files
-
-To be filled.
-
-## Inctivating mutations visualisation
+## Inactivating mutations visualization
 
 There is a possibility to visualise inactivating mutations detected
 in the projected transcript.
 There are 3 levels available:
 
-1) Projection level: visualise one projection only, which is named as
+1) Projection level: visualize one projection only, which is named as
 "transcript_id"."chain_id".
-2) Visualise all projections of a particular transcript. If a transcript has only
+2) Visualize all projections of a particular transcript. If a transcript has only
 one orthologous chain, that it's the same with level 1. But if TOGA identified
-several orthologous chains you can visualise them all at once.
-3) Visualise the entire gene. If a gene has several transcripts, then it makes sense.
+several orthologous chains you can visualize them all at once.
+3) Visualize the entire gene. If a gene has several transcripts, then it makes sense.
 
 To make visualisations you need:
 
-Merge all inactivating mutations data in a signe file.
+Merge all inactivating mutations data into a single file.
 
 ```shell
 cat ${PROJECT_DIR}/inact_mut_data/* > ${PROJECT_DIR}/inact_mut_data.txt
@@ -567,13 +565,13 @@ You can do it using "mut_index.py" script in the "supply" directory:
 ./supply/mut_index.py ${PROJECT_DIR}/inact_mut_data.txt ${PROJECT_DIR}/inact_mut_data.bdb
 ```
 
-Then use "./supply/plot_mutations.py" scipt to create a visualisation.
-This scipt requires the following:
+Then use "./supply/plot_mutations.py" script to create a visualization.
+This script requires the following:
 
 1) Reference bed file.
 2) List of mutations: either text file of an indexed one.
 3) Transcript identifier to plot (or a gene identifier, see below)
-4) Path to output file: script creates an svg figure
+4) Path to output file: script creates a svg figure
 
 For example:
 
@@ -584,7 +582,7 @@ For example:
 This will create a plot of all inactivating mutations detected for all projections of the ENST0000011111
 transcript.
 
-If you like to visualise all projections of a gene then:
+If you like to visualize all projections of a gene then:
 
 1) Provide gene name instead of transcript ID
 2) Also provide isoforms file using --isoforms_file parameter.
