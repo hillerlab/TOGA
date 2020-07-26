@@ -189,7 +189,11 @@ def load_results(results_dir):
         f = open(path, "r")
         for line in f:
             # read file line-by-line
-            line_data = line.rstrip().split("\t")
+            # TODO: see issue #2; figure out what's happening
+            # User xjjago noticed that
+            # line_data = line.rstrip().split("\t")
+            # can cause an IndexError; so there is line[:-1]
+            line_data = line[:-1].split("\t")
             # define the class of this line
             # a line could be either gene or chain-related
             if line_data[0] == "genes":
