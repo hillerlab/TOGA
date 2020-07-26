@@ -42,6 +42,10 @@ Success!
 
 If something is wrong and you get something different at the end please see the "troubleshooting" section.
 
+**Important notice:**
+
+we are planning to introduce nextflow [Nextflow](https://www.nextflow.io) in the near future to handle cluster-dependent steps.
+
 If you are planning to run TOGA on cluster and your cluster is managed by SLURM or LSF then do the following:
 
 ```shell
