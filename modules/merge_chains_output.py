@@ -131,8 +131,8 @@ def process_gene_line(gene_line):
     """Parse gene line."""
     # contain [gene_id]=[intersected_chain_id] blocks
     # remove "gene" and "", get (gene. chain) tuples
-    # is not necessary really
-    data = [(x.split("=")[1], x.split("=")[0]) for x in gene_line[1:-1]]
+    data_fields = [x for x in gene_line if "=" in x]
+    data = [(x.split("=")[1], x.split("=")[0]) for x in data_fields]
     chain = data[0][0]  # chain is equal everywhere
     genes = [x[1] for x in data]
     return chain, genes
@@ -188,12 +188,8 @@ def load_results(results_dir):
         path = os.path.join(results_dir, results_file)
         f = open(path, "r")
         for line in f:
-            # read file line-by-line
-            # TODO: see issue #2; figure out what's happening
-            # User xjjago noticed that
-            # line_data = line.rstrip().split("\t")
-            # can cause an IndexError; so there is line[:-1]
-            line_data = line[:-1].split("\t")
+            # read file line-by-line, all fields are tab-separated
+            line_data = line.rstrip().split("\t")
             # define the class of this line
             # a line could be either gene or chain-related
             if line_data[0] == "genes":

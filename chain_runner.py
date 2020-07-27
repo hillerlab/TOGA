@@ -310,7 +310,7 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
         # get local results
         result["gene_coverage"] += f"{gene}={blocks_v_cds},"
         result["gene_introns"] += f"{gene}={blocks_v_introns},"
-        result["flanks_fo"] += f"{gene}={flank_feature},"
+        result["flanks_cov"] += f"{gene}={flank_feature},"
         local_exo = blocks_v_cds / blocks_v_no_utr_exons if blocks_v_no_utr_exons != 0.0 else 0.0
         assert local_exo >= 0
         assert local_exo <= 1
@@ -318,12 +318,12 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
         # increase synteny if > 0 CDS bases covered
         if blocks_v_cds > 0:
             result["chain_synteny"] += 1
-            # verbose(f"Chain synteny increased with {gene}, now {result['chain_synteny']}")
-            result["gene_overlaps"] += f"{gene}={work_data['chain_id']}\t"
+            ov_block = f"{gene}={work_data['chain_id']}"
+            result["gene_overlaps"].append(ov_block)
         else:
             # verbose(f"Chain don't overlap any exons in {gene}")
             # TO CHECK - it was like this here:
-            result["gene_overlaps"] += f"{gene}=None\t"
+            result["gene_overlaps"].append(f"{gene}=None")
     # do not forget about global feature
     # chain_glob_bases -= chain_utr_exon_bases  # ignore UTR exons!
     chain_cds_bases = local_exo_dict[COMBINED_BED_ID] if nested else chain_cds_bases
@@ -347,9 +347,9 @@ def make_output(work_data, result, t0):
     # verbose("Making the output...")
     chain_fields = ["chain", work_data["chain_id"], result["chain_synteny"], result["chain_global_score"],
                     result["global_exo"], result["CDS_to_Qlen"], result["local_exos"], result["gene_coverage"],
-                    result["gene_introns"], result["flanks_fo"], result["chain_len"]]
+                    result["gene_introns"], result["flanks_cov"], result["chain_len"]]
     chain_output = "\t".join([str(x) for x in chain_fields]) + "\n"
-    genes_output = "genes\t{0}\n".format(result["gene_overlaps"])
+    genes_output = "genes\t{0}\n".format("\t".join(result["gene_overlaps"]))
     time_output = f"#estimated time: {dt.now() - t0}\n"
     return chain_output, genes_output, time_output
 
@@ -361,7 +361,7 @@ def extended_output(result, t0):
         if key == "gene_overlaps":
             continue
         chain_output += f"\"{key}\": {value}\n".format(key, value)
-    genes_output = "These genes are overlapped by these chains:\n{0}".format(result["gene_overlaps"])
+    genes_output = "These genes are overlapped by these chains:\n{0}".format("\t".join(result["gene_overlaps"]))
     time_output = f"#estimated time: {dt.now() - t0}\n".format(dt.now() - t0)
     return chain_output, genes_output, time_output
 
@@ -377,12 +377,12 @@ def chain_feat_extractor(chain, genes, chain_file, bed_file,
     # global result
     # structure to collect the results
     result = {"global_exo": 0.0,
-              "flanks_fo": "",
+              "flanks_cov": "",
               "gene_coverage": "",
               "gene_introns": "",
               "chain_synteny": 0,
               "local_exos": "",
-              "gene_overlaps": "",
+              "gene_overlaps": [],
               "CDS_to_Qlen": 0
               }
     # check if all the files, dependies etc are correct

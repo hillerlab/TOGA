@@ -23,3 +23,8 @@ __pycache__/*
 *.tar
 *.log
 *.bdb
+
+# test results
+micro_test_out/
+test_out/
+
