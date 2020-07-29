@@ -9,6 +9,7 @@ import sys
 import os
 import shutil
 import subprocess
+import time
 from datetime import datetime as dt
 import json
 from twobitreader import TwoBitFile
@@ -32,6 +33,9 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 U12_FILE_COLS = 3
 U12_AD_FIELD = {"A", "D"}
 ISOFORMS_FILE_COLS = 2
+NF_DIR_NAME = "nextflow_logs"
+CESAR_PUSH_INTERVAL = 30  # CESAR jobs push interval
+ITER_DURATION = 120  # CESAR jobs check interval
 
 
 class Toga:
@@ -44,6 +48,9 @@ class Toga:
         self.__modules_addr()
         self.__check_dependencies()
         self.__check_completeness()
+        self.nextflow_dir = self.__get_nf_dir(args.nextflow_dir)
+        self.nextflow_config_dir = args.nextflow_config_dir
+        self.__check_nf_config()
 
         eprint("mkdir_and_move_chain in progress...")
         chain_basename = os.path.basename(args.chain_initial)
@@ -94,12 +101,11 @@ class Toga:
         prepare_bed_file(args.bed_initial,
                          self.ref_bed,
                          save_rejected=bed_filt_rejected,
-                         only_chrom=args.limit_to_chrom)
+                         only_chrom=args.limit_to_ref_chrom)
 
         # mics things
         self.isoforms = args.isoforms if args.isoforms else None
         self.chain_jobs = args.chain_jobs_num
-        self.no_para = args.no_para
         self.cesar_binary = self.DEFAULT_CESAR if not args.cesar_binary \
             else args.cesar_binary
         self.time_log = args.time_marks
@@ -168,6 +174,16 @@ class Toga:
         self.__check_u12_file()
         self.__check_2bit_file(self.t_2bit)
         self.__check_2bit_file(self.q_2bit)
+
+    def __get_nf_dir(self, nf_dir_arg):
+        """Define nextflow directory."""
+        if nf_dir_arg is None:
+            default_dir = os.path.join(self.LOCATION, NF_DIR_NAME)
+            os.mkdir(default_dir) if not os.path.isdir(default_dir) else None
+            return default_dir
+        else:
+            os.mkdir(nf_dir_arg) if not os.path.isdir(nf_dir_arg) else None
+            return nf_dir_arg
 
     def __check_2bit_file(self, two_bit_file):
         """Check that 2bit file is readable."""
@@ -275,6 +291,8 @@ class Toga:
         self.ORTHOLOGY_TYPE_MAP = os.path.join(self.LOCATION, "modules", "orthology_type_map.py")
         self.MODEL_TRAINER = os.path.join(self.LOCATION, "train_model.py")
         self.DEFAULT_CESAR = os.path.join(self.LOCATION, "cesar")
+        self.nextlow_rel_ = os.path.join(self.LOCATION, "execute_joblist.nf")
+        self.NF_EXECUTE = os.path.abspath(self.nextlow_rel_)
 
     def __check_dependencies(self):
         """Check all dependencies."""
@@ -317,6 +335,34 @@ class Toga:
             if os.path.isfile(_file):
                 continue
             self.die(f"Error! File {_file} not found!")
+    
+    def __check_nf_config(self):
+        """Check that nextflow configure files are here."""
+        if self.nextflow_config_dir is None:
+            # no nextflow config provided -> using local executor
+            self.cesar_config_template = None
+            self.nf_chain_extr_config_file = None
+            self.local_executor = True
+            return
+        # check that required config files are here
+        if not os.path.isdir(self.nextflow_config_dir):
+            self.die(f"Error! Nextflow config dir {self.nextflow_config_dir} doesn't exist!")
+        err_msg = "Please note these two files are expected in the nextflow config directory:\n" \
+                  "1) call_cesar_config_template.nf" \
+                  "2) extract_chain_features_config.nf"
+        # check CESAR config template first
+        nf_cesar_config_temp = os.path.join(self.nextflow_config_dir, "call_cesar_config_template.nf")
+        if not os.path.isfile(nf_cesar_config_temp):
+            self.die(f"Error! File {nf_cesar_config_temp} not found!\n{err_msg}")
+        # we need the content of this file
+        with open(nf_cesar_config_temp, "r") as f:
+            self.cesar_config_template = f.read()
+        # check chain extract features config; we need abspath to this file
+        self.nf_chain_extr_config_file = os.path.abspath(os.path.join(self.nextflow_config_dir,
+                                                                      "extract_chain_features_config.nf"))
+        if not os.path.isfile(self.nf_chain_extr_config_file):
+            self.die(f"Error! File {self.nf_chain_extr_config_file} not found!\n{err_msg}")
+        self.local_executor = False
 
     def __call_proc(self, cmd, extra_msg=None):
         """Call a subprocess and catch errors."""
@@ -352,7 +398,7 @@ class Toga:
         self.__split_chain_jobs()
         self.__time_mark("Splitted chain jobs")
         # 2) call "ch_cl_jobs" from previous stage as a bunch of cluster job
-        self.__chain_genes_run()
+        self.__extract_chain_features()
         self.__time_mark("Chain jobs done")
         # 3) merge_chains_output.py  --> merge and rearrange data in "results folder"
         self.__merge_chains_output()
@@ -431,27 +477,24 @@ class Toga:
                          f"--rejected {rejected_path}"
 
         self.__call_proc(split_jobs_cmd, "Could not split chain jobs!")
-
-    def __chain_genes_run(self):
-        """Extract features from chain:genes intersection."""
-        para_here = subprocess.call("which para", shell=True)
-
-        if para_here != 0 or self.no_para:  # there is no para at this machine
-            # call combined directly
-            eprint("Attention! There is no para at this PC, call jobs directly.")
-            self.__call_proc(f"chmod +x {self.chain_cl_jobs_combined}")
-            self.__call_proc(self.chain_cl_jobs_combined)
-            self.para = False
-            return  # exit the function
-
-        eprint("Calling para...")
-        self.para = True
-        # if we are here --> we are on cluster most likely
-        # define project name for para based on the current time
-        time_now = str(dt.now()).split()[1].split(":")
-        para_proj_name = f"{self.project_name}_CHAINS_at_{time_now[0]}_{time_now[1]}"
-        para_cmd = f'para make {para_proj_name} {self.chain_cl_jobs_combined} -q="short"'
-        self.__call_proc(para_cmd)
+    
+    def __extract_chain_features(self):
+        """Execute extract chain features jobs."""
+        nf_cmd = f"nextflow {self.NF_EXECUTE} " \
+                 f"--joblist {self.chain_cl_jobs_combined}"
+        if not self.local_executor:
+            # not local executor -> provided config files
+            # need abspath for nextflow execution
+            nf_cmd += f" -c {self.nf_chain_extr_config_file}"
+        # get timestamp to name the project and create a dir for that
+        #  time() returns somrting like: 1595861493.8344169
+        tmstmp = str(time.time()).split(".")[0]
+        nf_project_name = f"{self.project_name}_chain_feats_at_{tmstmp}"
+        nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
+        os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
+        rc = subprocess.call(nf_cmd, shell=True, cwd=nf_project_path)
+        if rc != 0:
+            self.die(f"Error! Process {nf_cmd} died")
 
     def __merge_chains_output(self):
         """Call parse results."""
@@ -527,34 +570,87 @@ class Toga:
         split_cesar_cmd = split_cesar_cmd + " --no_fpi" if self.no_fpi \
             else split_cesar_cmd
         if self.gene_loss_data:
-            split_cesar_cmd += " --check_loss {}".format(self.gene_loss_data)
+            split_cesar_cmd += f" --check_loss {self.gene_loss_data}"
         self.__call_proc(split_cesar_cmd, "Could not split CESAR jobs!")
-
+    
     def __run_cesar_jobs(self):
-        """Call CESAR jobs."""
-        eprint("Calling CESAR jobs.")
+        """Run CESAR jobs using nextflow.
+        
+        At first -> push joblists, there might be a few of them
+        At second -> monitor joblists, wait until all are done.
+        """
+        # for each bucket I create a separate joblist and config file
+        # different config files because different memory limits
+        processes = []  # keep subprocess objects here
+        tmstmp = str(time.time()).split(".")[1]  # for project name
+        # get a list of buckets
+        if self.cesar_buckets == "0":
+            buckets = [0, ]  # a single bucket
+        else:  # several buckets, each int -> memory limit in gb
+            buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
+        print(f"Pushing {len(buckets)} joblists")
+        # cmd to grep bucket-related commands
+        grep_bucket_templ = "cat {0} | grep _{1}.bdb"
+        for b in buckets:
+            # create config file
+            # 0 means that that buckets were not split
+            memlim = b if b != 0 else self.cesar_mem_limit
+            if not self.local_executor:
+                # running on cluster, need to create config file
+                # for this bucket's memory requirement
+                config_string = self.cesar_config_template.replace("${_MEMORY_}", f"{memlim}")
+                config_file_path = os.path.join(self.wd, f"cesar_config_{b}_queue.nf")
+                config_file_abspath = os.path.abspath(config_file_path)
+                with open(config_file_path, "w") as f:
+                    f.write(config_string)
+                self.temp_files.append(config_file_path)
+            else:  # no config dir given: use local executor
+                # OK if there is a single bucket
+                config_file_abspath = None
+            # extract jobs related to this bucket (if it's not 0)
+            if b != 0:
+                grep_bucket_cmd = grep_bucket_templ.format(self.cesar_combined, b)
+                bucket_tasks = subprocess.check_output(grep_bucket_cmd, shell=True).decode("utf-8")
+                joblist_name = f"cesar_joblist_queue_{b}.txt"
+                joblist_path = os.path.join(self.wd, joblist_name)
+                with open(joblist_path, "w") as f:
+                    f.write(bucket_tasks)
+                joblist_abspath = os.path.abspath(joblist_path)
+                self.temp_files.append(joblist_path)
+            else:  # nothing to extract, there is a single joblist
+                joblist_abspath = os.path.abspath(self.cesar_combined)
+            # create project directory for logs
+            nf_project_name = f"{self.project_name}_cesar_at_{tmstmp}_q_{b}"
+            nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
+            os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
+            # create subprocess object
+            nf_cmd = f"nextflow {self.NF_EXECUTE} " \
+                     f"--joblist {joblist_abspath}"
+            if config_file_abspath:
+                nf_cmd += f" -c {config_file_abspath}"
+            p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
+            sys.stderr.write(f"Pushed cluster jobs with {nf_cmd}")
+            processes.append(p)
+            time.sleep(CESAR_PUSH_INTERVAL)
 
-        if not self.para:
-            # do not run this in parallel on cluster then
-            self.__call_proc(f"chmod +x {self.cesar_combined}")
-            self.__call_proc(self.cesar_combined)
-            return  # exit the function
+        # monitor jobs
+        iter_num = 0
+        while True:
+            # Run until all jobs are done (or crashed)
+            all_done = True  # default val, re-define if something is not done
+            for p in processes:
+                # check if each process is still running
+                running = p.poll() is None
+                if running:
+                    all_done = False
+            if all_done:
+                print("All jobs succeeded!")
+                break
+            else:
+                print(f"Iter {iter_num} waiting {ITER_DURATION * iter_num} seconds Not done")
+                time.sleep(ITER_DURATION)
+                iter_num += 1
 
-        # make it with para
-        if self.cesar_buckets == "0":  # a single batch of CESAR jobs
-            time_now = str(dt.now()).split()[1].split(":")
-            para_proj_name = f"{self.project_name}_CESAR_at_{time_now[0]}_{time_now[1]}"
-            para_cmd = f'para make {para_proj_name} {self.cesar_combined} -q="day"'
-            self.__call_proc(para_cmd)
-
-        else: 
-            # call in more sophisticated way using CESAR buckets
-            from modules.run_cesar_buckets import run_cesar_buckets
-            temps = run_cesar_buckets(self.cesar_buckets,
-                                      self.project_name,
-                                      self.cesar_combined,
-                                      self.wd)
-            self.temp_files.extend(temps)
 
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
@@ -656,10 +752,18 @@ def parse_args():
                      help="Isoforms dictionary for parse_results.")
     app.add_argument("--keep_temp", "--kt", action="store_true",
                      dest="keep_temp", help="Do not remove temp files.")
-    app.add_argument("--no_para", action="store_true", dest="no_para",
-                     help="Ignore para")
-    app.add_argument("--limit_to_chrom", default=None, help="Limit analysis to "
-                     "a single chromosome in query")
+    app.add_argument("--limit_to_ref_chrom", default=None, help="Find orthologs "
+                     "for a single reference chromosome only")
+    # app.add_argument("--limit_to_query_chrom", default=None, help="Annotate "
+    #                  "a particular query scaffold/chromosome only")
+    # nextflow related
+    app.add_argument("--nextflow_dir", "--nd", default=None,
+                     help="Nextflow working directory: from this directory nextflow is "
+                          "executed, also there all nextflow log files are kept")
+    app.add_argument("--nextflow_config_dir", "--nc", default=None,
+                     help="Directory containing nextflow configuration files "
+                          "for cluster, pls see nextflow_config_files/readme.txt "
+                          "for details.")
     # chain features related
     app.add_argument("--chain_jobs_num", "--chn", type=int, default=50,
                      help="Number of chain features extractor jobs.")

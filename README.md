@@ -1,3 +1,5 @@
+![TOGA logo](https://github.com/hillerlab/TOGA/supply/logo.png)
+
 # TOGA - Tool to infer Orthologs from Genome Alignments
 
 TOGA is a new method that integrates gene annotation, inferring orthologs and classifying genes as intact or lost.
@@ -15,6 +17,16 @@ The package was properly tested on Python version 3.6.5. and 3.7.3.
 It is highly recommended to have access to computational cluster, but
 for small or partial genomes with short genes a desktop PC will be enough.
 
+TOGA requires [Nextflow](https://www.nextflow.io), install it using one of the following commands:
+
+```shell
+curl -fsSL https://get.nextflow.io | bash
+# OR
+conda install -c bioconda nextflow
+```
+
+If you've donwnloaded nextflow using curl, then copy "nextflow" executable to some $PATH directory.
+
 To get TOGA do the following:
 
 ```shell
@@ -23,11 +35,11 @@ git clone https://github.com/hillerlab/TOGA.git
 cd TOGA
 # install CESAR, compile C code, install necessary libraries
 ./configure.sh
-# run a test, it will take about a minute
+# run a test, it will take a couple of minutes
 ./run_test.sh micro
 ```
 
-If you see something like this at the very end, TOGA is almost ready to go:
+If you see something like this at the very end, then TOGA is almost ready to go:
 
 ```txt
 Orthology class sizes:
@@ -40,38 +52,40 @@ JH567521 395878 449234 ENST00000259400.1169 942 + 395878 449234 0,0,200 7 123,66
 Success!
 ```
 
-If something is wrong and you get something different at the end please see the "troubleshooting" section.
+But if you experienced any errors please go to the troubleshooting section.
 
-**Important notice:**
+### Configuring TOGA for cluster
 
-we are planning to introduce nextflow [Nextflow](https://www.nextflow.io) in the near future to handle cluster-dependent steps.
+TOGA uses nextflow to run cluster-dependent steps.
+To run a pipeline on cluster nextflow requires a configuration file defining "executors" component.
+This repository contains configuration files for slurm cluster, please find them in the nextflow_config_files directory.
 
-If you are planning to run TOGA on cluster and your cluster is managed by SLURM or LSF then do the following:
+To create configuration files for non-slurm cluster do the following:
 
-```shell
-git clone https://github.com/hillerlab/Parasol_LSF_Slurm.git
-# for a SLURM cluster
-ln -s Parasol_LSF_Slurm/paraSlurm.perl para
-# for a LSF cluster:
-ln -s Parasol_LSF_Slurm/paraLSF.perl para
-```
+1) Find [here](https://www.nextflow.io/docs/latest/executor.html) what parameters are available for your cluster.
+Most likely, you can use slurm configuration files as a reference.
+2) Create a separate directory for configuration files, or re-use nextflow_config_files dir.
+3) Create "extract_chain_features_config.nf" file.
+This file contains configuration for chain features extraction step.
+These jobs are expected to be short and not memory consuming, so 1 hour of runtime limit
+and 5Gb of memory would be enough.
+4) Create "call_cesar_config_template.nf" file.
+This configuration file is for CESAR jobs.
+These jobs usually take much longer that chain feature extraction, it's recommended to request 24 hors for them.
+You don't have to provide an exact amount of memory for these jobs, please write a placeholder
+${_MEMORY_} instead, as follows: process.memory = "${_MEMORY_}G". TOGA will compute the required amout of memory itself.
 
-See "Para on cluster" section for details.
+### Final test
 
 This repository also contains sample data to perform a wide-scale test.
 To do so, please download genome sequences for human (GRCh38/hg38) and mouse (GRCm38) in the 2bit format.
 Then call the following:
 
 ```shell
-./run_test.sh normal  ${path_to_human_2bit} ${path_to_mouse_2bit}
+./toga.py test_input/hg38.mm10.chr11.chain test_input/hg38.genCode27.chr11.bed ${path_to_human_2bit} ${path_to_mouse_2bit} --kt --pn test -i supply/hg38.wgEncodeGencodeCompV34.isoforms.txt --nc ${path_to_nextflow_config_dir} --cb 3,5 --cjn 500 --u12 supply/hg38.U12sites.tsv --ms
 ```
 
-If something doesn't work, most likely you:
-
-- don't have installed berkeley DB properly
-- have berkeley DB installation, but python pip cannot link it to the library
-- xgboost was installed for GPU but cannot use it
-- TOGA cannot find "para"
+This will take about 20 minutes on 500 cores cluster.
 
 ### Troubleshooting
 
@@ -80,11 +94,11 @@ If you encounter error messages related to these three dependencies, please see 
 
 1) BerkeleyDB (database itself and python package)
 2) XGBoost
-3) Para
+3) Nextflow
 
 #### BerkeleyDB
 
-If the configure script gives an error like
+If the configure script shows an error like:
 
 ```txt
 Complete output from command python setup.py egg_info:
@@ -93,7 +107,7 @@ Can't find a local Berkeley DB installation.
 Command "python setup.py egg_info" failed with error code 1
 ```
 
-please have a look at these links for a likely solution:
+Please have a look at these links for a likely solution:
 
 - for Linux:
   - <https://github.com/DOsinga/deep_learning_cookbook/issues/59>
@@ -101,6 +115,8 @@ please have a look at these links for a likely solution:
 - for MacOS:
   - <https://stackoverflow.com/questions/16003224/installing-bsddb-package-python>
   - <https://github.com/scrapy-plugins/scrapy-deltafetch/issues/33>
+
+Most likely you have a berkeleyDB version incompatible with python library.
 
 #### XGboost
 
@@ -110,38 +126,50 @@ Sometimes xgboost installation with pip doesn't work and shows a message like:
 Command "/usr/bin/python3 -u -c "import setuptools, tokenize;__file__='/genome/scratch/tmp/pip-install-g6qbjl5j/xgboost/setup.py';f=getattr(tokenize, 'open', open)(__file__);code=f.read().replace('\r\n', '\n');f.close();exec(compile(code, __file__, 'exec'))" install --record /genome/scratch/tmp/pip-record-4dhjvr_9/install-record.txt --single-version-externally-managed --compile" failed with error code 1 in /genome/scratch/tmp/pip-install-g6qbjl5j/xgboost/
 ```
 
-One of solutions to install XGBoost properly is to compile it from sources, as explained here:
+One of solutions is to compile XGBoost from sources, as explained here:
 
 <https://xgboost.readthedocs.io/en/latest/build.html>
 
-#### Para on cluster
+#### Nextflow
 
-Two steps of the TOGA pipeline could be run on cluster:
-
-1) Chain features extraction.
-2) Realigning of reference exons in the query genome with CESAR2.0.
-
-To execute these jobs in parallel TOGA uses Para,
-a wrapper around LSF or Slurm for managing batches of jobs.
-You can find para here:
-
-<https://github.com/hillerlab/Parasol_LSF_Slurm>
-
-If your cluster workload manager is SLURM, just create a symlink to the paraSlurm.perl script.
-Like this:
+There are several nextflow-related issues that you migth encounter.
+If you have any issues with installation most likely this is something related to java version.
+The simplest solution would be to install nextflow using conda:
 
 ```shell
-git clone https://github.com/hillerlab/Parasol_LSF_Slurm.git
-ln -s Parasol_LSF_Slurm/paraSlurm.perl para
+conda install -c bioconda nextflow
 ```
 
-In turn, for LSF cluster use paraLSF.perl
+This will automatically add nextflow executable to $PATH.
+
+Nextflow also might show the following error message:
+
+```txt
+Can't open cache DB: /lustre/projects/project-xxx/.nextflow/cache/a80d212d-5a68-42b0-a8a5-d92665bdc492/db
+
+Nextflow needs to be executed in a shared file system that supports file locks.
+Alternatively you can run it in a local directory and specify the shared work
+directory by using by `-w` command line option.
+```
+
+In this case nextflow is not able to write temporary files and logs in the current directory.
+Probably you can find a solution together with your system administrator, however, there
+could be substantive reasons for disabling file locks.
+As a workaround, you can do the following:
+
+1) Find a directory outside the cluster file system that you can access, that could be
+/home/$username, /tmp/$username or something like this. Then create some directory inside,
+let's say "nextflow_temp".
+Nextflow writes quite a lot of hidden files so it could be reasonable.
+2) When you call toga.py, add --nd flag to the command, such as --nd /home/user/nextflow_temp
+
+In this case TOGA will call nextflow from the specified directory.
 
 If something doesn't work and you like to configure managing cluster jobs yourself then
 please have a look at the following functions in the toga.py script:
 
-1) __chain_genes_run: this function pushes cluster jobs to extract chain features
-2) __run_cesar_jobs: this one is responsible for calling exon realign jobs
+1) __chain_genes_run: this function pushes cluster jobs to extract chain features.
+2) __run_cesar_jobs: this one is responsible for calling CESAR jobs.
 
 To execute a batch of jobs in parallel TOGA creates a temporary text file
 containing commands that might be executed independently, it looks like this:
@@ -154,20 +182,13 @@ containing commands that might be executed independently, it looks like this:
 ...
 ```
 
-Let's say we call this file "toga_jobs.txt".
-Then TOGA calls a command that looks like this:
+Then TOGA pushes these jobs to cluster queueing system and waits until they are done.
+Please note that each line of this file contains a complete and independent command.
+It means that these commands could be sequentially executed even like this:
 
 ```shell
-para make joblist_name toga_jobs.txt
+bash jobslist.txt
 ```
-
-Then TOGA waits until these jobs are done (para process returns 0) and merges the output files.
-
-Please note that joblist_name should be unique for each batch of jobs.
-
-If you have created a symlink to para but TOGA still cannot find it then
-add directory with "para" to $PATH.
-TOGA uses "para", not "./para" or "paraSlurm.perl".
 
 ## Usage
 
@@ -348,13 +369,14 @@ which is not recommended.
 
 ##### --min_score MIN_SCORE
 
-Do not consider chains that have a score lower than this threshold.
-Default value is 15000.
+Chain score threshold.
+Exclude chains that have a lower score from the analysis.
+Default value is 15000, but depends on your scoring system.
 
 ##### --no_chain_filter, --ncf
 
 A flag.
-Do not filter the chain file (be sure you specified a .chain but not .gz file in this case)
+Do not filter the chain file (make sure you specified a .chain but not .gz file in this case)
 
 ###### --isoforms, -i ISOFORMS_FILE
 
@@ -366,35 +388,30 @@ A flag.
 With this flag TOGA will not remove temporary and intermediate files.
 Highly recommended for the first times: it will be easier to trace issues.
 
-##### --no_para
-
-A flag.
-If you have access to a cluster but don't like to use it for some reason,
-with this flag TOGA would use it as an ordinary PC.
-
 ##### --limit_to_chrom
 
 Limit analysis to a single reference chromosome.
 If you provide whole genome alignment for human and mouse but
-would like to perform the analysis on the chr11 only, then add
+would like to perform the analysis on the human chr11 only, then add
 "--limit_to_chrom chr11" parameter.
 
 ##### --chain_jobs_num, --chn NUMBER_OF_JOBS
 
 Number of cluster jobs for extracting chain features.
-Recommended from 10 to 50 jobs.
+Recommended from 20 to 50 jobs.
 
 ##### --cesar_jobs_num, --cjn NUMBER_OF_JOBS
 
 Number of CESAR cluster jobs.
-Recommended from 300 to 1500, depending on your patience and cluster size.
+Recommended from 300 to 1500, depending on your patience and a number
+of available cluster cores.
 
 ##### --mask_stops, --ms
 
 A flag.
 CESAR cannot process coding sequences containing in-frame stop codons.
-However, sometimes we need to project these genes and they are intact,
-like selenocysteine-coding ones.
+However, sometimes we need to project these genes and they are
+actually intact, like selenocysteine-coding ones.
 With this parameter TOGA will mask stop codons and CESAR could process them.
 Without this parameter TOGA will crash if meet any in-frame stop codon in the
 reference.
@@ -421,7 +438,7 @@ require from 10 to 100Gb.
 For sure you can split these genes into 100 cluster jobs and require 100Gb
 of RAM for each of them.
 But then 90% of the time your jobs will consume just a tiny bit of the
-requested memory.
+requested memory, which is likely a unsustainable use of cluster resources.
 But if you call TOGA with the following parameter:
 
 "--cesar_buckets 10,100"
@@ -446,11 +463,13 @@ Path to U12 introns data.
 
 A flag.
 If set, TOGA halts after chain classification step.
+So it doesn't annote query genome, just produces a list
+of orthologous chains for each reference gene.
 
 ##### --o2o_only, --o2o
 
 Process only the genes that have a single orthologous chain.
-Please not that many-2-one orthologs could not be filtered out
+Please note that many-2-one orthologs could not be filtered out
 at this stage!
 
 ##### --no_fpi
@@ -524,11 +543,11 @@ TOGA identifies the following classes:
 1) N - no data due to technical reasons (such as CESAR memory requirements)
 2) PG - no orthologous chains identified, TOGA projected transcripts via paralogous
 chains and cannot make any conclusion.
-3) PM - partially missing. Most of the projection lies outside scaffold borders.
+3) PM - partial & missing. Most of the projection lies outside scaffold borders.
 4) L - clearly lost.
 5) M - missing, assembly gaps mask >50% of the prediction CDS.
 6) G - "grey", there are inactivating mutations but not enough evidence
-for being list.
+for "clearly lost" class. In other words: neither lost nor intact.
 7) PI - partially intact: some fraction of CDS is missing, but most likely
 this is intact.
 8) I - clearly intact.
@@ -555,7 +574,7 @@ cat ${PROJECT_DIR}/inact_mut_data/* > ${PROJECT_DIR}/inact_mut_data.txt
 ```
 
 Since the merged file could be huge you can index it.
-It could also be helpful if you like to plot numerous genes.
+It would also be helpful if you plan to plot numerous genes.
 You can do it using "mut_index.py" script in the "supply" directory:
 
 ```shell

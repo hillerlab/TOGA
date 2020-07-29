@@ -23,8 +23,8 @@ __pycache__/*
 *.tar
 *.log
 *.bdb
+nextflow_logs
 
 # test results
 micro_test_out/
 test_out/
-

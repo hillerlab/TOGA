@@ -20,10 +20,11 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 # 0 gene; 1 chains; 2 bed_file; 3 bdb_chain_file; 4 tDB; 5 qDB; 6 memlim gig;
 LOCATION = os.path.dirname(__file__)
-WRAPPER_TEMPLATE = os.path.join(LOCATION, "CESAR_wrapper.py") \
+WRAPPER_ABSPATH = os.path.abspath(os.path.join(LOCATION, "CESAR_wrapper.py"))
+WRAPPER_TEMPLATE = WRAPPER_ABSPATH \
                    + " {0} {1} {2} {3} {4} {5} --memlim {6} --cesar_binary {7}" \
                    + " --uhq_flank {8}"
-CESAR_RUNNER = os.path.join(LOCATION, "cesar_runner.py")  # script that will run jobs
+CESAR_RUNNER = os.path.abspath(os.path.join(LOCATION, "cesar_runner.py"))  # script that will run jobs
 LONG_LOCI_FIELDS = {"GGLOB", "TRANS"}  # chain classes that could lead to very long query loci
 REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 500000
@@ -356,7 +357,7 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
         for part in jobs_split:
             file_num += 1
             file_name = f"cesar_job_{file_num}_{bucket_id}"
-            file_path = os.path.join(jobs_dir, file_name)
+            file_path = os.path.abspath(os.path.join(jobs_dir, file_name))
             f = open(file_path, "w")
             f.write("\n".join(part) + "\n")
             f.close()
@@ -458,11 +459,12 @@ def main():
 
         # # 0 gene; 1 chains; 2 bed_file; 3 bdb chain_file; 4 tDB; 5 qDB; 6 output; 7 cesar_bin
         job = WRAPPER_TEMPLATE.format(gene, chains_arg,
-                                      args.bdb_bed_file,
-                                      args.bdb_chain_file,
-                                      args.tDB, args.qDB,
+                                      os.path.abspath(args.bdb_bed_file),
+                                      os.path.abspath(args.bdb_chain_file),
+                                      os.path.abspath(args.tDB),
+                                      os.path.abspath(args.qDB),
                                       gig,
-                                      args.cesar_binary,
+                                      os.path.abspath(args.cesar_binary),
                                       args.uhq_flank)
         # add some flags if required
         job = job + " --mask_stops" if args.mask_stops else job
@@ -470,7 +472,7 @@ def main():
         job = job + " --no_fpi" if args.no_fpi else job
 
         # add U12 introns data if this gene has them:
-        job = job + f" --u12 {args.u12}" if u12_this_gene else job
+        job = job + f" --u12 {os.path.abspath(args.u12)}" if u12_this_gene else job
 
         all_jobs[job] = gig
 
@@ -496,7 +498,7 @@ def main():
     f = open(args.combined, "w")
     for num, comb in enumerate(to_combine, 1):
         basename = os.path.basename(comb).split(".")[0]
-        results_path = os.path.join(args.results, basename + ".bdb")
+        results_path = os.path.abspath(os.path.join(args.results, basename + ".bdb"))
         combined_command = f"{CESAR_RUNNER} {comb} {results_path}"
         if args.check_loss:
             loss_data_path = os.path.join(args.check_loss,

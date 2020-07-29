@@ -43,8 +43,9 @@ def call_job(cmd):
     try:  # try to call this job
         cmd_out = subprocess.check_output(cmd, shell=True).decode("utf-8")
         return cmd_out
-    except subprocess.CalledProcessError:
-        eprint(f"{cmd} FAILED")
+    except subprocess.CalledProcessError as err:
+        eprint(str(err))
+        eprint(f"\n{cmd} FAILED")
         return 1  # send failure signal
 
 
@@ -68,8 +69,10 @@ def main():
         if job_out == 1:
             # a job failed with code 1 -> send the signal upstream
             # abort execution, write what job exactly failed
-            sys.stderr.write(f"Error! Job {job} failed!\n")
-            sys.exit(1)
+            # sys.stderr.write(f"Error! Job {job} failed!\n")
+            rejected.append(f"{job}\tCESAR JOB FAILURE\n")
+            # sys.exit(1)
+            continue
 
         # job looks like ./CESAR_wrapper.py
         # GENE CHAINS BEDFILE CHAINFILE TWOBIT FILES

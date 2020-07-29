@@ -21,7 +21,7 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 # global
 WORK_DATA = {}  # script-related data
-LOCATION = os.path.dirname(__file__)
+LOCATION = os.path.abspath(os.path.dirname(__file__))
 CHAIN_RUNNER = os.path.join(LOCATION, "chain_runner.py")
 t0 = dt.now()
 

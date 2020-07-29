@@ -193,24 +193,6 @@ def analyse_splice_sites(ref, query, gene, chain, u12_data=None, v=None):
         if delta > 1:
             exon_num += 1
 
-    # TODO: check what is this
-    # switch = False
-    # exon_num = 0
-    # indexes_exon_num = {}
-    # cds_index = 0
-    # for i in range(len(ref)):
-    #     i_ref = ref[i]
-    #     if i_ref == " ":
-    #         switch = True
-    #     elif i_ref != " " and switch:
-    #         switch = False
-    #         exon_num += 1
-    #         indexes_exon_num[cds_index] = exon_num
-    #         cds_index += 1
-    #     elif i_ref != " " and not switch:
-    #         indexes_exon_num[cds_index] = exon_num
-    #         cds_index += 1
-
     # for each exon get min and max index
     exon_num_start_end = {k: (min(v), max(v)) for k, v in exon_num_indexes.items()}
     exons_num = len(exon_num_start_end)
