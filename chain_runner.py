@@ -19,7 +19,7 @@ __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 FLANK_SIZE = 10000  # gene flank size -> for flank ali feature
-COMBINED_BED_ID = "COMBINED"  # placeholder gene name for artificial tracks
+COMBINED_BED_ID = "COMBINED"  # placeholder gene name for intermediate tracks
 
 
 def eprint(*lines):

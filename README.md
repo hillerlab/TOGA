@@ -197,7 +197,7 @@ This section explains TOGA usage, especially toga.py arguments and input files f
 
 ### Input files
 
-TOGA is a reference-based genome annotation tool, which means that needs the following data as input:
+TOGA is a reference-based genome annotation tool, which means that it needs the following data as input:
 
 1) Gene annotation of the reference genome
 2) Genome alignment between the reference and query genome(s)
@@ -552,6 +552,15 @@ for "clearly lost" class. In other words: neither lost nor intact.
 7) PI - partially intact: some fraction of CDS is missing, but most likely
 this is intact.
 8) I - clearly intact.
+
+### proc_pseudogenes.bed
+
+Bed-formatted file containing annotation of processed pseudogenes in the query.
+
+### genes_rejection_reason.tsv
+
+If TOGA skips any gene, transcript or projection, it writes about that in this file.
+Also this file shows a reason, why this happened.
 
 ## Inactivating mutations visualization
 

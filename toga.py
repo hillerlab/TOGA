@@ -17,6 +17,7 @@ from modules.filter_bed import prepare_bed_file
 from modules.chain_bdb_index import chain_bdb_index
 from modules.bed_bdb_index import bed_bdb_index
 from modules.merge_chains_output import merge_chains_output
+from modules.make_pr_pseudogenes_anno import create_ppgene_track
 from modules.merge_cesar_output import merge_cesar_output
 from modules.gene_losses_summary import gene_losses_summary
 from modules.orthology_type_map import orthology_type_map
@@ -60,6 +61,7 @@ class Toga:
             else args.project_name
         self.wd = args.project_folder if args.project_folder else  \
             os.path.join(os.getcwd(), self.project_name)
+        self.project_name.replace("/", "")  # for safety; need this to make paths later
         os.mkdir(self.wd) if not os.path.isdir(self.wd) else None
 
         # dir to collect log files with rejected reference genes:
@@ -394,36 +396,37 @@ class Toga:
         self.__make_indexed_bed()
         self.__time_mark("Made indexes")
 
-        # 1) split_chain_jobs.py - - make chain: genes joblist
+        # 1) make joblist for chain features extraction
         self.__split_chain_jobs()
         self.__time_mark("Splitted chain jobs")
-        # 2) call "ch_cl_jobs" from previous stage as a bunch of cluster job
+        # 2) extract chain features: parallel process
         self.__extract_chain_features()
         self.__time_mark("Chain jobs done")
-        # 3) merge_chains_output.py  --> merge and rearrange data in "results folder"
+        # 3) create chain features dataset
         self.__merge_chains_output()
         self.__time_mark("Chains output merged")
-        # 4) ./classify_chains.py
-        # classify chains from raw output according the config file
+        # 4) classify chains as orthologous, paralogous, etc using xgboost
         self.__classify_chains()
         self.__time_mark("Chains classified")
-        # 5)./ split_exon_realign_jobs.py --> create cluster jobs for CESAR2.0
+        # 5) create cluster jobs for CESAR2.0
         self.__split_cesar_jobs()
         self.__time_mark("Split cesar jobs done")
-        # 6) call combined cesar jobs
+        # 6) Create bed track for processed pseudogenes
+        self.__get_proc_pseudogenes_track()
+        # 7) call CESAR jobs: parallel step
         self.__run_cesar_jobs()
-        self.__time_mark("Dome cesar jobs")
-        # 7) ./parse_cesar_bdb.py
-        # extract fasta and bed files from CESAR2.0 output
+        self.__time_mark("Done cesar jobs")
+        # 8) parse CESAR output, create bed / fasta files
         self.__merge_cesar_output()
         self.__time_mark("Merged cesar output")
-        # 8). get pseudogene track
+        # 9) classify projections/genes as lost/intact
+        # also measure projections confidence levels
         self.__transcript_quality()
         self.__gene_loss_summary()
         self.__time_mark("Got gene loss summary")
-        # 9) ./orthology_type_map.py
+        # 10) classsify genes as one2one, one2many, etc orthologs
         self.__orthology_type_map()
-        # 10) merge rejection reasons
+        # 11) merge logs containing information about skipped genes,transcripts, etc.
         self.__merge_rejection_logs()
         # Everything is done
         self.__time_mark("Everything is done")
@@ -521,6 +524,12 @@ class Toga:
                         self.me_model, rejected=cl_rej_log, raw_out=self.pred_scores)
         if self.stop_at_chain_class:
             self.die("User requested to halt after chain features extraction", rc=0)
+
+    def __get_proc_pseudogenes_track(self):
+        """Create annotation of processed genes in query."""
+        eprint("Creatrng processed pseudogenes track.")
+        proc_pgenes_track = os.path.join(self.wd, "proc_pseudogenes.bed")
+        create_ppgene_track(self.orthologs, self.chain_index_file, self.index_bed_file, proc_pgenes_track)
 
     def __split_cesar_jobs(self):
         """Call split_exon_realign_jobs.py."""
