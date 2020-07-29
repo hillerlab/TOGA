@@ -72,8 +72,9 @@ and 5Gb of memory would be enough.
 4) Create "call_cesar_config_template.nf" file.
 This configuration file is for CESAR jobs.
 These jobs usually take much longer that chain feature extraction, it's recommended to request 24 hors for them.
-You don't have to provide an exact amount of memory for these jobs, please write a placeholder
-${_MEMORY_} instead, as follows: process.memory = "${_MEMORY_}G". TOGA will compute the required amout of memory itself.
+You don't have to provide an exact amount of memory for these jobs,
+TOGA will compute this itself.
+Please write a placeholder instead, as follows: process.memory = "${\_MEMORY\_}G".
 
 ### Final test
 
