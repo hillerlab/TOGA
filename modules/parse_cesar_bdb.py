@@ -19,6 +19,8 @@ MAX_COLOR = 255
 PID_HQ_THR = 65
 BLOSUM_HQ_THR = 35
 Q_HEADER_FIELDS_NUM = 12
+BLACK = "0,0,0"
+DEFAULT_SCORE = 100
 
 # header for exons meta data file
 META_HEADER = "\t".join("gene exon_num chain_id act_region exp_region"
@@ -47,7 +49,6 @@ def parse_args():
     app.add_argument("--fasta", help="Save fasta file if required.", default=None)
     app.add_argument("--prot_fasta", help="Save protein fasta", default=None)
     app.add_argument("--exons_metadata", help="Save exon data", default=None)
-    app.add_argument("--exons_left", help="Exons that are left, a tsv", default=None)
     app.add_argument("--skipped", help="Save skipped genes", default=None)
     app.add_argument("--exon_class", help="Produce exon/class track", default=None)
     app.add_argument("--verbose", action="store_true", dest="verbose", help="Show verbose messages")
@@ -97,32 +98,6 @@ def read_region(region):
     return {"chrom": chrom, "start": start, "end": end}
 
 
-def get_itemRgb(score, seq_type=None):
-    """Return color for a gene according the score computed."""
-    # should be RED,GREEN,BLUE each 0:255
-    # bigger score --> reddish one
-    score_coeff = score / MAX_SCORE
-    if seq_type == "LOST":
-        red = int(MAX_COLOR * score_coeff)
-        green = int(red / 4)
-        blue = int(red / 4)
-    elif seq_type == "GREY":
-        red = int(MAX_COLOR * score_coeff)
-        green = red
-        blue = red
-    else:  # normal case, usual intact sequence
-        blue = int(MAX_COLOR * score_coeff)
-        green = int(blue / 4)
-        red = int(blue / 4)
-
-    # normalize just in case
-    red = red if red <= MAX_COLOR else MAX_COLOR
-    blue = blue if blue <= MAX_COLOR else MAX_COLOR
-    green = green if green <= MAX_COLOR else MAX_COLOR
-    itemRgb = f"{red},{green},{blue}"
-    return itemRgb
-
-
 def read_paralogs_log(paralog_log_file):
     """Get list of paralogous gene-chains."""
     f = open(paralog_log_file)
@@ -144,11 +119,9 @@ def parse_cesar_bdb(arg_input, v=False):
     skipped = []  # save skipper projections here
     pred_seq_chain = {}  # for nucleotide sequences to fasta
     t_exon_seqs = defaultdict(dict)  # reference exon sequences
-    exons_left = defaultdict(list)  # exons that are not deleted
     wrong_exons = []  # exons that are predicted but actually deleted/missing
     all_meta_data = [META_HEADER]  # to collect exons meta data
     prot_data = []  # protein sequences
-    exon_class_data = []  # exons classification
 
     for elem in content:
         # one elem - one CESAR call (one ref transcript and >=1 chains)
@@ -163,8 +136,6 @@ def parse_cesar_bdb(arg_input, v=False):
         ranges_chain, chain_dir = defaultdict(dict), {}
         pred_seq_chain[gene] = defaultdict(dict)
         exon_lens, chain_raw_scores = {}, defaultdict(list)
-        chain_pid_scores, chain_blosum_scores = defaultdict(list), defaultdict(list)
-        chain_classes = defaultdict(list)
 
         # split fasta headers in different classes
         # query, ref and prot sequence headers are explicitly marked
@@ -214,22 +185,19 @@ def parse_cesar_bdb(arg_input, v=False):
             in_exp = header_fields[9]  # detected in the expected region or not
             in_exp_b = True if in_exp == "INC" else False
 
-            # fill dictionaries
-            chain_pid_scores[chain_id].append(pid)
-            chain_blosum_scores[chain_id].append(blosum)
-            chain_classes[chain_id].append(exon_class)
             # mark that it's paralogous projection:
             para_annot = True if header_fields[10] == "True" else False
             stat_key = (trans, chain_id)  # projection ID
-
             # classify exon, check whether it's deleted/missing
             exon_decision, q_mark = classify_exon(exon_class, in_exp_b, pid, blosum)
-            exon_class_track = (trans, str(chain_id), str(exon_num), header_fields[3], q_mark)
-            exon_class_data.append(exon_class_track)  # save exon-related data
 
             try:  # time to get exon score (normalize to exon length)
                 exon_score = int(pid / 100 * exon_lens[exon_num])
             except KeyError:
+                pid, exon_score = 0, 0
+            except ZeroDivisionError:
+                # should never happen, because exon length cannot be 0
+                # but just in case
                 pid, exon_score = 0, 0
             
             if exon_decision is False:
@@ -245,7 +213,6 @@ def parse_cesar_bdb(arg_input, v=False):
                 chain_dir[chain_id] = directed
                 ranges_chain[chain_id][exon_num] = exon_region
                 pred_seq_chain[gene][chain_id][exon_num] = sequences[header]
-                exons_left[(gene, chain_id)].append(str(exon_num))
             # collect exon meta-data
             meta_data = "\t".join([gene, header_fields[1], header_fields[2],
                                    header_fields[3], exp_region_str,
@@ -295,7 +262,7 @@ def parse_cesar_bdb(arg_input, v=False):
             # we do not predict UTRs: thickStart/End = chromStart/End
             thickStart = chromStart
             thickEnd = chromEnd
-            itemRgb = get_itemRgb(score)  # TODO: seems to be unnecessary
+            itemRgb = BLACK
             strand = "+" if direct else "-"
             blockCount = len(exon_nums)
 
@@ -320,7 +287,7 @@ def parse_cesar_bdb(arg_input, v=False):
             bed_lines.append(bed_line)
 
     # arrange fasta content
-    fasta_lines = ""
+    fasta_lines_lst = []
     for gene, chain_exon_seq in pred_seq_chain.items():
         # write target gene info
         t_gene_seq_dct = t_exon_seqs.get(gene)
@@ -334,8 +301,8 @@ def parse_cesar_bdb(arg_input, v=False):
         t_header = ">ref_{0}\n".format(gene)
         t_seq = "".join([t_gene_seq_dct[num] for num in t_exon_nums]) + "\n"
         # append data to fasta strings
-        fasta_lines += t_header
-        fasta_lines += t_seq
+        fasta_lines_lst.append(t_header)
+        fasta_lines_lst.append(t_seq)
 
         # and query info
         for chain_id, exon_seq in chain_exon_seq.items():
@@ -343,8 +310,8 @@ def parse_cesar_bdb(arg_input, v=False):
             exon_nums = sorted(exon_seq.keys())
             # also need to assemble different exon sequences
             seq = "".join([exon_seq[num] for num in exon_nums]) + "\n"
-            fasta_lines += track_header
-            fasta_lines += seq
+            fasta_lines_lst.append(track_header)
+            fasta_lines_lst.append(seq)
 
     # save corrupted exons as bed-6 track
     # to make it possible to save them and visualize in the browser
@@ -368,6 +335,7 @@ def parse_cesar_bdb(arg_input, v=False):
     meta_str = "\n".join(all_meta_data) + "\n"
     skipped_str = "\n".join(skipped) + "\n"
     prot_fasta = "".join(prot_data)
+    fasta_lines = "".join(fasta_lines_lst)
     return bed_lines, trash_exons, fasta_lines, meta_str, prot_fasta, skipped_str
 
 

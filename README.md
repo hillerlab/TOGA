@@ -372,7 +372,7 @@ which is not recommended.
 
 Chain score threshold.
 Exclude chains that have a lower score from the analysis.
-Default value is 15000, but depends on your scoring system.
+Default value is 15000.
 
 ##### --no_chain_filter, --ncf
 
@@ -389,7 +389,7 @@ A flag.
 With this flag TOGA will not remove temporary and intermediate files.
 Highly recommended for the first times: it will be easier to trace issues.
 
-##### --limit_to_chrom
+##### --limit_to_ref_chrom
 
 Limit analysis to a single reference chromosome.
 If you provide whole genome alignment for human and mouse but
@@ -442,7 +442,9 @@ But then 90% of the time your jobs will consume just a tiny bit of the
 requested memory, which is likely a unsustainable use of cluster resources.
 But if you call TOGA with the following parameter:
 
-"--cesar_buckets 10,100"
+```txt
+--cesar_buckets 10,100
+```
 
 then TOGA will create and push separately two joblists:
 one for cluster jobs that require less then 10Gb,
@@ -477,6 +479,18 @@ at this stage!
 
 A flag.
 Consider long frame-preserving indels as inactivating mutations.
+
+##### --nextflow_dir NEXTFLOW_DIR, --nd NEXTFLOW_DIR
+
+Nextflow working directory: from this directory
+nextflow is executed, also there all nextflow log
+files are kept
+
+##### nextflow_config_dir NEXTFLOW_CONFIG_DIR, --nc NEXTFLOW_CONFIG_DIR
+
+Directory containing nextflow configuration files for
+cluster, pls see nextflow_config_files/readme.txt for
+details.
 
 ## Output reading
 

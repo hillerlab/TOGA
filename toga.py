@@ -61,7 +61,8 @@ class Toga:
             else args.project_name
         self.wd = args.project_folder if args.project_folder else  \
             os.path.join(os.getcwd(), self.project_name)
-        self.project_name.replace("/", "")  # for safety; need this to make paths later
+        # for safety; need this to make paths later
+        self.project_name = self.project_name.replace("/", "")
         os.mkdir(self.wd) if not os.path.isdir(self.wd) else None
 
         # dir to collect log files with rejected reference genes:
@@ -742,23 +743,25 @@ def parse_args():
     app.add_argument("bed_initial", type=str,
                      help="Bed file with annotations for the target genome.")
     app.add_argument("tDB", default=None,
-                     help="Alias of 2bit file for target genome.")
+                     help="Reference genome sequence in 2bit format.")
     app.add_argument("qDB", default=None,
-                     help="Alias 2bit file for query genome.")
+                     help="Query genome sequence in 2bit format.")
     # global ops
     app.add_argument("--project_folder", default=None,
-                     help="Working directory. If not specified, "
-                          "use CURRENT_DIR/PROJECT_NAME as default.")
+                     help="Project directory. TOGA will save all intermediate and output files "
+                          "exactly in this directory. If not specified, use CURRENT_DIR/PROJECT_NAME "
+                          "as default (see below).")
     app.add_argument("--project_name", "--pn", default=None,
-                     help="Project name, for example a name of species."
-                          "If not set, tries to get the name from the chain file. "
-                          "Create folder with this name.")
+                     help="If you don't like to provide a full path to the project directory with "
+                          "--project_folder you can use this parameter. In this case TOGA will "
+                          "create project directory in the current directory as "
+                          "\"CURRENT_DIR/PROJECT_NAME\". If not provided, TOGA will try to extract "
+                          "the project name from chain filename, which is not recommended.")
     app.add_argument("--min_score", "--msc", type=int, default=15000,
-                     help="Filter the chains, preserve only those"
-                          " with score bigger that this parameter. "
-                          "15000 is default.")
+                     help="Chain score threshold. Exclude chains that have a lower score "
+                     "from the analysis. Default value is 15000.")
     app.add_argument("--isoforms", "-i", type=str, default="",
-                     help="Isoforms dictionary for parse_results.")
+                     help="Path to isoforms data file")
     app.add_argument("--keep_temp", "--kt", action="store_true",
                      dest="keep_temp", help="Do not remove temp files.")
     app.add_argument("--limit_to_ref_chrom", default=None, help="Find orthologs "
@@ -775,11 +778,12 @@ def parse_args():
                           "for details.")
     # chain features related
     app.add_argument("--chain_jobs_num", "--chn", type=int, default=50,
-                     help="Number of chain features extractor jobs.")
+                     help="Number of cluster jobs for extracting chain features. "
+                          "Recommended from 20 to 50 jobs.")
     app.add_argument("--no_chain_filter", "--ncf", action="store_true",
                      dest="no_chain_filter",
-                     help="Do not filter the chain file (be sure you "
-                          "specified a .chain but not .gz file in this case")
+                     help="A flag. Do not filter the chain file (make sure you specified "
+                          "a .chain but not .gz file in this case)")
     # CESAR part related
     app.add_argument("--cesar_jobs_num", "--cjn", type=int, default=500,
                      help="Number of CESAR cluster jobs.")
@@ -790,9 +794,12 @@ def parse_args():
                           "CESAR cannot process them. Using this "
                           "parameter please make sure you know what you are doing.")
     app.add_argument("--cesar_buckets", "--cb", default="0",
-                     help="See ./split_exon_realign_jobs.py --help")
+                     help="Comma-separated list of integers. Split CESAR jobs in buckets "
+                          "depending on their memory requirements. "
+                          "See README.md for explanation.")
     app.add_argument("--cesar_chain_limit", type=int, default=100,
-                     help="Ignore genes having more than N orthologs.")
+                     help="Skip genes that have more that CESAR_CHAIN_LIMIT orthologous "
+                          "chains. Recommended values are a 50-100.")
     app.add_argument("--cesar_mem_limit", type=int, default=16,
                      help="Ignore genes requiring > N gig to run CESAR")
     app.add_argument("--homology_types", "--ht", default="ORTH,TRANS",
