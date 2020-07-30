@@ -1,10 +1,12 @@
+# Tool to infer Orthologs from Genome Alignments
+
 ![TOGA logo](https://github.com/hillerlab/TOGA/blob/master/supply/logo.png)
 
-# TOGA - Tool to infer Orthologs from Genome Alignments
+TOGA is a new method that integrates gene annotation, inferring orthologs and classifying
+genes as intact or lost.
 
-TOGA is a new method that integrates gene annotation, inferring orthologs and classifying genes as intact or lost.
-
-TOGA implements a novel machine learning based paradigm to infer orthologous genes between related species and to accurately distinguish orthologs from paralogs or processed pseudogenes.
+TOGA implements a novel machine learning based paradigm to infer orthologous genes between
+related species and to accurately distinguish orthologs from paralogs or processed pseudogenes.
 
 This tutorial explains how to get started using TOGA.
 It shows how to install and execute TOGA, and how to handle possible issues that may occur.
