@@ -168,9 +168,9 @@ def extract_orth_connections(graph, r_genes_all, q_genes_all):
     nx_v = float(nx.__version__)
     if nx_v < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
         graph_components = list(nx.connected_component_subgraphs(graph))
-        msg = f"Warning! You use networkx v{nx_v}; splitting components with " \
-               "nx.connected_component_subgraphs(), which is deprecated. " \
-               "Please upgrade networks to supress this warning\n"
+        msg = f"Warning! You use networkx v{nx_v}\nSplitting components with " \
+               "nx.connected_component_subgraphs(), which is deprecated.\n" \
+               "Please upgrade networkx to supress this warning\n"
         sys.stderr.write(msg)
     else:
         graph_components = [graph.subgraph(c) for c in nx.connected_components(graph)]

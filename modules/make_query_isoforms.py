@@ -230,9 +230,9 @@ def get_query_isoforms_data(query_bed, query_isoforms, save_genes_track=None):
     nx_v = float(nx.__version__)
     if nx_v < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
         components = list(nx.connected_component_subgraphs(conn_graph))
-        msg = f"Warning! You use networkx v{nx_v}; splitting components with " \
-               "nx.connected_component_subgraphs(), which is deprecated. " \
-               "Please upgrade networks to supress this warning\n"
+        msg = f"Warning! You use networkx v{nx_v}\nSplitting components with " \
+               "nx.connected_component_subgraphs(), which is deprecated.\n" \
+               "Please upgrade networkx to supress this warning\n"
         sys.stderr.write(msg)
     else:
         components = [conn_graph.subgraph(c) for c in nx.connected_components(conn_graph)]
