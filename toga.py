@@ -92,9 +92,8 @@ class Toga:
         self.__call_proc(chain_filter_cmd, "Please check if you use a proper chain file.")
         
         # bed define bed files addresses
-        self.ref_bed = os.path.join(self.wd, f"toga_filt_ref.{os.path.basename(args.bed_initial)}")
-        index_bed_filename = os.path.basename(self.ref_bed).replace(".bed", ".bdb")
-        self.index_bed_file = os.path.join(self.wd, index_bed_filename)
+        self.ref_bed = os.path.join(self.wd, "toga_filt_ref_annot.bed")
+        self.index_bed_file = os.path.join(self.wd, "toga_filt_ref_annot.bdb")
 
         # filter bed file
         bed_filt_rejected_file = "BED_FILTER_REJECTED.txt"
@@ -620,7 +619,11 @@ class Toga:
             # extract jobs related to this bucket (if it's not 0)
             if b != 0:
                 grep_bucket_cmd = grep_bucket_templ.format(self.cesar_combined, b)
-                bucket_tasks = subprocess.check_output(grep_bucket_cmd, shell=True).decode("utf-8")
+                try:
+                    bucket_tasks = subprocess.check_output(grep_bucket_cmd, shell=True).decode("utf-8")
+                except subprocess.CalledProcessError:
+                    eprint(f"There are no jobs in the {b} bucket")
+                    continue
                 joblist_name = f"cesar_joblist_queue_{b}.txt"
                 joblist_path = os.path.join(self.wd, joblist_name)
                 with open(joblist_path, "w") as f:
