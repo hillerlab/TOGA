@@ -28,7 +28,6 @@ then
          test_input/hg38.micro_sample.2bit test_input/q2bit_micro_sample.2bit \
          --pn micro_test_out  --kt \
          --cjn 1 --chn 1 --ms \
-         --no_para
          "
     echo "Calling ${cmd}"
     eval $cmd
