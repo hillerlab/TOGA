@@ -586,7 +586,7 @@ It would also be helpful if you plan to plot numerous genes.
 You can do it using "mut_index.py" script in the "supply" directory:
 
 ```shell
-./supply/mut_index.py ${PROJECT_DIR}/inact_mut_data.txt ${PROJECT_DIR}/inact_mut_data.bdb
+./supply/mut_index.py ${PROJECT_DIR}/inact_mut_data.txt ${PROJECT_DIR}/inact_mut_data.hdf5
 ```
 
 Then use "./supply/plot_mutations.py" script to create a visualization.
@@ -600,7 +600,7 @@ This script requires the following:
 For example:
 
 ```shell
-/supply/plot_mutations.py ${REFERENCE_BED_FILE} ${PROJECT_DIR}/inact_mut_data.bdb ENST0000011111 test.svg
+/supply/plot_mutations.py ${REFERENCE_BED_FILE} ${PROJECT_DIR}/inact_mut_data.hdf5 ENST0000011111 test.svg
 ```
 
 This will create a plot of all inactivating mutations detected for all projections of the ENST0000011111
@@ -614,7 +614,7 @@ If you like to visualize all projections of a gene then:
 For example:
 
 ```shell
-/supply/plot_mutations.py ${REFERENCE_BED_FILE} ${PROJECT_DIR}/inact_mut_data.bdb ENSG0000011111 test.svg -i ${ISOFORMS FILE}
+/supply/plot_mutations.py ${REFERENCE_BED_FILE} ${PROJECT_DIR}/inact_mut_data.hdf5 ENSG0000011111 test.svg -i ${ISOFORMS FILE}
 ```
 
 The script will look for all transcripts of the ENSG0000011111 gene in the isoforms file.
@@ -624,7 +624,7 @@ If you are interested only in a particular projection then
 provide the chain of interest with --chain parameter:
 
 ```shell
-/supply/plot_mutations.py ${REFERENCE_BED_FILE} ${PROJECT_DIR}/inact_mut_data.bdb ENST0000011111 test.svg --chain 222
+/supply/plot_mutations.py ${REFERENCE_BED_FILE} ${PROJECT_DIR}/inact_mut_data.hdf5 ENST0000011111 test.svg --chain 222
 ```
 
 ## Citation
