@@ -399,8 +399,9 @@ def scan_rf(codon_table, gene, chain, exon_stat=None, v=False,
             # start codon is missing; we don't use it in the GLP pipe
             # but still detect this sort of mutations
             mut_id = "START_1"
+            que_codon_ = que_codon[:3]
             mut = Mutation(gene=gene, chain=chain, exon=ex_num, position=1,
-                           mclass=START_MISSING, mut=que_codon, masked=mask,
+                           mclass=START_MISSING, mut=que_codon_, masked=mask,
                            mut_id=mut_id)
             in_mut_report.append(mut)
 

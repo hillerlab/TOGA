@@ -150,7 +150,7 @@ def parse_cesar_bdb(arg_input, v=False):
             # FIELD_1 | FIELD_2 | FIELD_3\n
             header_fields = [s.replace(" ", "") for s in header.split("|")]
             exon_num = int(header_fields[1])  # 0-based!
-            exon_seq = sequences[header]  # header is also a key for seq dict
+            exon_seq = sequences[header].replace("-", "")  # header is also a key for seq dict
             seq_len = len(exon_seq)
             t_exon_seqs[gene][exon_num] = exon_seq
             exon_lens[exon_num] = seq_len

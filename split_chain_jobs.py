@@ -126,17 +126,17 @@ def check_args(args):
     verbose(f"Use bed file {args.bed_file} and chain file {args.chain_file}")
 
     # look for .ID.bb file
-    index_file = args.index_file if args.index_file else args.chain_file[:-6] + ".bdb"
+    index_file = args.index_file if args.index_file else args.chain_file.replace(".chain", ".hdf5")
     if os.path.isfile(index_file):  # check if bb file is here
         WORK_DATA["index_file"] = index_file
-        verbose("And {0} as a bdb file".format(index_file))
+        verbose(f"And {index_file} as a bdb file")
     elif args.make_index:  # create index if not exists
         eprint("make_indexed in progress...")
         IDbb_cmd = f"/modules/chain_bdb_index.py {args.chain_file} {index_file}"
         call_proc(IDbb_cmd)
         WORK_DATA["index_file"] = index_file
     else:  # die
-        die("Error! Cannot find IDbb file in {index_file}\n"
+        die(f"Error! Cannot find index file at {index_file}\n"
             "Please define it manually")
     # define the number of jobs
     if args.job_size:  # easy:

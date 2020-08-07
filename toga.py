@@ -12,10 +12,11 @@ import subprocess
 import time
 from datetime import datetime as dt
 import json
+import shutil
 from twobitreader import TwoBitFile
 from modules.filter_bed import prepare_bed_file
-from modules.chain_bdb_index import chain_bdb_index
-from modules.bed_bdb_index import bed_bdb_index
+from modules.bed_hdf5_index import bed_hdf5_index
+from modules.chain_hdf5_index import chain_hdf5_index
 from modules.merge_chains_output import merge_chains_output
 from modules.make_pr_pseudogenes_anno import create_ppgene_track
 from modules.merge_cesar_output import merge_cesar_output
@@ -36,7 +37,7 @@ U12_AD_FIELD = {"A", "D"}
 ISOFORMS_FILE_COLS = 2
 NF_DIR_NAME = "nextflow_logs"
 CESAR_PUSH_INTERVAL = 30  # CESAR jobs push interval
-ITER_DURATION = 120  # CESAR jobs check interval
+ITER_DURATION = 60  # CESAR jobs check interval
 
 
 class Toga:
@@ -52,6 +53,8 @@ class Toga:
         self.nextflow_dir = self.__get_nf_dir(args.nextflow_dir)
         self.nextflow_config_dir = args.nextflow_config_dir
         self.__check_nf_config()
+        # to avoid crash on filesystem without locks:
+        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
 
         eprint("mkdir_and_move_chain in progress...")
         chain_basename = os.path.basename(args.chain_initial)
@@ -74,7 +77,7 @@ class Toga:
         self.chain = os.path.join(self.wd, chain_filename)
         # there is an assumption that people will usually use .chain file
         # extension for chain files
-        index_file = os.path.basename(self.chain).replace(".chain", ".bdb")
+        index_file = os.path.basename(self.chain).replace(".chain", ".hdf5")
         self.chain_index_file = os.path.join(self.wd, index_file)
 
         # make the command, prepare the chain file
@@ -93,7 +96,7 @@ class Toga:
         
         # bed define bed files addresses
         self.ref_bed = os.path.join(self.wd, "toga_filt_ref_annot.bed")
-        self.index_bed_file = os.path.join(self.wd, "toga_filt_ref_annot.bdb")
+        self.index_bed_file = os.path.join(self.wd, "toga_filt_ref_annot.hdf5")
 
         # filter bed file
         bed_filt_rejected_file = "BED_FILTER_REJECTED.txt"
@@ -128,6 +131,8 @@ class Toga:
         self.mask_stops = args.mask_stops
         self.no_fpi = args.no_fpi
         self.o2o_only = args.o2o_only
+        self.keep_nf_logs = args.do_not_del_nf_logs
+        self.cesar_ok_merged = None
 
         self.chain_results_df = os.path.join(self.wd, "chain_results_df.tsv")
         self.nucl_fasta = os.path.join(self.wd, "nucleotide.fasta")
@@ -224,7 +229,7 @@ class Toga:
                 self.die(err_msg)
         f.close()
         eprint("U12 file is correct")
-    
+
     def __check_isoforms_file(self):
         """Sanity checks for isoforms file."""
         if not self.isoforms:
@@ -281,8 +286,8 @@ class Toga:
         self.EXTRACT_SUBCHAIN_LIB = os.path.join(self.LOCATION, "modules", "extract_subchain_slib.so")
         self.CHAIN_FILTER_BY_ID = os.path.join(self.LOCATION, "modules", "chain_filter_by_id")
 
-        self.CHAIN_BDB_INDEX = os.path.join(self.LOCATION, "modules", "chain_bdb_index.py")
-        self.BED_BDB_INDEX = os.path.join(self.LOCATION, "modules", "bed_bdb_index.py")
+        self.CHAIN_BDB_INDEX = os.path.join(self.LOCATION, "modules", "chain_hdf5_index.py")
+        self.BED_BDB_INDEX = os.path.join(self.LOCATION, "modules", "bed_hdf5_index.py")
         self.SPLIT_CHAIN_JOBS = os.path.join(self.LOCATION, "split_chain_jobs.py")
         self.MERGE_CHAINS_OUTPUT = os.path.join(self.LOCATION, "modules", "merge_chains_output.py")
         self.CLASSIFY_CHAINS = os.path.join(self.LOCATION, "modules", "classify_chains.py")
@@ -312,7 +317,7 @@ class Toga:
             import pandas
             import xgboost
             import joblib
-            import bsddb3
+            import h5py
         except ImportError:
             eprint("Warning! Some of the required packages are not installed.")
             imports_not_found = True
@@ -429,14 +434,18 @@ class Toga:
         # 11) merge logs containing information about skipped genes,transcripts, etc.
         self.__merge_rejection_logs()
         # Everything is done
+
         self.__time_mark("Everything is done")
+        if not self.cesar_ok_merged:
+            print("PLEASE NOTE: SOME CESAR JOBS CRASHED")
+            print("RESULTS ARE LIKELY INCOMPLETE")
         self.die(f"Done! Estimated time: {dt.now() - self.t0}", rc=0)
 
     def __make_indexed_chain(self):
         """Make chain index file."""
         # make *.bb file
         eprint("make_indexed in progress...")
-        chain_bdb_index(self.chain, self.chain_index_file)
+        chain_hdf5_index(self.chain, self.chain_index_file)
         self.temp_files.append(self.chain_index_file)
         self.temp_files.append(self.chain)
         eprint("Indexed")
@@ -452,7 +461,7 @@ class Toga:
     def __make_indexed_bed(self):
         """Create gene_ID: bed line bdb indexed file."""
         eprint("index_bed in progress...")
-        bed_bdb_index(self.ref_bed, self.index_bed_file)
+        bed_hdf5_index(self.ref_bed, self.index_bed_file)
         self.temp_files.append(self.index_bed_file)
         eprint("Indexed")
 
@@ -498,6 +507,9 @@ class Toga:
         rc = subprocess.call(nf_cmd, shell=True, cwd=nf_project_path)
         if rc != 0:
             self.die(f"Error! Process {nf_cmd} died")
+        if not self.keep_nf_logs:
+            # remove nextflow intermediate files
+            shutil.rmtree(nf_project_path)
 
     def __merge_chains_output(self):
         """Call parse results."""
@@ -590,6 +602,7 @@ class Toga:
         """
         # for each bucket I create a separate joblist and config file
         # different config files because different memory limits
+        project_paths = []  # dirs with logs
         processes = []  # keep subprocess objects here
         tmstmp = str(time.time()).split(".")[1]  # for project name
         # get a list of buckets
@@ -635,6 +648,7 @@ class Toga:
             # create project directory for logs
             nf_project_name = f"{self.project_name}_cesar_at_{tmstmp}_q_{b}"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
+            project_paths.append(nf_project_path)
             os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
             # create subprocess object
             nf_cmd = f"nextflow {self.NF_EXECUTE} " \
@@ -657,12 +671,16 @@ class Toga:
                 if running:
                     all_done = False
             if all_done:
-                print("All jobs succeeded!")
+                print("CESAR jobs done")
                 break
             else:
                 print(f"Iter {iter_num} waiting {ITER_DURATION * iter_num} seconds Not done")
                 time.sleep(ITER_DURATION)
                 iter_num += 1
+        if not self.keep_nf_logs:
+            # remove nextflow intermediate files
+            for path in project_paths:
+                shutil.rmtree(path)
 
 
     def __merge_cesar_output(self):
@@ -672,13 +690,26 @@ class Toga:
                                              "CESAR_MERGE.txt")
         self.temp_files.append(self.intermediate_bed)
 
-        merge_cesar_output(self.cesar_results,
-                           self.intermediate_bed,
-                           self.nucl_fasta,
-                           self.meta_data,
-                           merge_c_stage_skipped,
-                           self.prot_fasta,
-                           self.trash_exons)
+        all_ok = merge_cesar_output(self.cesar_results,
+                                    self.intermediate_bed,
+                                    self.nucl_fasta,
+                                    self.meta_data,
+                                    merge_c_stage_skipped,
+                                    self.prot_fasta,
+                                    self.trash_exons)
+        if all_ok:
+            # there are no empty output files
+            print("CESAR results merged")
+            self.cesar_ok_merged = True
+        else:
+            # there are some empty output files
+            # MAYBE everything is fine
+            # but need to notify user anyway
+            print("WARNING!\nSOME CESAR JOBS LIKELY CRASHED\n!")
+            print("RESULTS ARE LIKELY INCOMPLETE")
+            print("PLEASE SEE LOGS FOR DETAILS")
+            self.cesar_ok_merged = False
+
 
     def __transcript_quality(self):
         """Call module to get transcript quality."""
@@ -779,6 +810,8 @@ def parse_args():
                      help="Directory containing nextflow configuration files "
                           "for cluster, pls see nextflow_config_files/readme.txt "
                           "for details.")
+    app.add_argument("--do_not_del_nf_logs", "--nfnd", action="store_true",
+                     dest="do_not_del_nf_logs")
     # chain features related
     app.add_argument("--chain_jobs_num", "--chn", type=int, default=50,
                      help="Number of cluster jobs for extracting chain features. "

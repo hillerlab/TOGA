@@ -15,7 +15,6 @@ from datetime import datetime as dt
 from re import finditer, IGNORECASE
 from collections import defaultdict
 import ctypes
-import bsddb3
 from twobitreader import TwoBitFile
 from modules.common import parts, bedExtractIDText
 from modules.common import bedExtractID, chainExtractID
@@ -184,8 +183,8 @@ def read_bed(gene, bed_file):
     """Extract and parse gene-related bed track."""
     try:  # if it's berkeley db file
         bed_track_raw = bedExtractID(bed_file, gene)
-    except bsddb3.db.DBInvalidArgError:
-        # otherswise read as a text file
+    except OSError:
+        # h5df cannot open this file: this is likely a text file
         bed_track_raw= bedExtractIDText(bed_file, gene)
 
     # left CDS only
@@ -388,7 +387,7 @@ def prepare_exons_for_cesar(exon_seqs):
 def get_chain(chain_file, chain_id):
     """Return chain string according the parameters passed."""
     chain = None  # to calm IDE down
-    if chain_file.endswith(".bdb"):
+    if chain_file.endswith(".hdf5"):
         # we have bdb file; extract with BDB extractor
         chain = chainExtractID(chain_file, chain_id)
         return chain
@@ -1246,7 +1245,8 @@ def split_indexes(indexes):
 
 def extract_query_seq(codons_data):
     """Parse codons data."""
-    exon_to_seq = defaultdict(str)
+    exon_to_que_seq = defaultdict(str)
+    exon_to_ref_seq = defaultdict(str)
     exon_to_indexes = defaultdict(list)
 
     for codon_data in codons_data:
@@ -1256,16 +1256,24 @@ def extract_query_seq(codons_data):
         indexes = sorted(codon_data["que_coords"])
         if split == 0:
             # regular codon, nothing special
-            exon_to_seq[exon_num] += codon_data["que_codon"].replace("-", "")
+            exon_to_que_seq[exon_num] += codon_data["que_codon"]  # .replace("-", "")
+            exon_to_ref_seq[exon_num] += codon_data["ref_codon"]
             exon_to_indexes[exon_num].extend(indexes)
         else:
             # not a regular, split codon
-            to_prev_let = codon_data["que_codon"][:split].replace("-", "")
-            to_curr_let = codon_data["que_codon"][split:].replace("-", "")
+            to_prev_let = codon_data["que_codon"][:split]  # .replace("-", "")
+            to_curr_let = codon_data["que_codon"][split:]  #.replace("-", "")
+            to_prev_let_r = codon_data["ref_codon"][:split]  # .replace("-", "")
+            to_curr_let_r = codon_data["ref_codon"][split:]  #.replace("-", "")
             if len(to_prev_let) == 0 and len(to_curr_let) == 0:
+                # since I removed replace -> this branch is impossible
                 continue
-            exon_to_seq[exon_num - 1] += to_prev_let
-            exon_to_seq[exon_num] += to_curr_let
+            exon_to_que_seq[exon_num - 1] += to_prev_let
+            exon_to_que_seq[exon_num] += to_curr_let
+
+            exon_to_ref_seq[exon_num - 1] += to_prev_let_r
+            exon_to_ref_seq[exon_num] += to_curr_let_r
+    
             left_ind, right_ind = split_indexes(indexes)
             if len(left_ind) > 0 and len(right_ind) > 0:
                 exon_to_indexes[exon_num - 1].extend(left_ind)
@@ -1278,17 +1286,17 @@ def extract_query_seq(codons_data):
                 exon_to_indexes[exon_num - 1].extend(left_ind)
 
     empty_exons = set()
-    exon_nums = list(exon_to_seq.keys())
+    exon_nums = list(exon_to_que_seq.keys())
     for ex_num in exon_nums:
         # if exon in query contains only gaps, we need to keep it
         # to avoid ghost-exons in the future
-        seq = exon_to_seq[ex_num]
+        seq = exon_to_que_seq[ex_num].replace("-", "")
         if len(seq) > 0:
             continue
         empty_exons.add(ex_num)
         exon_to_indexes[ex_num] = [0]
-        exon_to_seq[ex_num] = "-"
-    return exon_to_seq, empty_exons, exon_to_indexes
+        exon_to_que_seq[ex_num] = "-"
+    return exon_to_que_seq, exon_to_ref_seq, empty_exons, exon_to_indexes
 
 
 def get_exon_num_corr(codons_data):
@@ -1325,7 +1333,7 @@ def check_codons_for_aa_sat(codons_data):
 def process_cesar_out(cesar_raw_out, target_exons, query_loci, inverts):
     """Extract data from raw cesar output."""
     raw_data = parts(cesar_raw_out.split("\n"), n=4)[:-1]
-    exon_queries, percIDs, blosums, query_coords, prot_seqs = {}, {}, {}, {}, {}
+    exon_queries, exon_refs, percIDs, blosums, query_coords, prot_seqs = {}, {}, {}, {}, {}, {}
     exon_num_corr = {}  # query exon num -> target exon nums
     aa_sat_seq = {}  # exon num -> no dels
 
@@ -1340,7 +1348,7 @@ def process_cesar_out(cesar_raw_out, target_exons, query_loci, inverts):
         # extract protein sequences also here, just to do it in one place
         part_pIDs, part_blosums, prot_seqs_part = compute_score(codons_data)
         prot_seqs[chain_id] = prot_seqs_part
-        exon_query_seqs, empty_q_exons, exon_query_inds = extract_query_seq(codons_data)
+        exon_query_seqs, exon_ref_seqs, empty_q_exons, exon_query_inds = extract_query_seq(codons_data)
         exon_num_corr[chain_id] = get_exon_num_corr(codons_data)
         aa_sat_part = check_codons_for_aa_sat(codons_data)
         aa_sat_seq[chain_id] = aa_sat_part
@@ -1364,10 +1372,11 @@ def process_cesar_out(cesar_raw_out, target_exons, query_loci, inverts):
             abs_coords[exon_num] = exon_grange
         # add to the global dicts
         exon_queries[chain_id] = exon_query_seqs
+        exon_refs[chain_id] = exon_ref_seqs
         percIDs[chain_id] = part_pIDs
         blosums[chain_id] = part_blosums
         query_coords[chain_id] = abs_coords
-    return exon_queries, percIDs, blosums, query_coords, exon_num_corr, prot_seqs, aa_sat_seq
+    return exon_queries, exon_refs, percIDs, blosums, query_coords, exon_num_corr, prot_seqs, aa_sat_seq
 
 
 def merge_regions(reg_list):
@@ -1402,15 +1411,10 @@ def arrange_output(gene, exon_seqs, query_exon_sequences, pIDs, pBl, all_query_c
     output = ""
     chain_to_excl = {}
 
-    # exon_seqs = cesar_target_seqs[chains[0]]
-    for exon_num, exon_seq in exon_seqs.items():
-        output += f">{gene} | {exon_num} | reference_exon\n"
-        # no need in dashes here
-        output += "{0}\n".format(exon_seq.replace("-", ""))
-
     for chain in chains:
         # output chain-by-chain
         query_seqs = query_exon_sequences[chain]
+        reference_seqs = exon_seqs[chain]
         query_pids = pIDs[chain]
         query_blosums = pBl[chain]
         q_to_t_num = ch_q_to_t_num[chain]
@@ -1425,6 +1429,7 @@ def arrange_output(gene, exon_seqs, query_exon_sequences, pIDs, pBl, all_query_c
         # and exon-by-exon
         for exon_num in exon_nums:
             # collect data for gene loss detector!
+            reference_seq = reference_seqs[exon_num]
             query_seq = query_seqs[exon_num]
             query_pid = query_pids[exon_num]
             query_blo = query_blosums[exon_num]
@@ -1446,6 +1451,9 @@ def arrange_output(gene, exon_seqs, query_exon_sequences, pIDs, pBl, all_query_c
                 for n_ in t_nums:
                     exon_to_inc[n_] = True if reg_data == "INC" else False
 
+            # add reference seq for this exon
+            ref_datum = f">{gene} | {exon_num} | {chain} | reference_exon\n{reference_seq}\n"
+            output += ref_datum
             # and then merge all this stuff altogether
             header = header_template.format(gene, exon_num, chain, coord, query_pid, query_blo,
                                             is_gap, exon_class, exp_reg[0], exp_reg[1], reg_data, is_paral)
@@ -1489,8 +1497,8 @@ def save_prot(gene_name, prot_seq, prot_out):
             que_part = seq_collection[exon]["que"]
             ref_seqs.append(ref_part)
             que_seqs.append(que_part)
-        ref_aa_seq = "".join(ref_seqs).replace("-", "")
-        que_aa_seq = "".join(que_seqs).replace("-", "")
+        ref_aa_seq = "".join(ref_seqs)
+        que_aa_seq = "".join(que_seqs)
         # do not allow 0-length sequences, otherwise it will ruin everything
         que_aa_seq = que_aa_seq if len(que_aa_seq) > 0 else "X"
         f.write(f">{proj_name} | PROT | REFERENCE\n")
@@ -1568,6 +1576,7 @@ def append_U12(u12_base, gene, ref_ss_data):
 def realign_exons(args):
     """Entry point."""
     memlim = float(args["memlim"]) if args["memlim"] != "Auto" else None
+    os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
     # read gene-related data
     bed_data = read_bed(args["gene"], args["bdb_bed_file"])  # extract gene data from bed file
     # parse gene bed-track: get exon coordinates, sequences and splice sites
@@ -1714,13 +1723,14 @@ def realign_exons(args):
     # process the output, extract different features per exon
     proc_out = process_cesar_out(cesar_raw_out, exon_sequences, query_loci, inverts)
     query_exon_sequences = proc_out[0]  # sequences of predicted exons in query
-    pIDs = proc_out[1]  # nucleotide %IDs
-    pBl = proc_out[2]  # BLOSUM scores for protein sequences
-    query_coords = proc_out[3]  # genomic coordinates in the query
-    exon_num_corr = proc_out[4]  # correspondence between exon numbers in ref / query
+    ref_exon_sequences_ali = proc_out[1]  # reference sequences -> aligned
+    pIDs = proc_out[2]  # nucleotide %IDs
+    pBl = proc_out[3]  # BLOSUM scores for protein sequences
+    query_coords = proc_out[4]  # genomic coordinates in the query
+    exon_num_corr = proc_out[5]  # correspondence between exon numbers in ref / query
                                  # in case of intron deletion
-    prot_s = proc_out[5]  # protein sequences in query
-    aa_cesar_sat = proc_out[6]  # says whether an exon has outstanding quality
+    prot_s = proc_out[6]  # protein sequences in query
+    aa_cesar_sat = proc_out[7]  # says whether an exon has outstanding quality
     aa_eq_len = aa_eq_len_check(exon_sequences, query_exon_sequences)
     
     if chains:
@@ -1728,7 +1738,7 @@ def realign_exons(args):
         # another check for exceptional exons
         chain_exon_class = get_a_plus(chain_exon_class, aa_cesar_sat, aa_block_sat_chain, aa_eq_len)
     # time to arrange all these data altogether
-    final_output, chain_ex_inc = arrange_output(args["gene"], exon_sequences, query_exon_sequences,
+    final_output, chain_ex_inc = arrange_output(args["gene"], ref_exon_sequences_ali, query_exon_sequences,
                                                 pIDs, pBl, query_coords, chain_exon_gap,
                                                 chain_exon_class, chain_exon_exp_reg, exon_num_corr,
                                                 chain_missed, args['paral'])

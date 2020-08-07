@@ -73,6 +73,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
     meta_summary = []
     prot_summary = []
     skipped = []
+    all_ok = True
 
     task_size = len(bdbs)
     # extract data for all the files
@@ -97,6 +98,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         if len(bed_lines) == 0:
             # actually should not happen, but can
             eprint(f"Warning! {bdb_file} is empty")
+            all_ok = False
             continue  # it is empty
         
         # append data to lists
@@ -133,6 +135,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         f = open(output_trash, "w")
         f.write("".join(trash_summary))
         f.close()
+    return all_ok
 
 
 def main():

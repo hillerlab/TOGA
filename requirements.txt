@@ -4,4 +4,4 @@ pandas
 xgboost
 scikit-learn
 joblib
-bsddb3
+h5py

@@ -92,7 +92,7 @@ def check_args(chain, genes, chain_file, bed_file, verbose_level, work_data, res
         eprint("You set {0} genes, {1} extracted".format(len(raw_genes), len(bed_lines.split("\n")[:-1])))
         eprint("Genes missed:\n{0}".format(",".join([x for x in raw_genes if x not in work_data["genes"]])))
 
-    work_data["chain"] = chainExtractID(chain_file, int(chain))
+    work_data["chain"] = chainExtractID(chain_file, chain)
 
     # parse chain header
     chain_header = work_data["chain"].split("\n")[0].split()
@@ -418,6 +418,7 @@ def main():
     """Entry point."""
     t0 = dt.now()
     args = parse_args()
+    os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
     # read input: meaning chain ids and gene names
     # there are 2 ways how they could be provided:
     # 1) Just a file, each line contains chain id and genes

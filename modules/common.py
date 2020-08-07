@@ -1,8 +1,8 @@
 """TOGA common functions."""
 # in progress
 import sys
-import sqlite3
-import bsddb3
+import numpy as np
+import h5py
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -17,20 +17,29 @@ def parts(lst, n=3):
 
 def bedExtractID(index_file, gene_ids):
     """Extract a bed track from a BDB file."""
-    db = bsddb3.btopen(index_file, "r")
+    h = h5py.File(index_file, "r")
     # accept both a list of gene_ids (type=list) and a single gene_id (type=str)
     if type(gene_ids) != str:
-        keys = [str(gene_id).encode() for gene_id in gene_ids]
+        keys = [str(gene_id) for gene_id in gene_ids]
     else:
-        keys = [str(gene_ids).encode()]
-    # keys are a list for consistency (even if a single gene id provided)
-    bed_lines = "".join([db.get(key).decode("utf-8") for key in keys if db.get(key)])
-    db.close()
+        keys = [str(gene_ids), ]
+    bed_lines = []
+    for key in keys:
+        try:  # catch keyerror
+            b_bed_line = h[key][()]
+            u_type = f"U{len(b_bed_line)}"
+            bed_line = b_bed_line.astype(u_type)
+            bed_lines.append(bed_line)
+        except KeyError:
+            # a single item not found
+            # crush only if ALL tracks not found
+            continue
+    h.close()
     if len(bed_lines) == 0:
         # if nothing found -> there must be an error
         sys.stderr.write("Error! Bed tracks not found! (bedExtractID)")
         sys.exit(1)
-    return bed_lines
+    return "".join(bed_lines)
 
 
 def bedExtractIDText(bed_file, gene_ids_param):
@@ -124,15 +133,19 @@ def make_cds_track(line):
 
 def chainExtractID(index_file, chain_id):
     """Extract chain from a BDB file by id."""
-    db = bsddb3.btopen(index_file, "r")
-    key = str(chain_id).encode()
-    chain_data_enc = db.get(key)
-    if not chain_data_enc:
+    h = h5py.File(index_file, "r")
+    try:  # catch keyerror
+        # I save keys as strings
+        # TODO: rewrite as uint64
+        b_chain_line = h[str(chain_id)][()]
+        u_type = f"U{len(b_chain_line)}"
+        chain_data = b_chain_line.astype(u_type)
+    except KeyError:
         # throw an error if a chain with given ID not found
         sys.stderr.write(f"Error! Chain {chain_id} not found in the bdb. Abort\n")
         sys.exit(1)
-    chain_data = chain_data_enc.decode("utf-8")
-    db.close()
+    finally:
+        h.close()
     return chain_data
 
 

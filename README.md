@@ -93,33 +93,13 @@ This will take about 20 minutes on 500 cores cluster.
 ### Troubleshooting
 
 TOGA's configure script automatically tries to install all dependencies.
-If you encounter error messages related to these three dependencies, please see below for help.
+If you encounter error messages related to these two dependencies, please see below for help.
 
-1) BerkeleyDB (database itself and python package)
-2) XGBoost
-3) Nextflow
+1) XGBoost
+2) Nextflow
 
-#### BerkeleyDB
-
-If the configure script shows an error like:
-
-```txt
-Complete output from command python setup.py egg_info:
-Can't find a local Berkeley DB installation.
-(suggestion: try the --berkeley-db=/path/to/bsddb option)
-Command "python setup.py egg_info" failed with error code 1
-```
-
-Please have a look at these links for a likely solution:
-
-- for Linux:
-  - <https://github.com/DOsinga/deep_learning_cookbook/issues/59>
-  - <https://88plug.com/linux/install-berkeley-4-8-db-libs-on-ubuntu-16-04/>
-- for MacOS:
-  - <https://stackoverflow.com/questions/16003224/installing-bsddb-package-python>
-  - <https://github.com/scrapy-plugins/scrapy-deltafetch/issues/33>
-
-Most likely you have a berkeleyDB version incompatible with python library.
+Do note that previous TOGA versions used BerkeleyDB.
+Now it has been replaced by HDF5.
 
 #### XGboost
 
@@ -132,6 +112,8 @@ Command "/usr/bin/python3 -u -c "import setuptools, tokenize;__file__='/genome/s
 One of solutions is to compile XGBoost from sources, as explained here:
 
 <https://xgboost.readthedocs.io/en/latest/build.html>
+
+Please note that xgboost requires CMake for build.
 
 #### Nextflow
 

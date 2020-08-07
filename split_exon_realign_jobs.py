@@ -369,6 +369,7 @@ def main():
     """Entry point."""
     t0 = dt.now()
     args = parse_args()
+    os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
 
     # as default we create CESAR jobs for chains with "orth" or "trans" class
     # but user could select another set of chain classes

@@ -2,6 +2,7 @@
 """Create processed pseudogenes annotation track."""
 import argparse
 import sys
+import os
 from collections import defaultdict
 try:
     from modules.common import chainExtractID
@@ -118,6 +119,7 @@ def save_bed(bed_lines, bed_file):
 def create_ppgene_track(chain_class_file, chain_bdb, bed_bdb, output):
     """Create ppgene track."""
     # get processed pseudogene chains
+    os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
     gene_to_pp_chains = get_pp_gene_chains(chain_class_file)
     # for each gene-chain pair get corresponding region in query
     projection_to_reg = get_corr_q_regions(gene_to_pp_chains, chain_bdb, bed_bdb)

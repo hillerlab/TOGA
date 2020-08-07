@@ -10,7 +10,8 @@ import os
 import re
 from copy import copy
 from collections import defaultdict
-import bsddb3
+import numpy as np
+import h5py
 
 # Mutation classes
 EX_DEL = "Deleted exon"
@@ -464,7 +465,8 @@ def parse_args():
                      help="If you provide geneID instead of transcript, please also provide "
                           "an isoforms file.")
     app.add_argument("--multi_species", "--ms", action="store_true", dest="multi_species",
-                     help="Multi-species plot. Pls see README for details")
+                     help="Please see documentation which is not yet written")
+    app.add_argument("--alt_template", "-a", help="Alternative template path")
     if len(sys.argv) < 4:
         app.print_help()
         sys.exit(0)
@@ -478,13 +480,16 @@ def parse_args():
 
 def get_transcript(bed_file, trans):
     """Find the requested transcript."""
-    if bed_file.endswith(".bdb"):
-        db = bsddb3.btopen(bed_file, "r")
-        key = trans.encode()
-        val = db.get(key)
-        if val is None:
-            return None
-        line_req = val.decode("utf-8")
+    if bed_file.endswith(".hdf5"):
+        # TODO: smarter check for hdf5 file
+        h = h5py.File(bed_file, "r")
+        try:
+            b_bed_file = h[str(trans)][()]
+            u_type = f"U{len(b_bed_file)}"
+            line_req = b_bed_file.astype(u_type)
+        except KeyError:
+            line_req = None
+        h.close()
         return line_req
     else:
         f = open(bed_file, "r")
@@ -499,13 +504,17 @@ def get_transcript(bed_file, trans):
 
 def get_mut_list(mut_file, trans):
     """Get a list of mutations."""
-    if mut_file.endswith(".bdb"):
-        # TODO: a smarter check for bdb file
-        db = bsddb3.btopen(mut_file, "r")
-        key = trans.encode()
-        val = db.get(key, b"").decode("utf-8")
-        db.close()
-        trans_related_lines = val.split("\n")
+    if mut_file.endswith(".hdf5"):
+        # TODO: a smarter check for hdf5 file
+        h = h5py.File(mut_file, "r")
+        try:
+            b_mut_lines = h[trans][()]
+            u_type = f"U{len(b_mut_lines)}"
+            trans_lines_str = b_mut_lines.astype(u_type)
+            trans_related_lines = trans_lines_str.split("\n")
+        except KeyError:
+            trans_related_lines = ["", ]  
+        h.close()
         return trans_related_lines
     else:  # ordinary text file
         f = open(mut_file, "r")
@@ -695,12 +704,14 @@ def prepare_mut_data(mut_lines, sp, rel_starts, chain_lim=None):
     return to_ret
 
 
-def write_pic(svg_path, filebuffer, picture_width, picture_height, vbox_h, mcv):
+def write_pic(svg_path, filebuffer, picture_width, picture_height, vbox_h, mcv, alt_template):
     """Write picture data."""
     if os.path.isfile(TEMPLATE_PATH_1):
         template_file = TEMPLATE_PATH_1
     elif os.path.isfile(TEMPLATE_PATH_2):
         template_file = TEMPLATE_PATH_2
+    elif alt_template:
+        template_file = alt_template
     else:
         sys.exit(f"Error! Cannot locate svg template")
     with open(template_file, "r") as f:
@@ -720,9 +731,9 @@ def write_pic(svg_path, filebuffer, picture_width, picture_height, vbox_h, mcv):
     rep_d = {re.escape(k): v for k, v in rep.items()}
     pattern = re.compile("|".join(rep_d.keys()))
     text = pattern.sub(lambda m: rep[re.escape(m.group(0))], template)
-    f = open(svg_path, "w")
+    f = open(svg_path, "w") if svg_path != "stdout" else sys.stdout
     f.write(text)
-    f.close()
+    f.close() if svg_path != "stdout" else None
 
 
 def trans_data_direction(trans_data):
@@ -843,12 +854,18 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             comp_ids_num = defect_line_dat[5].split("_")[1].split(",")
             fs_1_id = f"FS_{comp_ids_num[0]}"
             fs_2_id = f"FS_{comp_ids_num[1]}"
-            data1, data2 = speciesdata[fs_1_id], speciesdata[fs_2_id]
-            start = (exons[2 * int(data1[0]) - 1].pos[0] + data1[2] * EXON_BASE_SIZE,
-                     exons[2 * int(data1[0]) - 1].pos[1])
-            end = (exons[2 * int(data2[0]) - 1].pos[0] + data2[1] * EXON_BASE_SIZE,
-                   exons[2 * int(data2[0]) - 1].pos[1])
-            comp_substrings.append(drawCompIndel(start, end))
+            try:
+                data1, data2 = speciesdata[fs_1_id], speciesdata[fs_2_id]
+                start = (exons[2 * int(data1[0]) - 1].pos[0] + data1[2] * EXON_BASE_SIZE,
+                        exons[2 * int(data1[0]) - 1].pos[1])
+                end = (exons[2 * int(data2[0]) - 1].pos[0] + data2[1] * EXON_BASE_SIZE,
+                    exons[2 * int(data2[0]) - 1].pos[1])
+                comp_substrings.append(drawCompIndel(start, end))
+            except KeyError:
+                # TODO: check why FS2 could be deleted from list
+                # if it belongs to a deleted exon: why conpensation is
+                # still there?
+                pass
             continue
         # add some stuff
         # deal with SSM
@@ -896,7 +913,11 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             speciesdata[mut_id] = (exonnumber, 0, 0)
         # draw stop
         elif defect_class == STOP:
-            codon = mut.split('->')[1]
+            if "->" in mut:
+                codon = mut.split('->')[1]
+            else:
+                # split stop codon
+                codon = mut
             mouseover = None
             exon.add_stop_codon(pos, codon, mouseover, is_masked)
         else:
@@ -1014,7 +1035,8 @@ def main():
 
     # save figure
     mouse_counter_val = MouseOver.id_counter + 1
-    write_pic(args.output, filebuffer, picture_width, picture_height, vbox_h, mouse_counter_val)
+    write_pic(args.output, filebuffer, picture_width,
+              picture_height, vbox_h, mouse_counter_val, args.alt_template)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,8 @@
 """Make mutations index file."""
 import sys
 from collections import defaultdict
-import bsddb3
+import numpy as np
+import h5py
 
 MUT_LINE_FIELDS = 8
 
@@ -23,17 +24,17 @@ def make_mut_index(in_txt, out_bdb):
         lines_merge = "".join(v)
         trans_to_text[k] = lines_merge
 
-    db = bsddb3.btopen(out_bdb, "w")
+    h = h5py.File(out_bdb, "w")
     sys.stderr.write("Writing to BDB...\n")
     for k, v in trans_to_text.items():
-        db[k.encode()] = v.encode()
-    db.close()
+        h.create_dataset(k, data=np.string_(v))
+    h.close()
 
 
 if __name__ == "__main__":
     try:
         in_txt = sys.argv[1]
-        out_bdb = sys.argv[2]
+        out_db = sys.argv[2]
     except IndexError:
         sys.exit(f"Usage: {sys.argv[0]} [in_muts] [out_bdb]")
-    make_mut_index(in_txt, out_bdb)
+    make_mut_index(in_txt, out_db)
