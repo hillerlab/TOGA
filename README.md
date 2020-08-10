@@ -28,7 +28,8 @@ curl -fsSL https://get.nextflow.io | bash
 conda install -c bioconda nextflow
 ```
 
-If you've donwnloaded nextflow using curl, then move the nextflow file to a directory accessible by $PATH.
+If you've donwnloaded nextflow using curl, move the nextflow executable to a
+directory accessible by your $PATH variable.
 
 To get TOGA do the following:
 
@@ -36,7 +37,12 @@ To get TOGA do the following:
 # clone the repository
 git clone https://github.com/hillerlab/TOGA.git
 cd TOGA
-# install CESAR, compile C code, install necessary libraries
+# install necessary python packages:
+python3 -m pip install -r requirements.txt --user
+# call configure to:
+# 1) train xgboost models
+# 2) download CESAR2.0
+# 3) compile C code
 ./configure.sh
 # run a test, it will take a couple of minutes
 ./run_test.sh micro
