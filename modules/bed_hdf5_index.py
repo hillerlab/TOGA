@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Convert text bed file to hdf5.
 
-TOGA uses HDF5 to index chain and bed files.
-These files could be quite big (especially chain files).
-Search for a particular chain of gene in the text file
-might take too long. HDF5 helps to speed it up.
+This allows TOGA to extract bed track
+for a particular transcript ID immediately.
 """
 import sys
 import os

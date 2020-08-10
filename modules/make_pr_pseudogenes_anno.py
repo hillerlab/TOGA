@@ -19,9 +19,11 @@ def parse_args():
     """Parse args."""
     app = argparse.ArgumentParser()
     app.add_argument("chain_classification", help="Chains classification file.")
-    app.add_argument("chain_bdb", help="Chain bdb file")
-    app.add_argument("bed_bdb", help="Bed index file")
+    app.add_argument("chain_file", help="Chain file")
+    app.add_argument("bed_db", help="Bed indexed file")
     app.add_argument("output", help="Bed-9 output")
+    app.add_argument("--verbose", "-v", action="store_true", dest="verbose",
+                     help="Enable verbosity")
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -29,7 +31,13 @@ def parse_args():
     return args
 
 
-def get_pp_gene_chains(chain_class_file):
+def verbose(msg):
+    """Verbose message."""
+    sys.stderr.write(str(msg))
+    sys.stderr.write("\n")
+
+
+def get_pp_gene_chains(chain_class_file, v=False):
     """Get gene: pp chains dict."""
     gene_to_pp_chains = defaultdict(list)  # init the dict
     f = open(chain_class_file, "r")  # open file with classifications
@@ -48,10 +56,25 @@ def get_pp_gene_chains(chain_class_file):
         pp_genes = [int(x) for x in pp_genes_field.split(",") if x != ""]
         gene_to_pp_chains[trans] = pp_genes
     f.close()
+    if v:
+        verbose(f"Extracted {len(gene_to_pp_chains)} genes with proc pseudogenes")
     return gene_to_pp_chains
 
 
-def get_corr_q_regions(gene_to_pp_chains, chain_bdb, bed_bdb):
+def extract_chain(chain_file, chain_dict, chain):
+    """Extract chain string.
+
+    We have: chain file, chain_id, start byte and offset.
+    """
+    f = open(chain_file, "rb")
+    start, offset = chain_dict.get(int(chain))
+    f.seek(start)  # jump to start_byte_position
+    chain = f.read(offset).decode("utf-8")  # read OFFSET bytes
+    f.close()
+    return chain
+
+
+def get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v=False):
     """Create projection: q region dict.
     
     We assume the following:
@@ -59,8 +82,11 @@ def get_corr_q_regions(gene_to_pp_chains, chain_bdb, bed_bdb):
     2) ppgene chain covers the ppgene and nothing else.
     """
     proj_to_q_reg = {}  # save results here
-    for gene, chains in gene_to_pp_chains.items():
+    task_size = len(gene_to_pp_chains)
         # iterate over gene: [chain ids] elements
+    for num, (gene, chains) in enumerate(gene_to_pp_chains.items()):
+        if v:
+            verbose(f"# Processing gene {gene} {num} / {task_size} with {len(chains)} chains")
         # extract gene track
         gene_track = bedExtractID(bed_bdb, gene).rstrip().split("\t")
         gene_strand = gene_track[5]  # we need the strand only
@@ -68,7 +94,8 @@ def get_corr_q_regions(gene_to_pp_chains, chain_bdb, bed_bdb):
             # we have a list of chains
             projection = f"{gene}.{chain_id}"  # name this projection as usual
             # extract the chain and parse it's header
-            chain_body = chainExtractID(chain_bdb, chain_id)
+            # chain_body = chainExtractID(chain_bdb, chain_id)
+            chain_body = extract_chain(chain_file, chain_dict, chain_id)
             chain_header = chain_body.split("\n")[0].split()
             # we need chrom, start, end, strand and q_size
             q_chrom = chain_header[7]
@@ -116,20 +143,48 @@ def save_bed(bed_lines, bed_file):
     f.close()
 
 
-def create_ppgene_track(chain_class_file, chain_bdb, bed_bdb, output):
+def load_chain_dict(chain_index_file):
+    """Load dict chain ID: position in the file."""
+    # TODO: put in common dir
+    ans = {}
+    if not os.path.isfile(chain_index_file):
+        sys.exit(f"Error! File {chain_index_file} not found.")
+    f = open(chain_index_file, "r")
+    # tab-separated file
+    # chain_ID, start_byte, offset
+    for line in f:
+        line_data = line.rstrip().split("\t")
+        chain_id = int(line_data[0])
+        start_byte = int(line_data[1])
+        offset = int(line_data[2])
+        val = (start_byte, offset)
+        ans[chain_id] = val
+    f.close()
+    return ans
+
+
+def create_ppgene_track(chain_class_file, chain_file, bed_bdb, output, v=None):
     """Create ppgene track."""
     # get processed pseudogene chains
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
-    gene_to_pp_chains = get_pp_gene_chains(chain_class_file)
+    verbose("Loading chains index...") if v else None
+    index_file = chain_file.replace(".chain", ".chain_ID_position")
+    chain_dict = load_chain_dict(index_file)
+    verbose("Extracting pr pseudogene chains") if v else None
+    gene_to_pp_chains = get_pp_gene_chains(chain_class_file, v)
     # for each gene-chain pair get corresponding region in query
-    projection_to_reg = get_corr_q_regions(gene_to_pp_chains, chain_bdb, bed_bdb)
+    verbose("Extracting corresponding regions") if v else None
+    projection_to_reg = get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v)
     # convert the regions to bed-9 formatted-lines
+    verbose("Saving results") if v else None
     bed_lines = make_bed_lines(projection_to_reg)
+    verbose(f"There are {len(bed_lines)} bed lines") if v else None
     save_bed(bed_lines, output)  # write lines to the output file
 
 if __name__ == "__main__":
     args = parse_args()
     create_ppgene_track(args.chain_classification,
-                        args.chain_bdb,
-                        args.bed_bdb,
-                        args.output)
+                        args.chain_file,
+                        args.bed_db,
+                        args.output,
+                        v=args.verbose)

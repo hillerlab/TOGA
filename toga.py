@@ -16,7 +16,7 @@ import shutil
 from twobitreader import TwoBitFile
 from modules.filter_bed import prepare_bed_file
 from modules.bed_hdf5_index import bed_hdf5_index
-from modules.chain_hdf5_index import chain_hdf5_index
+from modules.chain_bst_index import chain_bst_index
 from modules.merge_chains_output import merge_chains_output
 from modules.make_pr_pseudogenes_anno import create_ppgene_track
 from modules.merge_cesar_output import merge_cesar_output
@@ -57,7 +57,7 @@ class Toga:
         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
 
         eprint("mkdir_and_move_chain in progress...")
-        chain_basename = os.path.basename(args.chain_initial)
+        chain_basename = os.path.basename(args.chain_input)
 
         # create project dir
         self.project_name = chain_basename.split(".")[1] if not args.project_name \
@@ -73,23 +73,28 @@ class Toga:
         os.mkdir(self.rejected_dir) if not os.path.isdir(self.rejected_dir) else None
 
         # filter chain in this folder
-        chain_filename = chain_basename.replace(".gz", "")  # cut gz
-        self.chain = os.path.join(self.wd, chain_filename)
-        # there is an assumption that people will usually use .chain file
-        # extension for chain files
-        index_file = os.path.basename(self.chain).replace(".chain", ".hdf5")
-        self.chain_index_file = os.path.join(self.wd, index_file)
+        g_ali_basename = "genome_alignment"
+        self.chain_file = os.path.join(self.wd, f"{g_ali_basename}.chain")
+        # there is an assumption that chain file has .chain extension
+        # chain indexing was a bit problematic: (i) bsddb3 fits perfectly but is very
+        # painful to install, (ii) sqlite is also fine but might be unfunctional on some
+        # cluster file systems, so we create chain_ID: (start_byte, offset) dictionary for
+        # instant extraction of a particular chain from the chain file
+        # we save these dictionaries into two files: a text file (tsv) and binary file with BST
+        # depending on the case we will use both (for maximal performance)
+        self.chain_index_file = os.path.join(self.wd, f"{g_ali_basename}.bst")
+        self.chain_index_txt_file = os.path.join(self.wd, f"{g_ali_basename}.chain_ID_position")
 
         # make the command, prepare the chain file
         if chain_basename.endswith(".gz"):  # version for gz
-            chain_filter_cmd = f"gzip -dc {args.chain_initial} | "\
+            chain_filter_cmd = f"gzip -dc {args.chain_input} | "\
                                f"{self.CHAIN_SCORE_FILTER} stdin "\
-                               f"{args.min_score} > {self.chain}"
+                               f"{args.min_score} > {self.chain_file}"
         elif args.no_chain_filter:  # it is .chain and score filter is not required
-            chain_filter_cmd = f"rsync -a {args.chain_initial} {self.chain}"
+            chain_filter_cmd = f"rsync -a {args.chain_input} {self.chain_file}"
         else:  # it is .chain | score filter required
-            chain_filter_cmd = f"{self.CHAIN_SCORE_FILTER} {args.chain_initial} "\
-                               f"{args.min_score} > {self.chain}"
+            chain_filter_cmd = f"{self.CHAIN_SCORE_FILTER} {args.chain_input} "\
+                               f"{args.min_score} > {self.chain_file}"
 
         # filter chains with score < threshold
         self.__call_proc(chain_filter_cmd, "Please check if you use a proper chain file.")
@@ -103,7 +108,7 @@ class Toga:
         bed_filt_rejected = os.path.join(self.rejected_dir,
                                          bed_filt_rejected_file)
         # keeping UTRs!
-        prepare_bed_file(args.bed_initial,
+        prepare_bed_file(args.bed_input,
                          self.ref_bed,
                          save_rejected=bed_filt_rejected,
                          only_chrom=args.limit_to_ref_chrom)
@@ -167,7 +172,7 @@ class Toga:
                           self.q_2bit,
                           self.cesar_binary,
                           self.ref_bed,
-                          self.chain,
+                          self.chain_file,
                           self.isoforms]
         for item in files_to_check:
             if not item:
@@ -281,12 +286,14 @@ class Toga:
         self.LOCATION = os.path.dirname(__file__)  # folder containing pipeline scripts
         self.CONFIGURE = os.path.join(self.LOCATION, "configure.sh")
         self.CHAIN_SCORE_FILTER = os.path.join(self.LOCATION, "modules", "chain_score_filter")
-        self.CHAIN_COORDS_CONVERT_LIB = os.path.join(self.LOCATION, "modules",
+        self.CHAIN_COORDS_CONVERT_LIB = os.path.join(self.LOCATION,
+                                                     "modules",
                                                      "chain_coords_converter_slib.so")
         self.EXTRACT_SUBCHAIN_LIB = os.path.join(self.LOCATION, "modules", "extract_subchain_slib.so")
         self.CHAIN_FILTER_BY_ID = os.path.join(self.LOCATION, "modules", "chain_filter_by_id")
 
-        self.CHAIN_BDB_INDEX = os.path.join(self.LOCATION, "modules", "chain_hdf5_index.py")
+        self.CHAIN_BDB_INDEX = os.path.join(self.LOCATION, "modules", "chain_bst_index.py")
+        self.CHAIN_INDEX_SLIB = os.path.join(self.LOCATION, "modules", "chain_bst_lib.so")
         self.BED_BDB_INDEX = os.path.join(self.LOCATION, "modules", "bed_hdf5_index.py")
         self.SPLIT_CHAIN_JOBS = os.path.join(self.LOCATION, "split_chain_jobs.py")
         self.MERGE_CHAINS_OUTPUT = os.path.join(self.LOCATION, "modules", "merge_chains_output.py")
@@ -307,7 +314,8 @@ class Toga:
         c_not_compiled = any(os.path.isfile(f) is False for f in [self.CHAIN_SCORE_FILTER,
                                                                   self.CHAIN_COORDS_CONVERT_LIB,
                                                                   self.CHAIN_FILTER_BY_ID,
-                                                                  self.EXTRACT_SUBCHAIN_LIB])
+                                                                  self.EXTRACT_SUBCHAIN_LIB,
+                                                                  self.CHAIN_INDEX_SLIB])
         if c_not_compiled:
             eprint("Warning! C code is not compiled, trying to compile...")
         imports_not_found = False
@@ -417,7 +425,7 @@ class Toga:
         self.__split_cesar_jobs()
         self.__time_mark("Split cesar jobs done")
         # 6) Create bed track for processed pseudogenes
-        self.__get_proc_pseudogenes_track()
+        # self.__get_proc_pseudogenes_track()
         # 7) call CESAR jobs: parallel step
         self.__run_cesar_jobs()
         self.__time_mark("Done cesar jobs")
@@ -432,7 +440,7 @@ class Toga:
         # 10) classsify genes as one2one, one2many, etc orthologs
         self.__orthology_type_map()
         # 11) merge logs containing information about skipped genes,transcripts, etc.
-        self.__merge_rejection_logs()
+        self.__merge_split_files()
         # Everything is done
 
         self.__time_mark("Everything is done")
@@ -445,9 +453,12 @@ class Toga:
         """Make chain index file."""
         # make *.bb file
         eprint("make_indexed in progress...")
-        chain_hdf5_index(self.chain, self.chain_index_file)
+        chain_bst_index(self.chain_file,
+                        self.chain_index_file,
+                        txt_index=self.chain_index_txt_file)
         self.temp_files.append(self.chain_index_file)
-        self.temp_files.append(self.chain)
+        self.temp_files.append(self.chain_file)
+        self.temp_files.append(self.chain_index_txt_file)
         eprint("Indexed")
 
     def __time_mark(self, msg):
@@ -480,7 +491,7 @@ class Toga:
         self.temp_files.append(self.chain_class_results)
         self.temp_files.append(self.chain_cl_jobs_combined)
 
-        split_jobs_cmd = f"{self.SPLIT_CHAIN_JOBS} {self.chain} " \
+        split_jobs_cmd = f"{self.SPLIT_CHAIN_JOBS} {self.chain_file} " \
                          f"{self.ref_bed} {self.index_bed_file} " \
                          f"--jobs_num {self.chain_jobs} " \
                          f"--jobs {ch_cl_jobs} " \
@@ -541,7 +552,7 @@ class Toga:
         """Create annotation of processed genes in query."""
         eprint("Creatrng processed pseudogenes track.")
         proc_pgenes_track = os.path.join(self.wd, "proc_pseudogenes.bed")
-        create_ppgene_track(self.orthologs, self.chain_index_file, self.index_bed_file, proc_pgenes_track)
+        create_ppgene_track(self.orthologs, self.chain_file, self.index_bed_file, proc_pgenes_track)
 
     def __split_cesar_jobs(self):
         """Call split_exon_realign_jobs.py."""
@@ -747,34 +758,42 @@ class Toga:
                            loss_data=self.loss_summ,
                            save_skipped=skipped_ref_trans)
 
-    def __merge_rejection_logs(self):
-        """Merge files containing data about rejected transcripts/genes."""
-        rejected_log = os.path.join(self.wd,
-                                    "genes_rejection_reason.tsv")
-
-        # sanity checks
-        if not os.path.isdir(self.rejected_dir):
-            sys.exit(f"Error! {self.rejected_dir} is not a directory")
-        log_files = os.listdir(self.rejected_dir)
-        if len(self.rejected_dir) == 0:
-            sys.exit(f"Error! {self.rejected_dir} is empty")
-
-        buffer = open(rejected_log, "w")  # write everything there
-        for log_file in log_files:
-            log_path = os.path.join(self.rejected_dir, log_file)
-            with open(log_path, "r") as f:
+    @staticmethod
+    def __merge_dir(dir_name, output):
+        """Merge all files in a directory into one."""
+        files_list = os.listdir(dir_name)
+        if len(files_list) == 0:
+            sys.exit(f"Error! {dir_name} is empty")
+        buffer = open(output, "w")
+        for filename in files_list:
+            path = os.path.join(dir_name, filename)
+            with open(path, "r") as f:
                 content = [x for x in f.readlines() if x != "\n"]
-            buffer.write("".join(content))
+            lines = "".join(content)
+            buffer.write(lines)
         buffer.close()
+        shutil.rmtree(dir_name)
+
+    def __merge_split_files(self):
+        """Merge intermediate/temp files."""
+        # merge rejection logs
+        rejected_log = os.path.join(self.wd, "genes_rejection_reason.tsv")
+        self.__merge_dir(self.rejected_dir, rejected_log)
+        # save inact mutations data
+        inact_mut_file = os.path.join(self.wd, "inact_mut_data.txt")
+        self.__merge_dir(self.gene_loss_data, inact_mut_file)
+        # save CESAR outputs
+        cesar_results_merged = os.path.join(self.wd, "cesar_results.txt")
+        self.__merge_dir(self.cesar_results, cesar_results_merged)
 
 
 def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
-    app.add_argument("chain_initial", type=str,
+    app.add_argument("chain_input", type=str,
                      help="Chain file. Extensions like "
                           "FILE.chain or FILE.chain.gz are applicable.")
-    app.add_argument("bed_initial", type=str,
+    app.add_argument("bed_input", type=str,
                      help="Bed file with annotations for the target genome.")
     app.add_argument("tDB", default=None,
                      help="Reference genome sequence in 2bit format.")
@@ -813,9 +832,9 @@ def parse_args():
     app.add_argument("--do_not_del_nf_logs", "--nfnd", action="store_true",
                      dest="do_not_del_nf_logs")
     # chain features related
-    app.add_argument("--chain_jobs_num", "--chn", type=int, default=50,
+    app.add_argument("--chain_jobs_num", "--chn", type=int, default=100,
                      help="Number of cluster jobs for extracting chain features. "
-                          "Recommended from 20 to 50 jobs.")
+                          "Recommended from 150 to 200 jobs.")
     app.add_argument("--no_chain_filter", "--ncf", action="store_true",
                      dest="no_chain_filter",
                      help="A flag. Do not filter the chain file (make sure you specified "

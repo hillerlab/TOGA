@@ -19,7 +19,8 @@ The package was properly tested on Python version 3.6.5. and 3.7.3.
 It is highly recommended to have access to computational cluster, but
 for small or partial genomes with short genes a desktop PC will be enough.
 
-TOGA requires [Nextflow](https://www.nextflow.io), install it using one of the following commands:
+TOGA requires [Nextflow](https://www.nextflow.io), which in turn requires java >=8.
+Check your version of java and install it using one of the following commands:
 
 ```shell
 curl -fsSL https://get.nextflow.io | bash
@@ -27,7 +28,7 @@ curl -fsSL https://get.nextflow.io | bash
 conda install -c bioconda nextflow
 ```
 
-If you've donwnloaded nextflow using curl, then copy "nextflow" executable to some $PATH directory.
+If you've donwnloaded nextflow using curl, then move the nextflow file to a directory accessible by $PATH.
 
 To get TOGA do the following:
 
@@ -113,7 +114,7 @@ One of solutions is to compile XGBoost from sources, as explained here:
 
 <https://xgboost.readthedocs.io/en/latest/build.html>
 
-Please note that xgboost requires CMake for build.
+Please note that xgboost requires CMake >=3.13 for build.
 
 #### Nextflow
 
@@ -126,6 +127,13 @@ conda install -c bioconda nextflow
 ```
 
 This will automatically add nextflow executable to $PATH.
+Alternatively, you can install java using the following command:
+
+```shell
+sudo apt install openjdk-8-jre-headless
+```
+
+And then install nextflow using curl | bash command.
 
 Nextflow also might show the following error message:
 

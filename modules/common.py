@@ -1,13 +1,16 @@
 """TOGA common functions."""
-# in progress
+import os
 import sys
 import numpy as np
+import ctypes
 import h5py
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
 __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+
+SLIB_NAME = "chain_bst_lib.so"
 
 
 def parts(lst, n=3):
@@ -131,22 +134,46 @@ def make_cds_track(line):
     return new_line
 
 
-def chainExtractID(index_file, chain_id):
-    """Extract chain from a BDB file by id."""
-    h = h5py.File(index_file, "r")
-    try:  # catch keyerror
-        # I save keys as strings
-        # TODO: rewrite as uint64
-        b_chain_line = h[str(chain_id)][()]
-        u_type = f"U{len(b_chain_line)}"
-        chain_data = b_chain_line.astype(u_type)
-    except KeyError:
-        # throw an error if a chain with given ID not found
-        sys.stderr.write(f"Error! Chain {chain_id} not found in the bdb. Abort\n")
+def chainExtractID(index_file, chain_id, chain_file=None):
+    """Extract chain text using index file."""
+    # within TOGA should be fine:
+    chain_file = chain_file if chain_file else index_file.replace(".bst", ".chain")
+    if not os.path.isfile(chain_file):
+        # need this check anyways
+        sys.exit(f"chainExtractID error: cannot find {chain_file} file")
+    # connect shared library
+    script_location = os.path.dirname(__file__)
+    slib_location = os.path.join(script_location, SLIB_NAME)
+    sh_lib = ctypes.CDLL(slib_location)
+    sh_lib.get_s_byte.argtypes = [ctypes.c_char_p,
+                                ctypes.c_uint64,
+                                ctypes.POINTER(ctypes.c_uint64),
+                                ctypes.POINTER(ctypes.c_uint64)]
+    sh_lib.get_s_byte.restype = ctypes.c_uint64
+
+    # call library: find chain start byte and offset
+    c_index_path = ctypes.c_char_p(index_file.encode())
+    c_chain_id = ctypes.c_uint64(int(chain_id))
+    c_sb = ctypes.c_uint64(0)
+    c_of = ctypes.c_uint64(0)
+
+    _ = sh_lib.get_s_byte(c_index_path,
+                          c_chain_id,
+                          ctypes.byref(c_sb),
+                          ctypes.byref(c_of))
+    
+    if c_sb.value == c_of.value == 0:
+        # if they are 0: nothing found then
+        sys.stderr.write(f"Error, chain {chain_id} ")
+        sys.stderr.write("not found\n")
         sys.exit(1)
-    finally:
-        h.close()
-    return chain_data
+
+    # we got start byte and offset
+    f = open(chain_file, "rb")
+    f.seek(c_sb.value)  # jump to start_byte_position
+    chain = f.read(c_of.value).decode("utf-8")  # read OFFSET bytes
+    f.close()
+    return chain
 
 
 def flatten(lst):

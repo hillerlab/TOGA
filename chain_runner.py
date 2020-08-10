@@ -8,9 +8,10 @@ modules.processor.unit for each chain: genes task.
 import argparse
 import sys
 import os
+import ctypes
 from datetime import datetime as dt
 from modules.overlap_select import overlap_select
-from modules.common import bedExtractID, chainExtractID
+from modules.common import bedExtractID
 from modules.common import make_cds_track
 
 __author__ = "Bogdan Kirilenko, 2020."
@@ -20,6 +21,7 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 FLANK_SIZE = 10000  # gene flank size -> for flank ali feature
 COMBINED_BED_ID = "COMBINED"  # placeholder gene name for intermediate tracks
+SLIB_NAME = "chain_bst_lib.so"
 
 
 def eprint(*lines):
@@ -46,7 +48,7 @@ def parse_args():
     app.add_argument("input_file", type=str, help="File containing chain to genes lines."
                      "Also you can use \"chain [genes]\" as a single argument.")
     app.add_argument("bed_file", type=str, help="BDB file containing annotation tracks.")
-    app.add_argument("chain_file", type=str, help="BDB file containing chains.")
+    app.add_argument("chain_file", type=str, help="Chain file.")
     app.add_argument("--verbose", "-v", action="store_true", dest="verbose", help="Verbose messages.")
     app.add_argument("--extended", "-e", action="store_true", dest="extended",
                      help="Write the output in extended (human readable) format. "
@@ -69,7 +71,20 @@ def marge_ranges(range_1, range_2):
     return min(range_1[0], range_2[0]), max(range_1[1], range_2[1])
 
 
-def check_args(chain, genes, chain_file, bed_file, verbose_level, work_data, result):
+def extract_chain(chain_file, chain_dict, chain):
+    """Extract chain string.
+
+    We have: chain file, chain_id, start byte and offset.
+    """
+    f = open(chain_file, "rb")
+    start, offset = chain_dict.get(int(chain))
+    f.seek(start)  # jump to start_byte_position
+    chain = f.read(offset).decode("utf-8")  # read OFFSET bytes
+    f.close()
+    return chain
+
+
+def check_args(chain, genes, chain_file, chain_dict, bed_file, verbose_level, work_data, result):
     # print(chain_index, chain_file)
     """Check if arguments are correct, extract initial data if so."""
     global VERBOSE  # set verbosity level
@@ -92,7 +107,8 @@ def check_args(chain, genes, chain_file, bed_file, verbose_level, work_data, res
         eprint("You set {0} genes, {1} extracted".format(len(raw_genes), len(bed_lines.split("\n")[:-1])))
         eprint("Genes missed:\n{0}".format(",".join([x for x in raw_genes if x not in work_data["genes"]])))
 
-    work_data["chain"] = chainExtractID(chain_file, chain)
+    work_data["chain"] = extract_chain(chain_file, chain_dict, chain)
+    # work_data["chain"] = chainExtractID(chain_file, chain, sh_lib=sh_lib)
 
     # parse chain header
     chain_header = work_data["chain"].split("\n")[0].split()
@@ -366,7 +382,7 @@ def extended_output(result, t0):
     return chain_output, genes_output, time_output
 
 
-def chain_feat_extractor(chain, genes, chain_file, bed_file,
+def chain_feat_extractor(chain, genes, chain_file, bed_file, chain_dict,
                          verbose_arg=None, extended=False):
     """Chain features extractor entry point."""
     # global vars
@@ -386,7 +402,7 @@ def chain_feat_extractor(chain, genes, chain_file, bed_file,
               "CDS_to_Qlen": 0
               }
     # check if all the files, dependies etc are correct
-    check_args(chain, genes, chain_file, bed_file, verbose_arg, work_data, result)
+    check_args(chain, genes, chain_file, chain_dict, bed_file, verbose_arg, work_data, result)
 
     # the main part, computations
     bed_lines_extended = extend_bed_lines(work_data["bed"])
@@ -414,22 +430,46 @@ def chain_feat_extractor(chain, genes, chain_file, bed_file,
     return output
 
 
+def load_chain_dict(chain_index_file):
+    """Load dict chain ID: position in the file."""
+    ans = {}
+    if not os.path.isfile(chain_index_file):
+        sys.exit(f"Error! File {chain_index_file} not found.")
+    f = open(chain_index_file, "r")
+    # tab-separated file
+    # chain_ID, start_byte, offset
+    for line in f:
+        line_data = line.rstrip().split("\t")
+        chain_id = int(line_data[0])
+        start_byte = int(line_data[1])
+        offset = int(line_data[2])
+        val = (start_byte, offset)
+        ans[chain_id] = val
+    f.close()
+    return ans
+
+
 def main():
     """Entry point."""
     t0 = dt.now()
     args = parse_args()
-    os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
+    os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
     # read input: meaning chain ids and gene names
     # there are 2 ways how they could be provided:
     # 1) Just a file, each line contains chain id and genes
     # 2) an argument: "chain ,-sep list of genes"
     batch = read_input(args.input_file)
     task_size = len(batch)
+    # load chains dict; it would be much faster to load chain_ID: (start_byte, offset)
+    # python dict once than ask HDF5 database each time TOGA needs another chain
+    index_file = args.chain_file.replace(".chain", ".chain_ID_position")
+    chain_dict = load_chain_dict(index_file)
+
     # call main processing tool
     for jnum, (chain, genes) in enumerate(batch.items(), 1):
         # one unit: one chain + intersected genes
         # call routine that extracts chain feature
-        unit_output = chain_feat_extractor(chain, genes, args.chain_file, args.bed_file,
+        unit_output = chain_feat_extractor(chain, genes, args.chain_file, args.bed_file, chain_dict,
                                            verbose_arg=args.verbose, extended=args.extended)
         chain_output, genes_output, time_output = unit_output
         # save output:

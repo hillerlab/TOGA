@@ -126,10 +126,11 @@ def check_args(args):
     verbose(f"Use bed file {args.bed_file} and chain file {args.chain_file}")
 
     # look for .ID.bb file
-    index_file = args.index_file if args.index_file else args.chain_file.replace(".chain", ".hdf5")
+    index_file = args.index_file if args.index_file else args.chain_file.replace(".chain", ".chain_ID_position")
+
     if os.path.isfile(index_file):  # check if bb file is here
         WORK_DATA["index_file"] = index_file
-        verbose(f"And {index_file} as a bdb file")
+        verbose(f"And {index_file} as an index file")
     elif args.make_index:  # create index if not exists
         eprint("make_indexed in progress...")
         IDbb_cmd = f"/modules/chain_bdb_index.py {args.chain_file} {index_file}"
@@ -138,6 +139,7 @@ def check_args(args):
     else:  # die
         die(f"Error! Cannot find index file at {index_file}\n"
             "Please define it manually")
+
     # define the number of jobs
     if args.job_size:  # easy:
         WORK_DATA["job_size"] = args.job_size
@@ -151,12 +153,10 @@ def check_args(args):
     WORK_DATA["jobs_file"] = args.jobs_file
     WORK_DATA["ref"] = args.ref
     # check if we are on cluster
-    on_cluster = True if subprocess.call("which para", shell=True) == 0 \
-        else False
-    WORK_DATA["on_cluster"] = on_cluster
+    WORK_DATA["on_cluster"] = True
     verbose("Program-wide dictionary looks like:\n")
     for k, v in WORK_DATA.items():
-        verbose("{0}: {1}".format(k, v))
+        verbose(f"{k}: {v}")
 
 
 def get_chroms():
@@ -187,7 +187,7 @@ def get_template():
     template = CHAIN_RUNNER + " {0} "
     # in case of using a nodes-associated disk I cannot use original filenames
     bed_to_templ = WORK_DATA["bed_index"]
-    bdb_to_templ = WORK_DATA["index_file"]
+    bdb_to_templ = WORK_DATA["chain_file"]
     template += " {0} {1}".format(bed_to_templ, bdb_to_templ)
     template += " -v" if WORK_DATA["vv"] else ""
     verbose("Command template is:\n")

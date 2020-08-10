@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CESAR2.0 wrapper.
 
-Retrieve exons in the query genome.
+Retrieve exons from the query genome.
 """
 import argparse
 import os
@@ -387,7 +387,7 @@ def prepare_exons_for_cesar(exon_seqs):
 def get_chain(chain_file, chain_id):
     """Return chain string according the parameters passed."""
     chain = None  # to calm IDE down
-    if chain_file.endswith(".hdf5"):
+    if chain_file.endswith(".bst"):
         # we have bdb file; extract with BDB extractor
         chain = chainExtractID(chain_file, chain_id)
         return chain
