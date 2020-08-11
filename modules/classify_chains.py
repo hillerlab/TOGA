@@ -21,18 +21,10 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 SE_MODEL = "models/se_model.dat"
 ME_MODEL = "models/me_model.dat"
 
-
 # we actually extract a reduntant amount of features
-# also, SE and ME models require different sets of features
-# lists of features to drop in for different models:
-se_drop_in_X = ["gene", "gene_overs", "chain", "synt", "gl_score", 
-                "chain_len", "exon_cover", "intr_cover", "gene_len",
-                "ex_num", "ex_fract", "intr_fract", "chain_len_log",
-                "single_exon", "intr_perc", "loc_exo", "cds_qlen"]
-me_drop_in_X = ["gene", "gene_overs", "chain", "synt", "gl_score", 
-                "chain_len", "exon_cover", "intr_cover", "gene_len",
-                "ex_num", "ex_fract", "intr_fract", "chain_len_log",
-                "exon_perc", "single_exon", "cds_qlen"]
+# lists of features required by single and multi exon models
+SE_MODEL_FEATURES = ['gl_exo', 'flank_cov', 'exon_perc', 'synt_log']
+ME_MODEL_FEATURES = ['gl_exo', 'loc_exo', 'flank_cov', 'synt_log', 'intr_perc']
 
 
 def eprint(*lines):
@@ -138,8 +130,8 @@ def classify_chains(table, output, se_model_path, me_model_path,
     # create X dataframes: skip unnecessary columns
     X_se = df_se.copy()
     X_me = df_me.copy()
-    X_se = df_se.drop(se_drop_in_X, axis=1)
-    X_me = df_me.drop(me_drop_in_X, axis=1)
+    X_se = X_se[SE_MODEL_FEATURES]
+    X_me = X_me[ME_MODEL_FEATURES]
 
     # load models
     verbose("Load and apply model")

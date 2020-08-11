@@ -114,7 +114,8 @@ class Toga:
                          only_chrom=args.limit_to_ref_chrom)
 
         # mics things
-        self.isoforms = args.isoforms if args.isoforms else None
+        self.isoforms_arg = args.isoforms if args.isoforms else None
+        self.isoforms = None  # will be assigned after completeness check
         self.chain_jobs = args.chain_jobs_num
         self.cesar_binary = self.DEFAULT_CESAR if not args.cesar_binary \
             else args.cesar_binary
@@ -173,7 +174,7 @@ class Toga:
                           self.cesar_binary,
                           self.ref_bed,
                           self.chain_file,
-                          self.isoforms]
+                          self.isoforms_arg]
         for item in files_to_check:
             if not item:
                 # this file just not given
@@ -237,40 +238,50 @@ class Toga:
 
     def __check_isoforms_file(self):
         """Sanity checks for isoforms file."""
-        if not self.isoforms:
+        if not self.isoforms_arg:
             return  # not provided: nothing to check
-        f = open(self.isoforms, "r")
-        # this is the header, maybe we can check something there
-        _ = f.__next__().rstrip().split("\t")
+        # isoforms file provided: need to check correctness and completeness
+        # get transcript IDs from the bed file
+        with open(self.ref_bed, "r") as f:
+            t_in_bed = set(line.rstrip().split("\t")[3] for line in f)
+
+        # then check isoforms file itself
+        f = open(self.isoforms_arg, "r")
+        self.isoforms = os.path.join(self.wd, "isoforms.tsv")
+        header = f.__next__()  # first line is header
+        filt_isoforms_lines = [header, ]  # remove isoforms that don't appear in the bed file
+        # also we catch isoforms that are in the bed but not in the isoforms file
         t_in_i = []
-        t_in_bed = []
         for num, line in enumerate(f, 2):
             line_data = line.rstrip().split("\t")
             if len(line_data) != ISOFORMS_FILE_COLS:
                 err_msg = f"Error! Isoforms file {self.isoforms} line {num}: " \
                           f"Expected {ISOFORMS_FILE_COLS} fields, got {len(line_data)}"
                 self.die(err_msg)
-            t_in_i.append(line_data[1])
+            transcript = line_data[1]
+            if transcript in t_in_bed:
+                # this isoforms appears in the bed file: keep it
+                filt_isoforms_lines.append(line)
+                t_in_i.append(line_data[1])
+            else:  # this isoform doesn't appear in the bed: we can skip it
+                continue
         f.close()
-        # check with bed 12 file
-        f = open(self.ref_bed, "r")
-        for line in f:
-            line_data = line.rstrip().split("\t")
-            # sanity checked already
-            t_in_bed.append(line_data[3])
-        f.close()
-
-        t_in_bed = set(t_in_bed)
+        # this set contains isoforms found in the isoforms file
         t_in_i = set(t_in_i)
+        # there are transcripts that appear in bed but not in the isoforms file
+        # if this set is non-empty: raise an error
         u_in_b = t_in_bed.difference(t_in_i)
-        if len(u_in_b) != 0:
-            extra_t_list = "\n".join(list(u_in_b)[:100])
+
+        if len(u_in_b) != 0:  # isoforms file is incomplete
+            extra_t_list = "\n".join(list(u_in_b)[:100])  # show first 100 (or maybe show all?)
             err_msg = f"Error! There are {len(u_in_b)} transctipts in the bed file absent in the isoforms file! " \
                       f"There are the transctipts (first 100):\n{extra_t_list}"
             self.die(err_msg)
-            # eprint(err_msg)
-        else:
-            eprint("Isoforms file is OK")
+        # write isoforms file
+        with open(self.isoforms, "w") as f:
+            f.write("".join(filt_isoforms_lines))
+        eprint("Isoforms file is OK")
+
 
     def die(self, msg, rc=1):
         """Show msg in stderr, exit with the rc given."""
