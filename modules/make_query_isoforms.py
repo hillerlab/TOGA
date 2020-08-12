@@ -25,8 +25,8 @@ def parse_args():
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
-    args = app.parse_args()
-    return args
+    args_ret = app.parse_args()
+    return args_ret
 
 
 def read_query_bed(bed_file):

@@ -8,8 +8,8 @@ try:
     from modules.common import chain_extract_id
     from modules.common import bed_extract_id
 except ImportError:
-    from common import chainExtractID
-    from common import bedExtractID
+    from common import chain_extract_id
+    from common import bed_extract_id
 
 PINK_COLOR = "250,50,200"
 DEF_SCORE = 100

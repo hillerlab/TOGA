@@ -3,7 +3,6 @@
 .DS_Store
 .vscode/
 .ipynb_checkpoints
-.Rproj.user
 
 # Compiled / binaries
 *.o
@@ -13,18 +12,84 @@ modules/chain_score_filter
 cesar
 *.dSYM
 CESAR2.0/
-*/.ipynb_checkpoints/
 
 # Python and temp stuff
 __pycache__/*
-*/__pycache__/*
+modules/__pycache__/*
+nextflow_logs/*
+
+_*
+TRASH/*
+TESTS/*
+temp/*
 *.dat
 *.ipynb
 *.tar
 *.log
 *.bdb
-nextflow_logs
 
-# test results
-micro_test_out/
-test_out/
+# Para stuff
+para/
+lockFile.*
+
+# mics
+dasNov3/*
+mm10/
+mm10_merged/
+RES/*
+jobDir/*
+chain_files/
+chain_index/
+250_mamm
+rat_dat/
+rat_omap_diff/
+ML__old
+
+# debug and test
+micro_test_out/*
+*.tsv
+*.png
+ML/.ipynb_checkpoints/
+vs_Ensembl/.ipynb_checkpoints/
+*.txt
+*.hdf5
+*.bst
+test_output/*
+for_paper/*
+vs_Ensembl/
+vs_Gloss_pipeline/
+sandbox/
+
+2bits/
+ANALYSIS/ENST00000320188.txt.ce
+ANALYSIS/data/
+ANALYSIS/dir_out/
+ANALYSIS/gloss_data/
+ANALYSIS/gloss_mut_comp/
+ANALYSIS/inact_mut_check.py
+ANALYSIS/loss_reports.tar
+ANALYSIS/pseudo_cesar.tar
+ANALYSIS/rev_out/
+ANALYSIS/tab_file_to_cesar_in_OLD.py
+ANALYSIS/tab_file_to_cesar_out.py
+ANALYSIS_DUMP.tar
+ML/
+cesar_dir_rev/
+gene_status/
+myoLuc2_loss/
+old_ANALYSIS/
+test.fa
+*/.ipynb_checkpoints/
+
+*.2bit
+afrotheria/
+debug/
+to_send/
+modules/rn6_omap_debug/
+modules/stdout
+modules/old_orthology_type_map.py
+models/data/
+data_science/
+.Rproj.user
+
+defect_visualization/geneLossPipeOutput
