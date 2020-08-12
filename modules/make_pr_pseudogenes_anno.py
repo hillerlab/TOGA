@@ -5,8 +5,8 @@ import sys
 import os
 from collections import defaultdict
 try:
-    from modules.common import chainExtractID
-    from modules.common import bedExtractID
+    from modules.common import chain_extract_id
+    from modules.common import bed_extract_id
 except ImportError:
     from common import chainExtractID
     from common import bedExtractID
@@ -27,8 +27,8 @@ def parse_args():
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
-    args = app.parse_args()
-    return args
+    args_ = app.parse_args()
+    return args_
 
 
 def verbose(msg):
@@ -52,7 +52,7 @@ def get_pp_gene_chains(chain_class_file, v=False):
         if pp_genes_field == "0":
             # it 0 -> no ppgene chains -> skip
             continue
-        # parse comma-separated strind and save to dict
+        # parse comma-separated string and save to dict
         pp_genes = [int(x) for x in pp_genes_field.split(",") if x != ""]
         gene_to_pp_chains[trans] = pp_genes
     f.close()
@@ -83,18 +83,18 @@ def get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v=Fal
     """
     proj_to_q_reg = {}  # save results here
     task_size = len(gene_to_pp_chains)
-        # iterate over gene: [chain ids] elements
+    # iterate over gene: [chain ids] elements
     for num, (gene, chains) in enumerate(gene_to_pp_chains.items()):
         if v:
             verbose(f"# Processing gene {gene} {num} / {task_size} with {len(chains)} chains")
         # extract gene track
-        gene_track = bedExtractID(bed_bdb, gene).rstrip().split("\t")
+        gene_track = bed_extract_id(bed_bdb, gene).rstrip().split("\t")
         gene_strand = gene_track[5]  # we need the strand only
         for chain_id in chains:
             # we have a list of chains
             projection = f"{gene}.{chain_id}"  # name this projection as usual
             # extract the chain and parse it's header
-            # chain_body = chainExtractID(chain_bdb, chain_id)
+            # chain_body = chain_extract_id(chain_bdb, chain_id)
             chain_body = extract_chain(chain_file, chain_dict, chain_id)
             chain_header = chain_body.split("\n")[0].split()
             # we need chrom, start, end, strand and q_size
@@ -180,6 +180,7 @@ def create_ppgene_track(chain_class_file, chain_file, bed_bdb, output, v=None):
     bed_lines = make_bed_lines(projection_to_reg)
     verbose(f"There are {len(bed_lines)} bed lines") if v else None
     save_bed(bed_lines, output)  # write lines to the output file
+
 
 if __name__ == "__main__":
     args = parse_args()

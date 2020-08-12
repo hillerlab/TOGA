@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Parse CESAR output for one query, get codon table."""
+"""Parse raw CESAR output for one query, get codon table."""
 import argparse
 import sys
 from copy import deepcopy
+try:  # for robustness
+    from modules.common import eprint
+    from modules.common import die
+except ImportError:
+    from common import eprint
+    from common import die
 
 # constants
 STOPS = {"TAG", "TGA", "TAA"}
@@ -17,23 +23,11 @@ AB_INCL_BLOSUM = 25
 C_INCL_PID = 65
 C_INCL_BLOSUM = 50
 
-
 A_T_PID = 65
 A_T_BLOSUM = 40
 
 LO_T_PID = 45
 LO_T_BLOSUM = 25
-
-
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(msg + end)
-
-
-def die(msg, rc=0):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    sys.exit(rc)
 
 
 def parse_cesar_out(target, query, v=False):
@@ -66,7 +60,7 @@ def parse_cesar_out(target, query, v=False):
     codons_num = letters_num // 3
     eprint(f"Expecting {codons_num} target codons") if v else None
     codon_data = []
-    # this "struct" contans codon information
+    # this "struct" contains codon information
     next_elem_box = {"ref_codon": "",  # keep reference codon; str
                      "que_codon": "",  # keep query codon; str
                      "q_exon_num": 0,  # exon number of codon, in query; int
@@ -114,7 +108,7 @@ def parse_cesar_out(target, query, v=False):
             was_space = True
             exon_num += 1  # exon just ended in both ref and query
             t_exon_num += 1  # so increment the numbers
-            # fill the codoms
+            # fill the codons
             curr_codon = codon_data[codon_num]
             curr_codon_letters = [c for c in curr_codon["ref_codon"] if c.isalpha()]
             curr_codon_gaps = [c for c in curr_codon["ref_codon"] if c == "-"]
@@ -214,8 +208,8 @@ def classify_exon(ex_class, incl, pid, blosum):
     """Decide what do we do with this exon."""
     # ex_class: how exon aligns
     # A - chain aligns exon perfectly
-    # B - an exon flank (left or rigth) is not aligned
-    # C - chain blocks dont intersect the exon
+    # B - an exon flank (left or right) is not aligned
+    # C - chain blocks don't intersect the exon
     # M - exon located outside the chain borders
     # we look at:
     # 1) exon class
@@ -271,6 +265,7 @@ def main():
     # TODO: make a better output format
     for elem in codons_data:
         print(elem)
+
 
 if __name__ == "__main__":
     main()

@@ -10,10 +10,14 @@ import os
 import sys
 from datetime import datetime as dt
 from collections import defaultdict
-try:
+try:  # for robustness
     from modules.common import make_cds_track
+    from modules.common import eprint
+    from modules.common import die
 except ImportError:
     from common import make_cds_track
+    from common import eprint
+    from common import die
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -21,17 +25,6 @@ __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 t0 = dt.now()
-
-
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(msg + end)
-
-
-def die(msg):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    sys.exit(1)
 
 
 def verbose(msg, end="\n"):
@@ -219,7 +212,7 @@ def load_results(results_dir):
 
 
 def revert_dict(dct):
-    """Revert {a: [lits of b's]} to {b: [list of a's]}."""
+    """Revert {a: [list of b's]} to {b: [list of a's]}."""
     reverted = defaultdict(list)
     for k, value in dct.items():
         for v in value:
@@ -327,6 +320,7 @@ def main():
                         args.results_dir,
                         args.output,
                         args.exon_cov_chains)
+
 
 if __name__ == "__main__":
     main()

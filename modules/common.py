@@ -1,7 +1,6 @@
 """TOGA common functions."""
 import os
 import sys
-import numpy as np
 import ctypes
 import h5py
 
@@ -18,7 +17,18 @@ def parts(lst, n=3):
     return [lst[i:i + n] for i in iter(range(0, len(lst), n))]
 
 
-def bedExtractID(index_file, gene_ids):
+def eprint(msg, end="\n"):
+    """Like print but for stderr."""
+    sys.stderr.write(msg + end)
+
+
+def die(msg, rc=1):
+    """Show msg in stderr, exit with the rc given."""
+    sys.stderr.write(msg + "\n")
+    sys.exit(rc)
+
+
+def bed_extract_id(index_file, gene_ids):
     """Extract a bed track from a BDB file."""
     h = h5py.File(index_file, "r")
     # accept both a list of gene_ids (type=list) and a single gene_id (type=str)
@@ -28,7 +38,7 @@ def bedExtractID(index_file, gene_ids):
         keys = [str(gene_ids), ]
     bed_lines = []
     for key in keys:
-        try:  # catch keyerror
+        try:  # catch key error
             b_bed_line = h[key][()]
             u_type = f"U{len(b_bed_line)}"
             bed_line = b_bed_line.astype(u_type)
@@ -40,19 +50,19 @@ def bedExtractID(index_file, gene_ids):
     h.close()
     if len(bed_lines) == 0:
         # if nothing found -> there must be an error
-        sys.stderr.write("Error! Bed tracks not found! (bedExtractID)")
+        sys.stderr.write("Error! Bed tracks not found! (bed_extract_id)")
         sys.exit(1)
     return "".join(bed_lines)
 
 
-def bedExtractIDText(bed_file, gene_ids_param):
+def bed_extract_id_text(bed_file, gene_ids_param):
     """Extract bed-12 tracks from a text bed file."""
     # the function accepts both a list of gene_ids (type=list)
     # and a single gene_id (type=string)
     if type(gene_ids_param) != str:  # so it's list
         gene_ids = set(gene_ids_param)
     else:
-        gene_ids = set([gene_ids_param])
+        gene_ids = {gene_ids_param, }
     # gene_ids is a set for consistency; even if a single gene id provided
     output = []
     f = open(bed_file, "r")
@@ -73,89 +83,90 @@ def make_cds_track(line):
         sys.exit(f"Error! Bed line:\n{line}\nis a not bed-12 formatted line!")
     # parse bed12 line according to the specification
     chrom = line_data[0]
-    chromStart = int(line_data[1])
-    chromEnd = int(line_data[2])
+    chrom_start = int(line_data[1])
+    # chromEnd = int(line_data[2])
     name = line_data[3]  # gene_name usually
     name += "_CDS"  # mark that UTRs are trimmed
     bed_score = int(line_data[4])  # never used
     strand = line_data[5]
-    thickStart = int(line_data[6])
-    thickEnd = int(line_data[7])
-    itemRgb = line_data[8]  # never used
-    blockCount = int(line_data[9])
+    thick_start = int(line_data[6])
+    thick_end = int(line_data[7])
+    item_rgb = line_data[8]  # never used
+    block_count = int(line_data[9])
     # chrom start and end define the entire transcript location
     # this includes both UTRs and CDS
     # thick start and end limit the CDS only
-    blockSizes = [int(x) for x in line_data[10].split(',') if x != '']
-    blockStarts = [int(x) for x in line_data[11].split(',') if x != '']
-    blockEnds = [blockStarts[i] + blockSizes[i] for i in range(blockCount)]
+    block_sizes = [int(x) for x in line_data[10].split(',') if x != '']
+    block_starts = [int(x) for x in line_data[11].split(',') if x != '']
+    block_ends = [block_starts[i] + block_sizes[i] for i in range(block_count)]
     # block starts are given in the relative coordinates -> need to convert them
-    # into absolute coordinates using chromstart
-    blockAbsStarts = [blockStarts[i] + chromStart for i in range(blockCount)]
-    blockAbsEnds = [blockEnds[i] + chromStart for i in range(blockCount)]
+    # into absolute coordinates using chrom start
+    block_abs_starts = [block_starts[i] + chrom_start for i in range(block_count)]
+    block_abs_ends = [block_ends[i] + chrom_start for i in range(block_count)]
     # arrays for blocks with trimmed UTRs
-    blockNewStarts, blockNewEnds = [], []
+    block_new_starts, block_new_ends = [], []
 
-    for block_num in range(blockCount):
+    for block_num in range(block_count):
         # go block-by-block
-        blockStart = blockAbsStarts[block_num]
-        blockEnd = blockAbsEnds[block_num]
+        blockStart = block_abs_starts[block_num]
+        blockEnd = block_abs_ends[block_num]
 
         # skip the block if it is entirely UTR
-        if blockEnd <= thickStart:
+        if blockEnd <= thick_start:
             continue
-        elif blockStart >= thickEnd:
+        elif blockStart >= thick_end:
             continue
         
         # if we are here: this is not an entirely UTR exon
-        # it migth intersect the CDS border or to be in the CDS entirely
-        # remove UTRs: block start must be >= CDS_start (thickStart)
-        # block end must be <= CDS_end (thickEnd)
-        blockNewStart = blockStart if blockStart >= thickStart else thickStart
-        blockNewEnd = blockEnd if blockEnd <= thickEnd else thickEnd
+        # it might intersect the CDS border or to be in the CDS entirely
+        # remove UTRs: block start must be >= CDS_start (thick_start)
+        # block end must be <= CDS_end (thick_end)
+        block_new_start = blockStart if blockStart >= thick_start else thick_start
+        block_new_end = blockEnd if blockEnd <= thick_end else thick_end
         # save blocks with updated coordinates
-        # also convert them back to relative coordinates with - thickStart
-        # after the update thickStart/End are equal to chromStart/End
-        blockNewStarts.append(blockNewStart - thickStart)
-        blockNewEnds.append(blockNewEnd - thickStart)
+        # also convert them back to relative coordinates with - thick_start
+        # after the update thick_start/End are equal to chrom_start/End
+        block_new_starts.append(block_new_start - thick_start)
+        block_new_ends.append(block_new_end - thick_start)
 
-    # blockCount could change due to entirely UTR exons
-    blockNewCount = len(blockNewStarts)
+    # block_count could change due to entirely UTR exons
+    block_new_count = len(block_new_starts)
     # this is also a subject to change
-    blockNewSizes = [blockNewEnds[i] - blockNewStarts[i]
-                     for i in range(blockNewCount)]
+    blockNewSizes = [block_new_ends[i] - block_new_starts[i]
+                     for i in range(block_new_count)]
 
     # save the updated bed line with trimmed UTRs
-    new_track = [chrom, thickStart, thickEnd, name, bed_score,
-                 strand, thickStart, thickEnd, itemRgb, blockNewCount,
+    new_track = [chrom, thick_start, thick_end, name, bed_score,
+                 strand, thick_start, thick_end, item_rgb, block_new_count,
                  ",".join([str(x) for x in blockNewSizes]) + ",",
-                 ",".join([str(x) for x in blockNewStarts]) + ","]
+                 ",".join([str(x) for x in block_new_starts]) + ","]
     new_line = "\t".join([str(x) for x in new_track])
     return new_line
 
 
-def chainExtractID(index_file, chain_id, chain_file=None):
+def chain_extract_id(index_file, chain_id, chain_file=None):
     """Extract chain text using index file."""
     # within TOGA should be fine:
     chain_file = chain_file if chain_file else index_file.replace(".bst", ".chain")
     if not os.path.isfile(chain_file):
         # need this check anyways
-        sys.exit(f"chainExtractID error: cannot find {chain_file} file")
+        sys.exit(f"chain_extract_id error: cannot find {chain_file} file")
     # connect shared library
+    # .so must be there: in the modules/ dir
     script_location = os.path.dirname(__file__)
     slib_location = os.path.join(script_location, SLIB_NAME)
     sh_lib = ctypes.CDLL(slib_location)
     sh_lib.get_s_byte.argtypes = [ctypes.c_char_p,
-                                ctypes.c_uint64,
-                                ctypes.POINTER(ctypes.c_uint64),
-                                ctypes.POINTER(ctypes.c_uint64)]
+                                  ctypes.c_uint64,
+                                  ctypes.POINTER(ctypes.c_uint64),
+                                  ctypes.POINTER(ctypes.c_uint64)]
     sh_lib.get_s_byte.restype = ctypes.c_uint64
 
     # call library: find chain start byte and offset
     c_index_path = ctypes.c_char_p(index_file.encode())
     c_chain_id = ctypes.c_uint64(int(chain_id))
-    c_sb = ctypes.c_uint64(0)
-    c_of = ctypes.c_uint64(0)
+    c_sb = ctypes.c_uint64(0)  # write results in c_sb and c_of
+    c_of = ctypes.c_uint64(0)  # provide them byref -> like pointers
 
     _ = sh_lib.get_s_byte(c_index_path,
                           c_chain_id,
@@ -163,12 +174,12 @@ def chainExtractID(index_file, chain_id, chain_file=None):
                           ctypes.byref(c_of))
     
     if c_sb.value == c_of.value == 0:
-        # if they are 0: nothing found then
+        # if they are 0: nothing found then, raise Error
         sys.stderr.write(f"Error, chain {chain_id} ")
         sys.stderr.write("not found\n")
         sys.exit(1)
 
-    # we got start byte and offset
+    # we got start byte and offset, extract chain from the file
     f = open(chain_file, "rb")
     f.seek(c_sb.value)  # jump to start_byte_position
     chain = f.read(c_of.value).decode("utf-8")  # read OFFSET bytes
@@ -186,7 +197,7 @@ def split_proj_name(proj_name):
     
     Projections named as follows: ${transcript_ID}.{$chain_id}.
     This function splits projection back into transcript and chain ids.
-    We cannot just use split("."), because there migth be dots
+    We cannot just use split("."), because there might be dots
     in the original transcript ID.
     """
     proj_name_split = proj_name.split(".")

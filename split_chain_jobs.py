@@ -13,6 +13,8 @@ import random
 from datetime import datetime as dt
 from modules.chain_bed_intersect import chain_bed_intersect
 from modules.common import parts
+from modules.common import eprint
+from modules.common import die
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -24,24 +26,12 @@ WORK_DATA = {}  # script-related data
 LOCATION = os.path.abspath(os.path.dirname(__file__))
 CHAIN_RUNNER = os.path.join(LOCATION, "chain_runner.py")
 t0 = dt.now()
-
-
-def eprint(*lines):
-    """Like print but for stderr."""
-    for line in lines:
-        sys.stderr.write(line + "\n")
+VERBOSE = False
 
 
 def verbose(msg):
     """Eprint for verbose messages."""
     eprint(msg) if VERBOSE else None
-
-
-def die(msg, rc=1):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    eprint("Program finished with exin code {0}".format(rc))
-    sys.exit(rc)
 
 
 def parse_args():
@@ -133,8 +123,8 @@ def check_args(args):
         verbose(f"And {index_file} as an index file")
     elif args.make_index:  # create index if not exists
         eprint("make_indexed in progress...")
-        IDbb_cmd = f"/modules/chain_bdb_index.py {args.chain_file} {index_file}"
-        call_proc(IDbb_cmd)
+        idbb_cmd = f"/modules/chain_bdb_index.py {args.chain_file} {index_file}"
+        call_proc(idbb_cmd)
         WORK_DATA["index_file"] = index_file
     else:  # die
         die(f"Error! Cannot find index file at {index_file}\n"
@@ -186,9 +176,9 @@ def get_template():
     """Create a template for chain classification commands."""
     template = CHAIN_RUNNER + " {0} "
     # in case of using a nodes-associated disk I cannot use original filenames
-    bed_to_templ = WORK_DATA["bed_index"]
-    bdb_to_templ = WORK_DATA["chain_file"]
-    template += " {0} {1}".format(bed_to_templ, bdb_to_templ)
+    bed_to_template = WORK_DATA["bed_index"]
+    bdb_to_template = WORK_DATA["chain_file"]
+    template += " {0} {1}".format(bed_to_template, bdb_to_template)
     template += " -v" if WORK_DATA["vv"] else ""
     verbose("Command template is:\n")
     return template
@@ -202,7 +192,7 @@ def make_commands(intersection):
     # most likely their list was sorted by chain ID
     # and the higher is chainID the longer it is
     # with randomization all jobs will require more or less the same amount of time
-    # otherwise we get some veeeery long jobs and some too short
+    # otherwise we get some incredibly long jobs and some too short
     random.shuffle(order)
     # fill the command list with chain ids and genes
     commands = [f"{c}\t{intersection.get(c)}" for c in order]

@@ -15,10 +15,10 @@ __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 
-def bed_hdf5_index(inbed, outdb):
+def bed_hdf5_index(in_bed, out_db):
     # read the bed file
-    f = open(inbed, "r")  # assume each bed line has unique name (field 3)
-    h = h5py.File(outdb, "w")
+    f = open(in_bed, "r")  # assume each bed line has unique name (field 3)
+    h = h5py.File(out_db, "w")
     lines_counter = 0
     sys.stderr.write("Making gene_id: bed_data dict...\n")
     for line in f:
@@ -28,18 +28,18 @@ def bed_hdf5_index(inbed, outdb):
     f.close()
     h.close()
 
-    if lines_counter == 0:  #meaning bed file was empty
+    if lines_counter == 0:  # meaning bed file was empty
         # this should not happen: halt TOGA
-        sys.stderr.write(f"(bed_hdf5_index.py) Error! Input file {inbed} is empty! Aborted.\n")
+        sys.stderr.write(f"(bed_hdf5_index.py) Error! Input file {in_bed} is empty! Aborted.\n")
         sys.exit(1)
 
 
 if __name__ == "__main__":
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could fail
     try:  # read arguments
-        inbed = sys.argv[1]
-        outdb = sys.argv[2]
+        in_bed_arg = sys.argv[1]
+        out_db_arg = sys.argv[2]
     except IndexError:  # not enough arguments: show usage message and quit
         sys.stderr.write("Usage: {0} [in_bed] [out_hdf5]\n".format(sys.argv[0]))
         sys.exit(0)
-    bed_hdf5_index(inbed, outdb)
+    bed_hdf5_index(in_bed_arg, out_db_arg)

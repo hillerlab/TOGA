@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Classify chain-gene pairs as orthologos, paralogous etc.
+"""Classify chain-gene pairs as orthologous, paralogous etc.
 
 Each chain-gene pair has a set of features.
 We have a XGBoost pre-trained model that can classify them.
@@ -10,6 +10,12 @@ from collections import defaultdict
 from numpy import log10
 import pandas as pd
 import joblib
+try:  # for robustness
+    from modules.common import eprint
+    from modules.common import die
+except ImportError:
+    from common import eprint
+    from common import die
 
 
 __author__ = "Bogdan Kirilenko, 2020."
@@ -21,22 +27,10 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 SE_MODEL = "models/se_model.dat"
 ME_MODEL = "models/me_model.dat"
 
-# we actually extract a reduntant amount of features
+# we actually extract a redundant amount of features
 # lists of features required by single and multi exon models
 SE_MODEL_FEATURES = ['gl_exo', 'flank_cov', 'exon_perc', 'synt_log']
 ME_MODEL_FEATURES = ['gl_exo', 'loc_exo', 'flank_cov', 'synt_log', 'intr_perc']
-
-
-def eprint(*lines):
-    """Like print but for stderr."""
-    for line in lines:
-        sys.stderr.write(line + "\n")
-
-
-def die(msg):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    sys.exit(1)
 
 
 def verbose(msg):
@@ -138,8 +132,8 @@ def classify_chains(table, output, se_model_path, me_model_path,
     se_model = joblib.load(se_model_path)
     me_model = joblib.load(me_model_path)
     # and apply them
-    se_pred = se_model.predict_proba(X_se)[:,1]
-    me_pred = me_model.predict_proba(X_me)[:,1]
+    se_pred = se_model.predict_proba(X_se)[:, 1]
+    me_pred = me_model.predict_proba(X_me)[:, 1]
 
     # add predictions to the dataframe
     # prediction is basically a single-column
@@ -212,7 +206,6 @@ def classify_chains(table, output, se_model_path, me_model_path,
         f.close()
 
 
-
 def main():
     args = parse_args()
     classify_chains(args.table,
@@ -220,6 +213,7 @@ def main():
                     args.se_model,
                     args.me_model,
                     raw_out=args.raw_model_out)
+
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,6 @@ __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 
-
 def make_bed_ranges(bed_line):
     """Convert a bed line to a set of exon ranges."""
     line_info = bed_line.split("\t")
@@ -28,7 +27,7 @@ def make_bed_ranges(bed_line):
 
 
 def parse_bed(bed_lines):
-    """Return sorted genic regions."""
+    """Return sorted genomic regions."""
     ranges = []
     for bed_line in bed_lines.split("\n")[:-1]:
         gene_ranges = make_bed_ranges(bed_line)
@@ -85,6 +84,7 @@ def overlap_select(bed, chain):
         chain_len += block[1] - block[0]  # block[1] - block[0] is block length
         FLAG = False  # was there an intersection or not?
         FIRST = True
+        bed_num = 0
 
         while True:
             if FIRST:  # start with previous start, first iteration
@@ -105,9 +105,11 @@ def overlap_select(bed, chain):
             block_vs_exon = intersect(block, (exon[0], exon[1]))
             if block_vs_exon > 0:  # they intersect
                 if not FLAG:  # the FIRST intersection of this chain block
-                    # shift the start: all exons leftside will never be reached
-                    start_with = bed_num  # guarantee that I will assign to starts with
-                                          # only the FIRST intersection (if it took place)
+                    # shift the start: all exons left-side will never be reached
+
+                    # guarantee that I will assign to starts with
+                    # only the FIRST intersection (if it took place)
+                    start_with = bed_num
                     FLAG = True  # otherwise starts_with will be preserved
                 # add the intersection size
                 bed_overlaps[exon[2]] += block_vs_exon

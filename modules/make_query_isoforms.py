@@ -8,7 +8,6 @@ Exons should be on the same strand!
 """
 import argparse
 import sys
-import os
 from collections import defaultdict
 import networkx as nx
 try:
@@ -36,7 +35,7 @@ def read_query_bed(bed_file):
     exon_counter = 0  # each exon gets an unique ID
     exons_list = []  # save exons here
     exon_id_to_trans = {}  # exon_id to corresponding transcript
-    trans_to_range = {}  # also save a region for each trascript
+    trans_to_range = {}  # also save a region for each transcript
 
     for line in f:
         line_data = line.rstrip().split("\t")
@@ -79,12 +78,12 @@ def split_exons_in_chr_dir(exons_list):
         strand = exon[2]
         start = exon[3]
         end = exon[4]
-        # split into two elements: key (chr & directon) and value (exon range + exon ID)
+        # split into two elements: key (chr & direction) and value (exon range + exon ID)
         chr_dir = (chrom, strand)
         exon_reduced = (exon_id, start, end)
         # add this to default dict
         chr_dir_exons_not_sorted[chr_dir].append(exon_reduced)
-    # sort exons in each chr_dir track -> for efficiend algorithm
+    # sort exons in each chr_dir track -> for efficient algorithm
     # use start (field 1) as key
     chr_dir_exons = {k: sorted(v, key=lambda x: x[1])
                      for k, v in chr_dir_exons_not_sorted.items()}
@@ -107,7 +106,7 @@ def intersect_exons(chr_dir_exons, exon_id_to_transcript):
     for exons in chr_dir_exons.values():
         # this is the same chrom and direction now
         # add nodes now: to avoid missing transcripts
-        # that dont intersect anything
+        # that don't intersect anything
         exon_ids = [e[0] for e in exons]
         transcripts = set(exon_id_to_transcript[x] for x in exon_ids)
         G.add_nodes_from(transcripts)
@@ -149,7 +148,7 @@ def intersect_exons(chr_dir_exons, exon_id_to_transcript):
                     # don't intersect: nothing to do
                     continue
                 # if we are in this branch: exons intersect
-                # we can add an edge connectiong their corresponding transcripts
+                # we can add an edge connecting their corresponding transcripts
                 G.add_edge(i_trans, j_trans)
     return G
 
@@ -160,7 +159,7 @@ def parse_components(components, trans_to_range):
     Each gene has the following data:
     1) It's ID
     2) Included transcripts
-    3) Genic range.
+    3) Genomic range.
     """
     genes_data = []  # save gene objects here
     for num, component in enumerate(components, 1):
@@ -231,8 +230,8 @@ def get_query_isoforms_data(query_bed, query_isoforms, save_genes_track=None):
     if nx_v < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
         components = list(nx.connected_component_subgraphs(conn_graph))
         msg = f"Warning! You use networkx v{nx_v}\nSplitting components with " \
-               "nx.connected_component_subgraphs(), which is deprecated.\n" \
-               "Please upgrade networkx to supress this warning\n"
+              f"nx.connected_component_subgraphs(), which is deprecated.\n" \
+              f"Please upgrade networkx to suppress this warning\n"
         sys.stderr.write(msg)
     else:
         components = [conn_graph.subgraph(c) for c in nx.connected_components(conn_graph)]
@@ -241,6 +240,7 @@ def get_query_isoforms_data(query_bed, query_isoforms, save_genes_track=None):
     # save the results
     save_isoforms(genes_data, query_isoforms)
     save_regions(genes_data, save_genes_track)
+
 
 if __name__ == "__main__":
     args = parse_args()

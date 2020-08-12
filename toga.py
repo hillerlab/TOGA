@@ -7,7 +7,6 @@ If you need to call TOGA: most likely this is what you need.
 import argparse
 import sys
 import os
-import shutil
 import subprocess
 import time
 from datetime import datetime as dt
@@ -25,6 +24,7 @@ from modules.orthology_type_map import orthology_type_map
 from modules.classify_chains import classify_chains
 from modules.get_transcripts_quality import classify_transcripts
 from modules.make_query_isoforms import get_query_isoforms_data
+from modules.common import eprint
 
 
 __author__ = "Bogdan Kirilenko, 2020."
@@ -77,7 +77,7 @@ class Toga:
         self.chain_file = os.path.join(self.wd, f"{g_ali_basename}.chain")
         # there is an assumption that chain file has .chain extension
         # chain indexing was a bit problematic: (i) bsddb3 fits perfectly but is very
-        # painful to install, (ii) sqlite is also fine but might be unfunctional on some
+        # painful to install, (ii) sqlite is also fine but might be dysfunctional on some
         # cluster file systems, so we create chain_ID: (start_byte, offset) dictionary for
         # instant extraction of a particular chain from the chain file
         # we save these dictionaries into two files: a text file (tsv) and binary file with BST
@@ -127,7 +127,7 @@ class Toga:
         self.t_2bit = self.__find_two_bit(args.tDB)
         self.q_2bit = self.__find_two_bit(args.qDB)
 
-        self.hq_orth_treshold = 0.95
+        self.hq_orth_threshold = 0.95
         self.cesar_jobs_num = args.cesar_jobs_num
         self.cesar_buckets = args.cesar_buckets
         self.cesar_mem_limit = args.cesar_mem_limit
@@ -228,6 +228,7 @@ class Toga:
             if not exon_num.isnumeric():
                 err_msg = f"Error! U12 file {self.u12} line {num} is corrupted, field 2 value is {exon_num}; "\
                           f"This field must contain a numeric value (exon number)."
+                self.die(err_msg)
             acc_don = line_data[2]
             if acc_don not in U12_AD_FIELD:
                 err_msg = f"Error! U12 file {self.u12} line {num} is corrupted, field 3 value is {acc_don}; "\
@@ -274,14 +275,13 @@ class Toga:
 
         if len(u_in_b) != 0:  # isoforms file is incomplete
             extra_t_list = "\n".join(list(u_in_b)[:100])  # show first 100 (or maybe show all?)
-            err_msg = f"Error! There are {len(u_in_b)} transctipts in the bed file absent in the isoforms file! " \
-                      f"There are the transctipts (first 100):\n{extra_t_list}"
+            err_msg = f"Error! There are {len(u_in_b)} transcripts in the bed file absent in the isoforms file! " \
+                      f"There are the transcripts (first 100):\n{extra_t_list}"
             self.die(err_msg)
         # write isoforms file
         with open(self.isoforms, "w") as f:
             f.write("".join(filt_isoforms_lines))
         eprint("Isoforms file is OK")
-
 
     def die(self, msg, rc=1):
         """Show msg in stderr, exit with the rc given."""
@@ -316,8 +316,8 @@ class Toga:
         self.ORTHOLOGY_TYPE_MAP = os.path.join(self.LOCATION, "modules", "orthology_type_map.py")
         self.MODEL_TRAINER = os.path.join(self.LOCATION, "train_model.py")
         self.DEFAULT_CESAR = os.path.join(self.LOCATION, "cesar")
-        self.nextlow_rel_ = os.path.join(self.LOCATION, "execute_joblist.nf")
-        self.NF_EXECUTE = os.path.abspath(self.nextlow_rel_)
+        self.nextflow_rel_ = os.path.join(self.LOCATION, "execute_joblist.nf")
+        self.NF_EXECUTE = os.path.abspath(self.nextflow_rel_)
 
     def __check_dependencies(self):
         """Check all dependencies."""
@@ -342,7 +342,7 @@ class Toga:
             imports_not_found = True
 
         not_all_found = any([c_not_compiled, imports_not_found])
-        self.__call_proc(self.CONFIGURE, "Could'd not call configure.sh!")\
+        self.__call_proc(self.CONFIGURE, "Could not call configure.sh!")\
             if not_all_found else eprint("All dependencies found")
 
     def __check_completeness(self):
@@ -372,7 +372,7 @@ class Toga:
             return
         # check that required config files are here
         if not os.path.isdir(self.nextflow_config_dir):
-            self.die(f"Error! Nextflow config dir {self.nextflow_config_dir} doesn't exist!")
+            self.die(f"Error! Nextflow config dir {self.nextflow_config_dir} does not exist!")
         err_msg = "Please note these two files are expected in the nextflow config directory:\n" \
                   "1) call_cesar_config_template.nf" \
                   "2) extract_chain_features_config.nf"
@@ -392,7 +392,7 @@ class Toga:
 
     def __call_proc(self, cmd, extra_msg=None):
         """Call a subprocess and catch errors."""
-        eprint("{0} in progress...".format(cmd))
+        eprint(f"{cmd} in progress...")
         rc = subprocess.call(cmd, shell=True)
         if rc != 0:
             eprint(extra_msg) if extra_msg else None
@@ -422,7 +422,7 @@ class Toga:
 
         # 1) make joblist for chain features extraction
         self.__split_chain_jobs()
-        self.__time_mark("Splitted chain jobs")
+        self.__time_mark("Split chain jobs")
         # 2) extract chain features: parallel process
         self.__extract_chain_features()
         self.__time_mark("Chain jobs done")
@@ -448,7 +448,7 @@ class Toga:
         self.__transcript_quality()
         self.__gene_loss_summary()
         self.__time_mark("Got gene loss summary")
-        # 10) classsify genes as one2one, one2many, etc orthologs
+        # 10) classify genes as one2one, one2many, etc orthologs
         self.__orthology_type_map()
         # 11) merge logs containing information about skipped genes,transcripts, etc.
         self.__merge_split_files()
@@ -485,7 +485,7 @@ class Toga:
         eprint("index_bed in progress...")
         bed_hdf5_index(self.ref_bed, self.index_bed_file)
         self.temp_files.append(self.index_bed_file)
-        eprint("Indexed")
+        eprint("Bed file indexed")
 
     def __split_chain_jobs(self):
         """Wrap split_jobs.py script."""
@@ -494,7 +494,7 @@ class Toga:
         ch_cl_jobs = os.path.join(self.wd, "chain_classification_jobs")
         # for raw results of this stage
         self.chain_class_results = os.path.join(self.wd, "chain_classification_results")
-        self.chain_cl_jobs_combined  = os.path.join(self.wd, "chain_class_jobs_combined")
+        self.chain_cl_jobs_combined = os.path.join(self.wd, "chain_class_jobs_combined")
         rejected_filename = "SPLIT_CHAIN_REJ.txt"
         rejected_path = os.path.join(self.rejected_dir,
                                      rejected_filename)
@@ -521,9 +521,9 @@ class Toga:
             # need abspath for nextflow execution
             nf_cmd += f" -c {self.nf_chain_extr_config_file}"
         # get timestamp to name the project and create a dir for that
-        #  time() returns somrting like: 1595861493.8344169
-        tmstmp = str(time.time()).split(".")[0]
-        nf_project_name = f"{self.project_name}_chain_feats_at_{tmstmp}"
+        #  time() returns something like: 1595861493.8344169
+        timestamp = str(time.time()).split(".")[0]
+        nf_project_name = f"{self.project_name}_chain_feats_at_{timestamp}"
         nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
         os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
         rc = subprocess.call(nf_cmd, shell=True, cwd=nf_project_path)
@@ -545,15 +545,13 @@ class Toga:
         """Run decision tree."""
         # define input and output."""
         eprint("Decision tree in progress...")
-        orthologs_file = "trans_to_chain_classes.tsv"
-        pred_scores_file = "orthology_scores.tsv"
-        self.orthologs = os.path.join(self.wd, orthologs_file)
-        self.pred_scores = os.path.join(self.wd, pred_scores_file)
+        self.orthologs = os.path.join(self.wd, "trans_to_chain_classes.tsv")
+        self.pred_scores = os.path.join(self.wd, "orthology_scores.tsv")
         self.se_model = os.path.join(self.LOCATION, "models", "se_model.dat")
         self.me_model = os.path.join(self.LOCATION, "models", "me_model.dat")
         cl_rej_log = os.path.join(self.rejected_dir, "classify_chains_rejected.txt")
         if not os.path.isfile(self.se_model) or not os.path.isfile(self.me_model):
-            self.__call_proc(self.MODEL_TRAINER, "Could not train ML model!")
+            self.__call_proc(self.MODEL_TRAINER, "Models not found, training...")
         classify_chains(self.chain_results_df, self.orthologs, self.se_model,
                         self.me_model, rejected=cl_rej_log, raw_out=self.pred_scores)
         if self.stop_at_chain_class:
@@ -561,7 +559,7 @@ class Toga:
 
     def __get_proc_pseudogenes_track(self):
         """Create annotation of processed genes in query."""
-        eprint("Creatrng processed pseudogenes track.")
+        eprint("Creating processed pseudogenes track.")
         proc_pgenes_track = os.path.join(self.wd, "proc_pseudogenes.bed")
         create_ppgene_track(self.orthologs, self.chain_file, self.index_bed_file, proc_pgenes_track)
 
@@ -626,7 +624,7 @@ class Toga:
         # different config files because different memory limits
         project_paths = []  # dirs with logs
         processes = []  # keep subprocess objects here
-        tmstmp = str(time.time()).split(".")[1]  # for project name
+        timestamp = str(time.time()).split(".")[1]  # for project name
         # get a list of buckets
         if self.cesar_buckets == "0":
             buckets = [0, ]  # a single bucket
@@ -634,15 +632,15 @@ class Toga:
             buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
         print(f"Pushing {len(buckets)} joblists")
         # cmd to grep bucket-related commands
-        grep_bucket_templ = "cat {0} | grep _{1}.bdb"
+        grep_bucket_template = "cat {0} | grep _{1}.bdb"
         for b in buckets:
             # create config file
             # 0 means that that buckets were not split
-            memlim = b if b != 0 else self.cesar_mem_limit
+            mem_lim = b if b != 0 else self.cesar_mem_limit
             if not self.local_executor:
                 # running on cluster, need to create config file
                 # for this bucket's memory requirement
-                config_string = self.cesar_config_template.replace("${_MEMORY_}", f"{memlim}")
+                config_string = self.cesar_config_template.replace("${_MEMORY_}", f"{mem_lim}")
                 config_file_path = os.path.join(self.wd, f"cesar_config_{b}_queue.nf")
                 config_file_abspath = os.path.abspath(config_file_path)
                 with open(config_file_path, "w") as f:
@@ -653,7 +651,7 @@ class Toga:
                 config_file_abspath = None
             # extract jobs related to this bucket (if it's not 0)
             if b != 0:
-                grep_bucket_cmd = grep_bucket_templ.format(self.cesar_combined, b)
+                grep_bucket_cmd = grep_bucket_template.format(self.cesar_combined, b)
                 try:
                     bucket_tasks = subprocess.check_output(grep_bucket_cmd, shell=True).decode("utf-8")
                 except subprocess.CalledProcessError:
@@ -668,7 +666,7 @@ class Toga:
             else:  # nothing to extract, there is a single joblist
                 joblist_abspath = os.path.abspath(self.cesar_combined)
             # create project directory for logs
-            nf_project_name = f"{self.project_name}_cesar_at_{tmstmp}_q_{b}"
+            nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_{b}"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
             os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
@@ -704,7 +702,6 @@ class Toga:
             for path in project_paths:
                 shutil.rmtree(path)
 
-
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
         eprint("Merging CESAR output to make final fasta and pre-final bed files.")
@@ -732,13 +729,12 @@ class Toga:
             print("PLEASE SEE LOGS FOR DETAILS")
             self.cesar_ok_merged = False
 
-
     def __transcript_quality(self):
         """Call module to get transcript quality."""
         self.trans_quality_file = os.path.join(self.wd, "transcript_quality.tsv")
         classify_transcripts(self.meta_data,
                              self.pred_scores,
-                             self.hq_orth_treshold,
+                             self.hq_orth_threshold,
                              self.trans_quality_file)
 
     def __gene_loss_summary(self):
@@ -892,11 +888,6 @@ def parse_args():
         sys.exit(0)
     args = app.parse_args()
     return args
-
-
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(msg + end)
 
 
 def main():

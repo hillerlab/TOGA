@@ -8,17 +8,17 @@ Remove:
 import argparse
 import sys
 from collections import Counter
+try:
+    from modules.common import die
+    from modules.common import eprint
+except ImportError:
+    from common import die
+    from commom import eprint
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
 __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
-
-
-def die(msg, rc=1):
-    """Show msg in stderr, exit with the rc given."""
-    sys.stderr.write(msg + "\n")
-    sys.exit(rc)
 
 
 def parse_args():
@@ -55,7 +55,7 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
         chrom = line_data[0]
         if only_chrom and chrom != only_chrom:
             # TOGA allows to perform the analysis on a specific chromosome only
-            # is so, we can skip all transcripts that located on orher chromosomes
+            # is so, we can skip all transcripts that located on other chromosomes
             continue
         chromStart = int(line_data[1])
         chromEnd = int(line_data[2])
@@ -74,22 +74,10 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
         blockAbsEnds = [blockEnds[i] + chromStart for i in range(blockCount)]
         blockNewStarts, blockNewEnds = [], []
         names[name] += 1
-        if names[name] > 1:
-            # if the name is not uniq: we get there
-            # rename the track
-            # if it's the second entry of a transcript A, it would be renamed as follows:
-            # A -> A_2
-            name_upd = f"{name}_{names[name]}"
-            # write info to log
-            rejected.append((name, f"Non uniq, renamed to {name_upd}"))
-            # TODO: an issue -> in this case we should also do something to the isoforms file
-        else:
-            # the first appearance of this ID: keep going
-            name_upd = name
 
         if thickStart > thickEnd:
             f.close()  # according to bed12 specification this should never happen
-            sys.stderr.write(f"Problem occured at line {num}, gene {name}\n")
+            sys.stderr.write(f"Problem occurred at line {num}, gene {name}\n")
             die("Error! Bed file is corrupted, thickEnd MUST be >= thickStart")
         elif thickStart == thickEnd:
             # this means that this is a non-coding transcript
@@ -100,7 +88,7 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
         if thickStart < chromStart or thickEnd > chromEnd:
             # a very strange (but still possible) case
             f.close()  # for sure an error with input data
-            sys.stderr.write(f"Problem occured at line {num}, gene {name}\n")
+            sys.stderr.write(f"Problem occurred at line {num}, gene {name}\n")
             die("Error! Bed file is corrupted, thickRange is outside chromRange!")
 
         # now select CDS only
@@ -117,7 +105,7 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
                 continue
 
             # if we are here: this is not an entirely UTR exon
-            # it migth intersect the CDS border or to be in the CDS entirely
+            # it might intersect the CDS border or to be in the CDS entirely
             # remove UTRs: block start must be >= CDS_start (thickStart)
             # block end must be <= CDS_end (thickEnd)
             blockNewStart = blockStart if blockStart >= thickStart else thickStart
@@ -131,9 +119,9 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
             rejected.append((name, "No CDS"))
             continue
 
-        blockNewCount = len(blockNewStarts)
+        block_new_count = len(blockNewStarts)
         blockNewSizes = [blockNewEnds[i] - blockNewStarts[i]
-                         for i in range(blockNewCount)]
+                         for i in range(block_new_count)]
 
         if sum(blockNewSizes) % 3 != 0 and not ouf:
             # this is an out-of-frame (or incomplete transcript)
@@ -142,8 +130,14 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
             rejected.append((name, "Out-of-frame gene"))
             continue
 
+        # if there are non-unique transcript IDs: die
+        # I kill it there, not earlier to show them altogether
+        if any(v > 1 for v in names.values()):
+            eprint("Error! There are non-uniq transcript IDs:")
+            for k in names.keys():
+                eprint(k)
+            die("Abort")
         # we keep this transcript: add in to the list
-        line_data[3] = name_upd
         new_line = "\t".join([str(x) for x in line_data])
         new_lines.append(new_line)
     f.close()
@@ -163,6 +157,7 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
         for elem in rejected:
             f.write(f"{elem[0]}\t{elem[1]}\n")
         f.close()
+
 
 def main():
     """Entry point."""

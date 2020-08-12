@@ -60,7 +60,6 @@ def get_exon_marks(meta_data_file):
     return transcript_exon_marks
 
 
-
 def get_transcript_score(ort_scores_file):
     """Read orthology scores.
     
@@ -86,7 +85,7 @@ def classify_transcripts(meta_data_file, ort_score_file, hq_threshold, output):
     # first, get exon marks (how confident are we about any projected exon)
     transcript_exon_marks = get_exon_marks(meta_data_file)
     transcripts_scores = get_transcript_score(ort_score_file)
-    # ther get transcript classes
+    # then get transcript classes
     result = {}
     for trans, marks in transcript_exon_marks.items():
         # classify projections
@@ -108,6 +107,7 @@ def classify_transcripts(meta_data_file, ort_score_file, hq_threshold, output):
     # once projections classified: save the data
     save(result, output)
 
+
 def save(transcript_class, output_file):
     """Just save the table."""
     f = open(output_file, "w")
@@ -124,6 +124,7 @@ def main():
                          args.orthology_scores,
                          args.hq_threshold,
                          args.output)
+
 
 if __name__ == "__main__":
     main()

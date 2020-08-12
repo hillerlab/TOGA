@@ -3,22 +3,12 @@
 import argparse
 import sys
 import subprocess
+from modules.common import eprint
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
 __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
-
-
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(msg + end)
-
-
-def die(msg, rc=0):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    sys.exit(rc)
 
 
 def parse_args():
@@ -62,16 +52,16 @@ def main():
     gene_loss_data = []  # list to keep gene loss detector out
     rejected = []  # keep genes that were skipped at this stage + reason
 
-    for num, job in enumerate(jobs):
+    for num, job in enumerate(jobs, 1):
         eprint(f"Calling:\n{job}")
         # catch job stdout
         job_out = call_job(job)
         if job_out == 1:
             # a job failed with code 1 -> send the signal upstream
             # abort execution, write what job exactly failed
-            # sys.stderr.write(f"Error! Job {job} failed!\n")
+            # there are rare cases where CESAR fails
+            # these cases usually contain rubbish
             rejected.append(f"{job}\tCESAR JOB FAILURE\n")
-            # sys.exit(1)
             continue
 
         # job looks like ./CESAR_wrapper.py
@@ -93,15 +83,14 @@ def main():
                                        or line.startswith("!")])
             gene_loss_data.append((gene, job_gene_loss))
             # all other lines -> processed CESAR output
-            job_out_cesar_lines = [line for line in job_out_lines
-                                   if not line.startswith("#")
-                                   and not line.startswith("!")]
-            job_out = "\n".join(job_out_cesar_lines)
+            job_out = "\n".join([line for line in job_out_lines
+                                 if not line.startswith("#")
+                                 and not line.startswith("!")])
 
         # write output
         out.write(f"#{gene}\n")
         out.write(f"{job_out}\n")
-        eprint(f"{num + 1} / {jobs_num} done", end="\r")
+        eprint(f"{num} / {jobs_num} done", end="\r")
 
     out.close()
 
@@ -125,8 +114,6 @@ def main():
         f = open(args.rejected_log, "w")
         f.write("".join(rejected))
         f.close()
-
-    sys.exit(0)
 
 
 if __name__ == "__main__":

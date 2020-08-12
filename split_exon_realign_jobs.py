@@ -11,7 +11,10 @@ import math
 from collections import defaultdict
 from datetime import datetime as dt
 import ctypes
-from modules.common import parts, chainExtractID
+from modules.common import parts
+from modules.common import chain_extract_id
+from modules.common import eprint
+from modules.common import die
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -43,17 +46,6 @@ ch_lib.chain_coords_converter.argtypes = [ctypes.c_char_p,
 ch_lib.chain_coords_converter.restype = ctypes.POINTER(ctypes.c_char_p)
 
 
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(msg + end)
-
-
-def die(msg, rc=0):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    sys.exit(rc)
-
-
 def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
@@ -72,7 +64,7 @@ def parse_args():
                      "param usage due to round issues.")
     app.add_argument("--buckets", default="0", help=""
                      "If you need to split the cluster jobs in different classes"
-                     " according the memory consumprion use this parameter. To do "
+                     " according the memory consumption use this parameter. To do "
                      " that write comma-separated list of memory levels. For "
                      "example, --buckets 10,30 means that there are two classes of "
                      "jobs - consuming 10 and 30 gb. All jobs consuming more than 30gb "
@@ -100,7 +92,7 @@ def parse_args():
     app.add_argument("--u12", default=None, help="Add U12 introns data")
     app.add_argument("--rejected_log", default=None, help="Save rejection data in this dir")
     app.add_argument("--paralogs_log", default=os.path.join(os.path.dirname(__file__), "paralogs.log"), 
-                      help="Write a list of genes for which only paralogous chains were detected.")
+                     help="Write a list of genes for which only paralogous chains were detected.")
     app.add_argument("--uhq_flank", default=50, type=int, help="UHQ flank size")
     app.add_argument("--o2o_only", "--o2o", action="store_true", dest="o2o_only",
                      help="Process only the genes that have a single orthologous chain")
@@ -140,9 +132,9 @@ def define_buckets(lim, buckets):
         # split was not required
         return lim, {0: []}
     # buckets assigned
-    buckets_vals = sorted([int(x) for x in buckets.split(",") if x != ""])
-    buckets = {x: [] for x in buckets_vals}
-    lim = buckets_vals[-1]
+    buckets_values = sorted([int(x) for x in buckets.split(",") if x != ""])
+    buckets = {x: [] for x in buckets_values}
+    lim = buckets_values[-1]
     return lim, buckets
 
 
@@ -216,18 +208,18 @@ def read_orthologs(orthologs_file, fields_raw, only_o2o=False):
 def read_bed(bed):
     """Read bed 12 file.
     
-    For each transcript extract genic coordinates and exon sizes.
+    For each transcript extract genetic coordinates and exon sizes.
     """
     bed_data = {}
     f = open(bed, "r")
     for line in f:
         bed_info = line[:-1].split("\t")
         chrom = bed_info[0]
-        chromStart = int(bed_info[1])
-        chromEnd = int(bed_info[2])
+        chrom_start = int(bed_info[1])
+        chrom_end = int(bed_info[2])
         name = bed_info[3]
-        blockSizes = [int(x) for x in bed_info[10].split(',') if x != '']
-        bed_data[name] = (chrom, chromStart, chromEnd, blockSizes)
+        block_sizes = [int(x) for x in bed_info[10].split(',') if x != '']
+        bed_data[name] = (chrom, chrom_start, chrom_end, block_sizes)
     f.close()
     return bed_data
 
@@ -255,7 +247,7 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
 
     for chain_id, genes in chain_to_genes.items():
         # extract chain itself
-        chain_body = chainExtractID(bdb_chain_file, chain_id).encode()
+        chain_body = chain_extract_id(bdb_chain_file, chain_id).encode()
         all_gene_ranges = []
         for gene in genes:
             # get genomic coordinates for each gene
@@ -284,14 +276,14 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
                                                         c_granges_num,
                                                         granges_arr)
         chain_coords_conv_out = []  # keep lines here
-        # convert C output to python-readible type
+        # convert C output to python-readable type
         for i in range(granges_num + 1):
             chain_coords_conv_out.append(raw_ch_conv_out[i].decode("utf-8"))
 
         for line in chain_coords_conv_out[1:]:
             # then parse the output
             line_info = line.rstrip().split()
-            # line info is: region num, region in refererence, region in query
+            # line info is: region num, region in reference, region in query
             # one line per one gene, in the same order
             num = int(line_info[0])
             # regions format is chrom:start-end
@@ -314,7 +306,7 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
                 skipped.append((gene, chain_id, "too long query locus"))
                 continue
             # for each chain-gene pair save query region length
-            # need this for reqired memory estimation
+            # need this for required memory estimation
             gene_chain_grange[gene][chain_id] = que_len
 
         del raw_ch_conv_out  # not sure if necessary but...
@@ -332,11 +324,11 @@ def fill_buckets(buckets, all_jobs):
     memlims = sorted(buckets.keys())
     prev_lim = 0
     for memlim in memlims:
-        # buckets and memlims are pretty much the same
+        # buckets and memory limits are pretty much the same
         # if buckets are 5 and 10 then:
         # memlim[5] -> jobs that require <= 5Gb
         # memlim[10] -> jobs that require > 5Gb AND <= 10Gb
-        buckets[memlim] = [job for job, jobmem in all_jobs.items() if prev_lim < jobmem <= memlim]
+        buckets[memlim] = [job for job, job_mem in all_jobs.items() if prev_lim < job_mem <= memlim]
         prev_lim = memlim
     # remove empty
     filter_buckets = {k: v for k, v in buckets.items() if len(v) > 0}
@@ -377,7 +369,7 @@ def main():
 
     # read U12 introns: to create a list of U12-containing genes
     # need it to make subsequent commands
-    U12_data = read_u12_data(args.u12)
+    u12_data = read_u12_data(args.u12)
 
     # get lists of orthologous chains per each gene
     # skipped_1 - no chains found -> log them
@@ -410,12 +402,12 @@ def main():
     skipped_3 = []
 
     for gene in batch.keys():
-        u12_this_gene = U12_data.get(gene)
+        u12_this_gene = u12_data.get(gene)
         block_sizes = bed_data[gene][3]
 
         # proceed to memory estimation
         # the same procedure as inside CESAR2.0 code
-        num_states, rlength = 0, 0
+        num_states, r_length = 0, 0
 
         # required memory depends on numerous params
         # first, we need reference transcript-related parameters
@@ -425,9 +417,9 @@ def main():
             #  /* 22 and 6 for acc and donor states */
             num_codons = block_size // 3
             num_states += 6 + 6 * num_codons + 1 + 2 + 2 + 22 + 6
-            # rlength += 11 + 6 * fasta.references[i]->length
+            # r_length += 11 + 6 * fasta.references[i]->length
             # + donors[i]->length + acceptors[i]->length;
-            rlength += block_size
+            r_length += block_size
 
         gene_chains_data = regions.get(gene)
         # check that there is something for this gene
@@ -439,17 +431,17 @@ def main():
         chains = gene_chains_data.keys()
         chains_arg = ",".join(chains)  # chain ids -> one of the cmd args
         
-        # now compute query seqeuence-related parameters
+        # now compute query sequence-related parameters
         query_lens = [v for v in gene_chains_data.values()]
-        qlength_max = max(query_lens)
+        q_length_max = max(query_lens)
         # and now compute the amount of required memory
         memory = (num_states * 4 * 8) + \
-                 (num_states * qlength_max * 4) + \
+                 (num_states * q_length_max * 4) + \
                  (num_states * 304) + \
-                 (2 * qlength_max + rlength) * 8 + \
-                 (qlength_max + rlength) * 2 * 1 + EXTRA_MEM
+                 (2 * q_length_max + r_length) * 8 + \
+                 (q_length_max + r_length) * 2 * 1 + EXTRA_MEM
 
-        # convet to gigs + 0.25 extra gig
+        # convert to gigs + 0.25 extra gig
         gig = math.ceil(memory / 1000000000) + 0.25 
         if gig > mem_limit:
             # it is going to consume TOO much memory

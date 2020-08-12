@@ -28,7 +28,7 @@ curl -fsSL https://get.nextflow.io | bash
 conda install -c bioconda nextflow
 ```
 
-If you've donwnloaded nextflow using curl, move the nextflow executable to a
+If you've downloaded nextflow using curl, move the nextflow executable to a
 directory accessible by your $PATH variable.
 
 To get TOGA do the following:
@@ -108,7 +108,7 @@ If you encounter error messages related to these two dependencies, please see be
 Do note that previous TOGA versions used BerkeleyDB.
 Now it has been replaced by HDF5.
 
-#### XGboost
+#### XGBoost
 
 Sometimes xgboost installation with pip doesn't work and shows a message like:
 
@@ -124,7 +124,7 @@ Please note that xgboost requires CMake >=3.13 for build.
 
 #### Nextflow
 
-There are several nextflow-related issues that you migth encounter.
+There are several nextflow-related issues that you might encounter.
 If you have any issues with installation most likely this is something related to java version.
 The simplest solution would be to install nextflow using conda:
 
@@ -415,7 +415,7 @@ With this parameter TOGA will mask stop codons and CESAR could process them.
 Without this parameter TOGA will crash if meet any in-frame stop codon in the
 reference.
 Use this flag only if you are sure that your reference sequences might
-contain inframe-stop codons.
+contain in-frame stop codons.
 
 ##### --cesar_mem_limit CESAR_MEM_LIMIT
 
@@ -464,7 +464,7 @@ Path to U12 introns data.
 
 A flag.
 If set, TOGA halts after chain classification step.
-So it doesn't annote query genome, just produces a list
+So it doesn't annotate query genome, just produces a list
 of orthologous chains for each reference gene.
 
 ##### --o2o_only, --o2o

@@ -12,29 +12,19 @@ and then does the following:
 import sys
 import argparse
 import os
-try:  # need to add this nasty construction
-      # depending on from where this script was called
-      # TODO: just move parse cesar bdb content here
+try:  # for robustness
+    from modules.common import eprint
+    from modules.common import die
     from modules.parse_cesar_bdb import parse_cesar_bdb
 except ImportError:
+    from common import eprint
+    from common import die
     from parse_cesar_bdb import parse_cesar_bdb
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
 __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
-
-
-def die(msg, rc=1):
-    """Show msg in stderr, exit with the rc given."""
-    sys.stderr.write(msg + "\n")
-    sys.stderr.write("Program finished with exit code {}\n".format(rc))
-    sys.exit(rc)
-
-
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(msg + end)
 
 
 def parse_args():
@@ -148,6 +138,7 @@ def main():
                        args.skipped,
                        args.prot_fasta,
                        args.output_trash)
+
 
 if __name__ == "__main__":
     main()

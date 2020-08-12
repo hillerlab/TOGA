@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Script to train XGBoost models."""
+import os
+from datetime import datetime as dt
 import xgboost as xgb
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import cross_val_score
-from sklearn.metrics import mean_squared_error
+# from sklearn.metrics import mean_squared_error
 import joblib
-from datetime import datetime as dt
-import os
+
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -19,9 +20,9 @@ SE_MODEL_FEATURES = ['gl_exo', 'flank_cov', 'exon_perc', 'synt_log']
 ME_MODEL_FEATURES = ['gl_exo', 'loc_exo', 'flank_cov', 'synt_log', 'intr_perc']
 
 
-def train_on(X, y, save_to, name=None):
+def train_on(x, y, save_to, name=None):
     """Train model on the X and y given."""
-    # models parametets, work fine for both multi and single exon models
+    # models parameters, work fine for both multi and single exon models
     n_trees = 50
     max_depth = 3
     learning_rate = 0.1
@@ -30,12 +31,12 @@ def train_on(X, y, save_to, name=None):
                               max_depth=max_depth,
                               learning_rate=learning_rate)
     kfold = StratifiedKFold(n_splits=5, random_state=777, shuffle=True)
-    results = cross_val_score(model, X, y, cv=kfold)
-    model.fit(X, y)
+    results = cross_val_score(model, x, y, cv=kfold)
+    model.fit(x, y)
     if name:  # some verbosity
         print(f"{name} model: ")
-        print(f"Training on {len(X)} samples")
-        print(f"Using features: {X.columns}")
+        print(f"Training on {len(x)} samples")
+        print(f"Using features: {x.columns}")
     print("Accuracy: {0:.3f} {1:.3f}".format(results.mean() * 100, results.std() * 100))
     joblib.dump(model, save_to)  # save the model
     print(f"Model saved to: {save_to}")

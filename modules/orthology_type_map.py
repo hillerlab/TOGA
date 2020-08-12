@@ -12,10 +12,13 @@ import networkx as nx
 try:
     from modules.common import split_proj_name
     from modules.common import flatten
+    from modules.common import eprint
+    from modules.common import die
 except ImportError:
     from common import split_proj_name
     from common import flatten
-
+    from common import eprint
+    from common import die
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -28,17 +31,6 @@ ONE2ONE = "one2one"
 ONE2MANY = "one2many"
 MANY2ONE = "many2one"
 MANY2MANY = "many2many"
-
-
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(msg + end)
-
-
-def die(msg, rc=0):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    sys.exit(rc)
 
 
 def read_isoforms(isoforms_file, transcripts):
@@ -169,8 +161,8 @@ def extract_orth_connections(graph, r_genes_all, q_genes_all):
     if nx_v < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
         graph_components = list(nx.connected_component_subgraphs(graph))
         msg = f"Warning! You use networkx v{nx_v}\nSplitting components with " \
-               "nx.connected_component_subgraphs(), which is deprecated.\n" \
-               "Please upgrade networkx to supress this warning\n"
+              f"nx.connected_component_subgraphs(), which is deprecated.\n" \
+              f"Please upgrade networkx to suppress this warning\n"
         sys.stderr.write(msg)
     else:
         graph_components = [graph.subgraph(c) for c in nx.connected_components(graph)]
@@ -246,7 +238,7 @@ def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_pro
                     # technical reasons
                     non_orthologous_isoforms.append(ref_transcript)
                 for proj in projections:
-                    # and last, each trascript can be projected > once
+                    # and last, each transcript can be projected > once
                     proj_q_gene = q_trans_to_gene[proj]
                     f.write(f"{ref_gene}\t{ref_transcript}\t{proj_q_gene}\t{proj}\t{conn_class}\n")
     # close file and return non-orthologous reference isoforms
@@ -323,6 +315,7 @@ def main():
                        paralogs_arg=args.paralogs,
                        loss_data=args.loss_data,
                        save_skipped=args.save_skipped)
+
 
 if __name__ == "__main__":
     main()

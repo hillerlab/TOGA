@@ -3,14 +3,19 @@
 import sys
 import argparse
 from collections import defaultdict
-from collections import Counter
 from collections import namedtuple
-try:
+try:  # for robustness
     from modules.parse_cesar_output import parse_cesar_out
     from modules.parse_cesar_output import classify_exon
+    from modules.common import die
+    from modules.common import eprint
+    from modules.common import parts
 except ImportError:
     from parse_cesar_output import parse_cesar_out
     from parse_cesar_output import classify_exon
+    from common import die
+    from common import eprint
+    from common import parts
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -58,22 +63,6 @@ BIG_INS = "BIG_INS"
 STOP = "STOP"
 
 
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(str(msg) + end)
-
-
-def die(msg, rc=0):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    sys.exit(rc)
-
-
-def parts(lst, n=3):
-    """Split an iterable into parts with size n."""
-    return [lst[i:i + n] for i in iter(range(0, len(lst), n))]
-
-
 def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
@@ -110,7 +99,7 @@ def read_cesar_out(cesar_line):
         query_seq = fraction[3]
 
         if len(ref_seq) != len(query_seq):
-            # ref and query seq must have the same length in the pairwise aligment
+            # ref and query seq must have the same length in the pairwise alignment
             die("Error! Ref and query sequences must have the same length!")
         elif len(ref_seq) == 0:
             # also must never happen -> there is an error
@@ -174,7 +163,7 @@ def analyse_splice_sites(ref, query, gene, chain, u12_data=None, v=None):
     # spaces in reference sequence: nothing, not exon at all
     # > in the reference mean intron deletion
     # in ref: uppercase letters - full codons, lowercase - split codons
-    # in query: uppercase letters - CDS, lowecase - something else
+    # in query: uppercase letters - CDS, lowercase - something else
     # so we can extract indexes of CDS in the reference - not spaces and >
     cds_indexes = [i for i, c in enumerate(ref) if c != " " and c != ">"]
     exon_num = 0  # initiate exons counter
@@ -188,7 +177,7 @@ def analyse_splice_sites(ref, query, gene, chain, u12_data=None, v=None):
         current = cds_indexes[i]
         delta = current - prev
         exon_num_indexes[exon_num].append(prev)
-        # if delts curr - prev > 1: curr and prev are on different exons
+        # if delta curr - prev > 1: curr and prev are on different exons
         # increment exon number then
         if delta > 1:
             exon_num += 1
@@ -308,8 +297,8 @@ def get_codon_to_exon_nums(ref):
     codon_to_exon = {}
 
     for num, exon_seq in enumerate(ref_parts, 1):
-        lett_only = [c for c in exon_seq if c.isalpha()]
-        ex_len = len(lett_only) - prev_rem
+        letters_only = [c for c in exon_seq if c.isalpha()]
+        ex_len = len(letters_only) - prev_rem
         full_codons = ex_len // 3
         rem = ex_len % 3
         prev_rem = 0 if rem == 0 else 3 - rem
@@ -362,7 +351,7 @@ def scan_rf(codon_table, gene, chain, exon_stat=None, v=False,
         # go codon-by-codon
         # if in first/last 10%: it will be masked
         mask = True if num <= left_t or num >= right_t else False
-        # determine wheter it's the first or last exon:
+        # determine whether it's the first or last exon:
         last_codon = True if num == codons_num else False
         first_codon = True if num == 1 else False
 
@@ -405,14 +394,14 @@ def scan_rf(codon_table, gene, chain, exon_stat=None, v=False,
                            mut_id=mut_id)
             in_mut_report.append(mut)
 
-        # check for FS; cound number of dashes in both codons
+        # check for FS; count number of dashes in both codons
         ref_gaps = ref_codon.count("-")
         que_gaps = que_codon.count("-")
         delta = ref_gaps - que_gaps
         fs = abs(delta) % 3 != 0  # if so, it's a frameshift
 
         if fs: 
-            # we have a frameshifing indel!
+            # we have a frame-shifting indel!
             mut_ = f"+{delta}" if delta > 0 else f"{delta}"
             mclass = FS_INS if delta > 0 else FS_DEL
             mut_id = f"FS_{mut_number_fs}"
@@ -486,7 +475,7 @@ def scan_rf(codon_table, gene, chain, exon_stat=None, v=False,
                 # assign to exon that has 2 of them:
                 st_ex_num = ex_num if codon["split_"] == 1 else ex_num - 1
             mut_number_stop += 1
-            # check wheter it's a selenocysteine-coding codon
+            # check whether it's a selenocysteine-coding codon
             is_sec_pos = num - 1 in sec_codons_set  # 0-based in that set
             if is_sec_pos and stop_triplets[0] == "TGA":
                 # mask if U-coding codon
@@ -501,7 +490,7 @@ def scan_rf(codon_table, gene, chain, exon_stat=None, v=False,
             if v:
                 eprint("Detected STOP")
                 eprint(codon)
-    # I can inder number of codons in each exon directly from codon table
+    # I can infer number of codons in each exon directly from codon table
     return in_mut_report
 
 
@@ -630,7 +619,6 @@ def compute_percent_id(seq_1, seq_2):
     return pid
 
 
-
 def classify_exons(gene, que, codon_table, exon_class, exon_gap,
                    exon_pid, exon_blosum, missing_exons, ex_inc):
     """Classify exons as intact, deleted and missing."""
@@ -695,7 +683,7 @@ def muts_to_text(mutations, perc_intact_1, perc_intact_2, i_prop, oub, m_80_i, m
     for elem in ordered:
         # convert named tuple to list:
         elem_values = list(elem._asdict().values())
-        # last field masked values False and True migth be confusing
+        # last field masked values False and True might be confusing
         # make explicit "masked" and "unmasked"
         if elem_values[6] is False:
             elem_values[6] = "unmasked"
@@ -742,7 +730,7 @@ def get_exon_num_corr(codons_data):
 
 def compute_intact_perc(codon_table, mutations, q_name, v=False):
     """Compute intact %ID-related features."""
-    # compute per query (TODO: maybe reduntant)
+    # compute per query (TODO: maybe redundant)
     query_muts = [m for m in mutations if m.chain == q_name]
     gene_len = len(codon_table)
     # initiate codon_status, mark deleted codons with D, the rest with I
@@ -803,7 +791,7 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
             else:  # right side: last codon in this exon
                 affected_num = codon_pos_at_exon[-1]
             # if not Missing codon: say it's Lost (update codon status)
-            # seems to be a reduntant check for M (I filter those mutations)
+            # seems to be a redundant check for M (I filter those mutations)
             if codon_status[affected_num] != "M":
                 codon_status[affected_num] = "L"
             continue
@@ -834,7 +822,7 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
     repl_d = codon_status_string.replace("D", "")
     # to compute %intact in two modes:
     ignore_m = repl_d.replace("M", "")  # 1. - ignoring missing sequence
-    m_intact = repl_d.replace("M", "I")  # 2. - considerin missing sequence as intact
+    m_intact = repl_d.replace("M", "I")  # 2. - considering missing sequence as intact
 
     # get spans of continuous non-lost reading frame
     # For example:
@@ -854,7 +842,7 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
     # compute features related to middle 80% CDS
     ten_perc = gene_len // 10
     # cut middle 80% codons states:
-    middle = codon_status_string[ten_perc : - ten_perc]
+    middle = codon_status_string[ten_perc: - ten_perc]
     middle_80_intact = False if "L" in middle else True
     middle_80_present = False if "M" in middle else True
     # compute non-missing sequence
@@ -881,12 +869,12 @@ def filter_mutations(mut_list):
     mut_to_keep = [m for m in mut_list if m.exon not in del_and_missed]
     # so we keep: mutations which state that some exons are M/D
     # + mutations that affect other exons, not M/D
-    # muts in the Del/Miss exons are omited
+    # mutations in the Del/Miss exons are omitted
     filtered = mut_to_keep + del_exon_muts + mis_exon_muts
     return filtered
 
 
-def get_D_runs(ex_stat):
+def get_d_runs(ex_stat):
     """Get D runs."""
     d_inds = [n for n, v in enumerate(ex_stat) if v == "D" or v == "mD"]
     if len(d_inds) <= 1:
@@ -906,7 +894,7 @@ def get_D_runs(ex_stat):
             curr_list = [elem, ]
     result.append(curr_list)
     final_res = [x for x in result if len(x) > 1]
-    return result
+    return final_res
 
 
 def find_safe_ex_dels(mut_list, ex_stat_, ex_lens, no_fpi=False):
@@ -927,7 +915,7 @@ def find_safe_ex_dels(mut_list, ex_stat_, ex_lens, no_fpi=False):
     compensated_ex = set()
     # get compensated exon deletions
     # at first get runs of exon deletions in a row:
-    D_runs = get_D_runs(ex_stat_)
+    D_runs = get_d_runs(ex_stat_)
     for D_run in D_runs:
         # in D run we can detect a compensation
         if len(D_run) < 2:
@@ -959,7 +947,7 @@ def find_safe_ex_dels(mut_list, ex_stat_, ex_lens, no_fpi=False):
                 if sum(d_lens) % 3 != 0:
                     # not compensated yet: we can continue
                     continue
-                # thry are compensated: add them to the compensated set
+                # they are compensated: add them to the compensated set
                 for x in d_elems:
                     compensated_ex.add(x)
                 # compensated: break J look, back to I loop
@@ -1079,7 +1067,7 @@ def detect_split_stops(codon_table, gene, q_name, exon_stat):
         c_f_exon = first_exon - 1
         c_s_exon = second_exon - 1
         # get split codon for first exon
-        # there are two exons, N and M, betweend them - deleted guys
+        # there are two exons, N and M, between them - deleted guys
         # exon_NX -------- Xexon_M
         # X marks split codons that potentially contain stop
         # to take last codon of N, if it's split, I should take 0'st codon for exon N+1

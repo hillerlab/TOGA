@@ -5,8 +5,12 @@ from collections import defaultdict
 import sys
 try:
     from modules.parse_cesar_output import classify_exon
+    from modules.common import eprint
+    from modules.common import die
 except ImportError:
     from parse_cesar_output import classify_exon
+    from common import eprint
+    from common import die
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -25,17 +29,6 @@ DEFAULT_SCORE = 100
 # header for exons meta data file
 META_HEADER = "\t".join("gene exon_num chain_id act_region exp_region"
                         " in_exp pid blosum gap class paralog q_mark".split())
-
-
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(str(msg) + end)
-
-
-def die(msg, rc=0):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    sys.exit(rc)
 
 
 def parse_args():
@@ -60,7 +53,7 @@ def parse_args():
     return args
 
 
-def read_fasta(fasta_line, v=False, show_headers=False, rm=""):
+def read_fasta(fasta_line, v=False):
     """Read fasta, return dict and type."""
     fasta_data = fasta_line.split(">")
     eprint(f"fasta_data[0] is:\n{fasta_data[0]}") if v else None
@@ -68,21 +61,21 @@ def read_fasta(fasta_line, v=False, show_headers=False, rm=""):
     if fasta_data[0] != "":
         # this is a bug
         eprint("ERROR! Cesar output is corrupted")
-        eprint(f"Issue detected in the folling string:\n{fasta_line}")
+        eprint(f"Issue detected in the following string:\n{fasta_line}")
         die("Abort")
     del fasta_data[0]  # remove it "" we don't need that
     sequences = {}  # accumulate data here
     order = []  # to have ordered list
+
     # there is no guarantee that dict will contain elements in the
     # same order as they were added
-
     for elem in fasta_data:
         raw_lines = elem.split("\n")
         # it must be first ['capHir1', 'ATGCCGCGCCAATTCCCCAAGCTGA... ]
         header = raw_lines[0]
         # separate nucleotide-containing lines
         lines = [x for x in raw_lines[1:] if x != "" and not x.startswith("!")]
-        if len(lines) == 0:  # it is a mistake - empty sequene --> get rid of
+        if len(lines) == 0:  # it is a mistake - empty sequence --> get rid of
             continue
         fasta_content = "".join(lines)
         sequences[header] = fasta_content
@@ -241,7 +234,7 @@ def parse_cesar_bdb(arg_input, v=False):
             blockStarts, blockSizes = [], []
             ranges = ranges_chain[chain_id]
             name = f"{gene}.{chain_id}"  # projection name for bed file
-            stat_key = (gene, chain_id)  # projection identifier for dicts
+            # stat_key = (gene, chain_id)  # projection identifier for dicts
 
             if len(ranges) == 0:
                 # this gene is completely missing
@@ -340,7 +333,7 @@ def parse_cesar_bdb(arg_input, v=False):
 
 
 def main():
-    """Enrty point as stand-alone tool."""
+    """Entry point as stand-alone tool."""
     args = parse_args()
     # basically call the function that extracts everything
     parsed_data = parse_cesar_bdb(args.input, v=args.verbose)

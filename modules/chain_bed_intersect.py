@@ -3,11 +3,14 @@
 
 Requires a bed and a chain file as input.
 Produces the following table:
-chain_id<tab>comma-separated list of ovrelapped genes.
+chain_id<tab>comma-separated list of overlapped genes.
 """
 import sys
 from collections import defaultdict
-import subprocess
+try:  # for robustness
+    from modules.common import flatten
+except ImportError:
+    from common import flatten
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -15,9 +18,12 @@ __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 
-def flatten(lst):
-    """Flat list out of list of lists."""
-    return [item for sublist in lst for item in sublist]
+def grep_chain_headers(chain_file):
+    """Throw chain header lines."""
+    with open(chain_file, "r") as f:
+        for line in f:
+            if line.startswith("chain"):
+                yield line.rstrip()
 
 
 def parse_chain(chain_file):
@@ -28,13 +34,10 @@ def parse_chain(chain_file):
     """
     # save dict {chrom: list of (chain_id, start, end)} here:
     chrom_range = defaultdict(list)
-    # I need the headers only
-    # each chain header starts with "chain" word
-    # TODO: maybe do it without grep? Not sure.
-    cmd = f"cat {chain_file} | grep chain"
-    headers = subprocess.check_output(cmd, shell=True).decode("utf-8")
-
-    for header in headers.split("\n"):
+    # need chains headers only (lines starting with "chain")
+    # read and process them simultaneously with yield
+    header_gen = grep_chain_headers(chain_file)
+    for header in header_gen:
         # parse chain headers one-by-one
         if len(header) == 0:
             continue
@@ -110,7 +113,7 @@ def find_first(chains, beds):
                 return 0, i
             elif beds[i][1] > chains[0][2]:
                 return 1, i
-            else:  # no ibtersection
+            else:  # no intersection
                 return 0, 0
 
 
@@ -197,7 +200,7 @@ def chain_bed_intersect(chain, bed):
     chroms = list(set(bed_data.keys()).intersection(chain_data.keys()))
     # save transcript IDs that lie on chromosomes not found in the chain file:
     only_bed_chroms = list(set(bed_data.keys()).difference(chain_data.keys()))
-    genes_rejected = [x[0] for x in flatten([bed_data[chr] for chr in only_bed_chroms])]
+    genes_rejected = [x[0] for x in flatten([bed_data[chr_] for chr_ in only_bed_chroms])]
     for gene in genes_rejected:
         skipped.append((gene, "chromosome is not aligned"))
 
@@ -239,11 +242,11 @@ def save(dct, output="stdout"):
 
 if __name__ == "__main__":
     try:  # read args
-        chain_file = sys.argv[1]
-        bed_file = sys.argv[2]
+        chain_file_arg = sys.argv[1]
+        bed_file_arg = sys.argv[2]
     except IndexError:
         sys.stderr.write("Usage: {} [chain_file] [bed file]\n".format(sys.argv[0]))
         sys.stderr.write("Output goes to stdout.\n")
         sys.exit(0)
-    chain_bed_dict, skipped = chain_bed_intersect(chain_file, bed_file)
-    save(chain_bed_dict)
+    chain_bed_dict_result, _ = chain_bed_intersect(chain_file_arg, bed_file_arg)
+    save(chain_bed_dict_result)

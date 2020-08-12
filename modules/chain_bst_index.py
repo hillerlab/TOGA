@@ -25,7 +25,7 @@ def chain_bst_index(chain_file, index_file, txt_index=None):
     script_location = os.path.dirname(__file__)
     slib_location = os.path.join(script_location, SLIB_NAME)
     if not os.path.isfile(slib_location):
-        sys.exit("chain_bst_lib.so lib not found, call ./configure to compule")
+        sys.exit("chain_bst_lib.so lib not found, call ./configure to compile")
     # connect shared lib
     sh_lib = ctypes.CDLL(slib_location)
     sh_lib.make_index.argtypes = [ctypes.POINTER(ctypes.c_uint64),
@@ -96,9 +96,9 @@ def chain_bst_index(chain_file, index_file, txt_index=None):
 
 if __name__ == "__main__":
     try:  # read args
-        inchain = sys.argv[1]
-        index_file = sys.argv[2]
+        in_chain_arg = sys.argv[1]
+        index_file_arg = sys.argv[2]
     except IndexError:  # if args are wrong: show usage and quit
         sys.stderr.write("Recommended file extension for index file is bst.\n")
         sys.exit(f"Usage: {sys.argv[0]} [in_chain] [index_file]\n")
-    chain_bst_index(inchain, index_file)
+    chain_bst_index(in_chain_arg, index_file_arg)

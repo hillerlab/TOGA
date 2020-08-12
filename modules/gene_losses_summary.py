@@ -115,9 +115,9 @@ def read_loss_data(loss_dir):
     projection_to_mutations = defaultdict(list)
     loss_files = os.listdir(loss_dir)
 
-    for lfile in loss_files:
+    for l_file in loss_files:
         # go file-by-file; because CESAR jobs produce a number of files
-        path = os.path.join(loss_dir, lfile)
+        path = os.path.join(loss_dir, l_file)
         f = open(path, "r")
         for line in f:
             # then line-by-line
@@ -156,12 +156,12 @@ def read_loss_data(loss_dir):
                 continue
             elif line_data[2].startswith("INTACT_CODONS_PROP"):
                 # proportion of intact codons
-                # codons that are not deleted, missing and have no inatct mutations
+                # codons that are not deleted, missing and have no inact mutations
                 perc = float(line_data[2].split()[1])
                 projection_to_i_codon_prop[projection_id] = perc
                 continue
             elif line_data[2].startswith("OUT_OF_CHAIN_PROP"):
-                # proportion of transcript that lies beyong the chain
+                # proportion of transcript that lies beyond the chain
                 perc = float(line_data[2].split()[1])
                 proj_to_prop_oub[projection_id] = perc
                 continue
@@ -197,7 +197,7 @@ def read_bed(bed_file):
     return gene_line
 
 
-def get_L_exon_num(exon_num):
+def get_l_exon_num(exon_num):
     """20% of exons must be affected to lost the gene."""
     if exon_num == 1:
         return 1
@@ -208,8 +208,8 @@ def get_L_exon_num(exon_num):
         return twenty_perc
 
 
-def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_M_ign,
-                           p_to_pint_M_int, projection_to_mutations, p_to_i_codon_prop,
+def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
+                           p_to_pint_m_int, projection_to_mutations, p_to_i_codon_prop,
                            p_to_p_out_of_bord, p_80_int, p_80_pre,
                            trace=None, paral_=None):
     """Classify projections as intact, lost, grey, etc."""
@@ -217,7 +217,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_M_ign,
     # deal with paral_ argument
     if paral_ is None:
         # means that ids of paralogous projections are not provided
-        # = set() because we check each projection wheter it appears
+        # = set() because we check each projection whether it appears
         # in the paral set
         paral = set()
     else: 
@@ -230,8 +230,8 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_M_ign,
             projection_class[projection] = PG
             continue
         # unpack all features for this projection
-        p_intact_M_ign = p_to_pint_M_ign.get(projection, -1)
-        p_intact_M_int = p_to_pint_M_int.get(projection, -1)
+        p_intact_M_ign = p_to_pint_m_ign.get(projection, -1)
+        p_intact_M_int = p_to_pint_m_int.get(projection, -1)
         p_i_codons = p_to_i_codon_prop.get(projection, -1)
         no_loss_in_80_p = p_80_int.get(projection, None)
         m_80_present = p_80_pre.get(projection, None)
@@ -252,7 +252,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_M_ign,
         # parse inactivating mutations
         all_mutations = projection_to_mutations.get(projection, [])
         # get only inactivating mutations, which are not compensations and not masked
-        # TODO: fugire out why missing exon event migth be either compensated or not
+        # TODO: figure out why missing exon event might be either compensated or not
         mutations = [m for m in all_mutations if m[4] is False or m[2] == MISS_EXON]  # m[4]: bool MASKED
         mutations = [m for m in mutations if m[2] != COMPENSATION]
 
@@ -304,14 +304,14 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_M_ign,
         other_muts = [m for m in mutations if m[2] != MISS_EXON and m[2] != DEL_EXON and m[2] != COMPENSATION]
         # don't need events happened in the deleted/missing exons
         other_muts = [m for m in other_muts if m[0] not in deleted_exons and m[0] not in missing_exons]
-        # also compute % of mmissing sequence
+        # also compute % of missing sequence
         missed_seq_len = sum(exon_sizes[k] for k, v in exon_status.items() if v == "M")
         missing_prop = missed_seq_len / overall_seq_len
         if tracing_:
             print(f"% Missing: {missing_prop}")
             print(f"Missing seq len: {missed_seq_len}; overall seq len: {overall_seq_len}")
         # compute number of exons that we require to have inact mutations to call the gene Lost:
-        affected_thr = get_L_exon_num(exon_num)
+        affected_thr = get_l_exon_num(exon_num)
 
         # special cases: all exons are missed or deleted
         if all(v == "M" for v in exon_status.values()):
@@ -350,7 +350,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_M_ign,
                 projection_class[projection] = G
                 continue
             if len(missing_exons) == 0:
-                # everythning is file, no missing sequence at all, middle 80% intact
+                # everything is fine, no missing sequence at all, middle 80% intact
                 print("No missing exons, no inact mut in m80%: class I") if tracing_ else None
                 projection_class[projection] = I
                 continue
@@ -399,7 +399,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_M_ign,
                     projection_class[projection] = L
                 elif exon_status[1] == "M":
                     print("Single exon missing: class M") if tracing_ else None
-                    # the only exon is missed -> M (reduntant branch highly likely)
+                    # the only exon is missed -> M (redundant branch highly likely)
                     if frame_oub > PART_THR:
                         print("-> class PM, too big fraction out of chain borders") if tracing_ else None
                         projection_class[projection] = PM
@@ -500,14 +500,13 @@ def get_paralogs_data(paral_file):
     # basically just read a file and save to a set
     if paral_file is None:
         return set()
-    paral_proj = []
     with open(paral_file, "r") as f:
         paral_proj = set(x.rstrip() for x in f.readlines())
     return paral_proj
 
 
 def color_bed_file(bed_in, bed_out, proj_to_class):
-    """Assing colors to bed tracks accrording to projection status."""
+    """Assing colors to bed tracks according to projection status."""
     in_ = open(bed_in, "r")
     out_ = open(bed_out, "w")
     for line in in_:
