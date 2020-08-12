@@ -1,5 +1,5 @@
 #!/usr/bin/env nextflow
-// Author: Bogdan Kirilenko, 2002
+// Author: Bogdan Kirilenko, 2020
 // Nextflow procedure to execute chain feature extraction jobs
 // Joblist contains a file where each line is a separate command
 // We just call these lines in parallel
