@@ -126,8 +126,8 @@ int main(int argc, char **argv)
     if (passed == 0)
     {
         // if we counted 0 chains that passed the filter, the user should be warned at least
-        fprintf(stderr, "Warning! No chains passed the filter, probably the input is empty!\n");
+        fprintf(stderr, "Error! No chains passed the filter, probably the input is empty!\n");
+        return 1;
     }
-
     return 0;
 }

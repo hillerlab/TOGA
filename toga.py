@@ -86,7 +86,10 @@ class Toga:
         self.chain_index_txt_file = os.path.join(self.wd, f"{g_ali_basename}.chain_ID_position")
 
         # make the command, prepare the chain file
-        if chain_basename.endswith(".gz"):  # version for gz
+        if not os.path.isfile(args.chain_input):
+            chain_filter_cmd = None
+            self.die(f"Error! File {args.chain_input} doesn't exist!")
+        elif chain_basename.endswith(".gz"):  # version for gz
             chain_filter_cmd = f"gzip -dc {args.chain_input} | "\
                                f"{self.CHAIN_SCORE_FILTER} stdin "\
                                f"{args.min_score} > {self.chain_file}"

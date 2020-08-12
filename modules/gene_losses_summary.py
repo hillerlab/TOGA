@@ -10,6 +10,7 @@ import os
 from collections import defaultdict
 from collections import Counter
 from datetime import datetime as dt
+
 try:
     from modules.common import make_cds_track
     from modules.common import split_proj_name
@@ -25,7 +26,6 @@ __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
 __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
-
 
 # GLP classes
 # kind of enum
@@ -50,7 +50,7 @@ BROWN = "159,129,112"
 BLACK = "10,10,10"
 
 # link GLP class to color
-CLASS_TO_COL = {N_: BLACK,  PG: BROWN, PM: GREY, L: LIGHT_RED,
+CLASS_TO_COL = {N_: BLACK, PG: BROWN, PM: GREY, L: LIGHT_RED,
                 M: GREY, G: SALMON, PI: LIGHT_BLUE, I: BLUE}
 
 # mut classes:
@@ -213,7 +213,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
         # = set() because we check each projection whether it appears
         # in the paral set
         paral = set()
-    else: 
+    else:
         # if is defined: it's already a set
         paral = paral_
 
@@ -241,7 +241,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
             print(f"Cannot find transcript {transcript}; probably an error") if tracing_ else None
             projection_class[projection] = N_
             continue
-        
+
         # parse inactivating mutations
         all_mutations = projection_to_mutations.get(projection, [])
         # get only inactivating mutations, which are not compensations and not masked
@@ -273,7 +273,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                 print(f"-> class L")
             projection_class[projection] = L
             continue
-        
+
         # initiate exon -> status dict, exon could be intact, deleted, missing or have inact mut
         exon_status = {k: "I" for k in exon_sizes}
         exon_num = len(exon_sizes.keys())
@@ -281,7 +281,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
         # get list of exons that hold > 40% of CDS
         exon_40_p = {k: v / overall_seq_len > 0.4 for k, v in exon_sizes.items()}
         exon_40_p_nums = [k for k, v in exon_40_p.items() if v is True]
-        
+
         # select missing and deleted exons
         missing_exons = [m[0] for m in mutations if m[2] == MISS_EXON]
         deleted_exons = [m[0] for m in mutations if m[2] == DEL_EXON]
@@ -325,7 +325,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
             print("P_intact_M_int < 20%: class L") if tracing_ else None
             projection_class[projection] = L
             continue
-        
+
         # the main classification process
         if no_loss_in_80_p is True:
             print("GO TO BRANCH 1: No inact mut in m80%") if tracing_ else None
@@ -346,7 +346,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                 print("No missing exons, no inact mut in m80%: class I") if tracing_ else None
                 projection_class[projection] = I
                 continue
-            
+
             # there are missing sequence, need to check carefully
             if m_80_present:
                 # means that there are no missing sequence in the middle 80%
@@ -555,7 +555,7 @@ def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
                                               paral_=paralogs_set)
 
     # projections are classified, we can color the bed file now:
-    color_bed_file(pre_final_bed_arg, bed_out, projection_class)    
+    color_bed_file(pre_final_bed_arg, bed_out, projection_class)
 
     # get transcript -> [projections] dict
     # one transcript might have > 1 orthologous chain:
@@ -593,7 +593,7 @@ def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
         trans_statuses = [transcript_class.get(t, -1) for t in transcripts]
         status = max(trans_statuses)
         gene_class[gene] = status
-    
+
     # save results, create 3 column table
     # 1st column: what is classified: projection, transcript or a gene
     # 2nd column: item identifier (like gene name)
