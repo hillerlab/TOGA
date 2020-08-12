@@ -7,9 +7,11 @@ from collections import defaultdict
 try:
     from modules.common import chain_extract_id
     from modules.common import bed_extract_id
+    from modules.common import load_chain_dict
 except ImportError:
     from common import chain_extract_id
     from common import bed_extract_id
+    from common import load_chain_dict
 
 PINK_COLOR = "250,50,200"
 DEF_SCORE = 100
@@ -141,26 +143,6 @@ def save_bed(bed_lines, bed_file):
     f.write("\n".join(bed_lines))
     f.write("\n")
     f.close()
-
-
-def load_chain_dict(chain_index_file):
-    """Load dict chain ID: position in the file."""
-    # TODO: put in common dir
-    ans = {}
-    if not os.path.isfile(chain_index_file):
-        sys.exit(f"Error! File {chain_index_file} not found.")
-    f = open(chain_index_file, "r")
-    # tab-separated file
-    # chain_ID, start_byte, offset
-    for line in f:
-        line_data = line.rstrip().split("\t")
-        chain_id = int(line_data[0])
-        start_byte = int(line_data[1])
-        offset = int(line_data[2])
-        val = (start_byte, offset)
-        ans[chain_id] = val
-    f.close()
-    return ans
 
 
 def create_ppgene_track(chain_class_file, chain_file, bed_bdb, output, v=None):

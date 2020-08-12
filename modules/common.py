@@ -3,6 +3,7 @@ import os
 import sys
 import ctypes
 import h5py
+import networkx as nx
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -204,3 +205,35 @@ def split_proj_name(proj_name):
     q_num_str = proj_name_split[-1]
     trans_name = ".".join(proj_name_split[:-1])
     return trans_name, q_num_str
+
+
+def load_chain_dict(chain_index_file):
+    """Load dict chain ID: position in the file."""
+    ans = {}
+    if not os.path.isfile(chain_index_file):
+        sys.exit(f"Error! File {chain_index_file} not found.")
+    f = open(chain_index_file, "r")
+    # tab-separated file: chain_ID, start_byte, offset
+    for line in f:
+        line_data = line.rstrip().split("\t")
+        chain_id = int(line_data[0])
+        start_byte = int(line_data[1])
+        offset = int(line_data[2])
+        val = (start_byte, offset)
+        ans[chain_id] = val
+    f.close()
+    return ans
+
+
+def get_graph_components(graph):
+    """Split graph in connected components."""
+    nx_v = float(nx.__version__)
+    if nx_v < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
+        graph_components = list(nx.connected_component_subgraphs(graph))
+        msg = f"Warning! You use networkx v{nx_v}\nSplitting components with " \
+              f"nx.connected_component_subgraphs(), which is deprecated.\n" \
+              f"Please upgrade networkx to suppress this warning\n"
+        sys.stderr.write(msg)
+    else:
+        graph_components = [graph.subgraph(c) for c in nx.connected_components(graph)]
+    return graph_components

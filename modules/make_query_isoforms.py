@@ -12,8 +12,10 @@ from collections import defaultdict
 import networkx as nx
 try:
     from modules.common import flatten
+    from modules.common import get_graph_components
 except ImportError:
     from common import flatten
+    from common import get_graph_components
 
 
 def parse_args():
@@ -226,15 +228,7 @@ def get_query_isoforms_data(query_bed, query_isoforms, save_genes_track=None):
     conn_graph = intersect_exons(chr_dir_to_exons, exon_id_to_transcript)
     # split graph into connected components
     # if two transcripts are in the same component -> they belong to the same gene
-    nx_v = float(nx.__version__)
-    if nx_v < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
-        components = list(nx.connected_component_subgraphs(conn_graph))
-        msg = f"Warning! You use networkx v{nx_v}\nSplitting components with " \
-              f"nx.connected_component_subgraphs(), which is deprecated.\n" \
-              f"Please upgrade networkx to suppress this warning\n"
-        sys.stderr.write(msg)
-    else:
-        components = [conn_graph.subgraph(c) for c in nx.connected_components(conn_graph)]
+    components = get_graph_components(conn_graph)
     # covert components to isoforms table
     genes_data = parse_components(components, trans_to_range)
     # save the results

@@ -153,7 +153,8 @@ class Toga:
         self.gene_loss_data = os.path.join(self.wd, "inact_mut_data")
         self.query_annotation = os.path.join(self.wd, "query_annotation.bed")
         self.loss_summ = os.path.join(self.wd, "loss_summ_data.tsv")
-        self.u12 = args.u12
+        self.u12_arg = args.u12
+        self.u12 = None  # assign after U12 file check
         self.__check_param_files()
 
         # dump input parameters, object state
@@ -183,10 +184,17 @@ class Toga:
                 self.die(f"Error! File {item} not found!")
 
         # sanity checks
-        self.__check_isoforms_file()
-        self.__check_u12_file()
-        self.__check_2bit_file(self.t_2bit)
-        self.__check_2bit_file(self.q_2bit)
+        with open(self.ref_bed, "r") as f:
+            lines = [line.rstrip().split("\t") for line in f]
+            t_in_bed = set(x[3] for x in lines)
+            chroms_in_bed = set(x[0] for x in lines)
+        self.__check_isoforms_file(t_in_bed)
+        self.__check_u12_file(t_in_bed)
+        self.__check_2bit_file(self.t_2bit, chroms_in_bed)
+        # need to check that query 2bit chroms match qchroms from chain file
+        with open(self.chain_file, "r") as f:
+            q_chrom_in_chain = set(x.split()[7] for x in f if x.startswith("chain"))
+        self.__check_2bit_file(self.q_2bit, q_chrom_in_chain)
 
     def __get_nf_dir(self, nf_dir_arg):
         """Define nextflow directory."""
@@ -198,32 +206,42 @@ class Toga:
             os.mkdir(nf_dir_arg) if not os.path.isdir(nf_dir_arg) else None
             return nf_dir_arg
 
-    def __check_2bit_file(self, two_bit_file):
+    def __check_2bit_file(self, two_bit_file, chroms):
         """Check that 2bit file is readable."""
-        # TODO: check that chroms from ref bed are in the 2bit
-        try:
+        try:  # try to catch EOFError: if 2bitreader cannot read file
             two_bit_reader = TwoBitFile(two_bit_file)
-            seq_sizes = two_bit_reader.sequence_sizes()
-            print(f"Detected {len(seq_sizes)} sequences in {two_bit_file}")
-        except Exception as err:
+            # check what sequences are in the file:
+            sequences = set(two_bit_reader.sequence_sizes().keys())
+            print(f"Detected {len(sequences)} sequences in {two_bit_file}")
+        except EOFError as err:  # this is a file but twobit reader couldn't read it
+            sequences = None  # to suppress linter
             print(str(err))
             print(f"twobitreader cannot open {two_bit_file}")
             self.die("Abort")
+        # another check: that bed or chain chromosomes intersect 2bit file sequences
+        if len(sequences.intersection(chroms)) == 0:
+            self.die("Error! 2bit chromosomes|scaffold names dont match names in bed|chain file!")
         return
-        
-    def __check_u12_file(self):
+
+    def __check_u12_file(self, t_in_bed):
         """Sanity check for U12 file."""
-        if not self.u12:
+        if not self.u12_arg:
             # just not provided: nothing to check
             return
-        f = open(self.u12, "r")
+        # U12 file provided
+        self.u12 = os.path.join(self.wd, "u12_data.txt")
+        filt_lines = []
+        f = open(self.u12_arg, "r")
         for num, line in enumerate(f, 1):
             line_data = line.rstrip().split("\t")
             if len(line_data) != U12_FILE_COLS:
                 err_msg = f"Error! U12 file {self.u12} line {num} is corrupted, 3 fields expected; "\
                           f"Got {len(line_data)}; please note that a tab-separated file expected"
                 self.die(err_msg)
-            _ = line_data[0]
+            trans_id = line_data[0]
+            if trans_id not in t_in_bed:
+                # transcript doesn't appear in the bed file: skip it
+                continue
             exon_num = line_data[1]
             if not exon_num.isnumeric():
                 err_msg = f"Error! U12 file {self.u12} line {num} is corrupted, field 2 value is {exon_num}; "\
@@ -234,18 +252,22 @@ class Toga:
                 err_msg = f"Error! U12 file {self.u12} line {num} is corrupted, field 3 value is {acc_don}; "\
                           f"This field could have either A or D value."
                 self.die(err_msg)
+            filt_lines.append(line)  # save this line
         f.close()
+        # another check: what if there are no lines after filter?
+        if len(filt_lines) == 0:
+            err_msg = f"Error! No lines left in the {self.u12_arg} file after filter." \
+                      f"Please check that transcript IDs in this file and bed {self.ref_bed} are consistent"
+            self.die(err_msg)
+        with open(self.u12, "w") as f:
+            f.write("".join(filt_lines))
         eprint("U12 file is correct")
 
-    def __check_isoforms_file(self):
+    def __check_isoforms_file(self, t_in_bed):
         """Sanity checks for isoforms file."""
         if not self.isoforms_arg:
             return  # not provided: nothing to check
         # isoforms file provided: need to check correctness and completeness
-        # get transcript IDs from the bed file
-        with open(self.ref_bed, "r") as f:
-            t_in_bed = set(line.rstrip().split("\t")[3] for line in f)
-
         # then check isoforms file itself
         f = open(self.isoforms_arg, "r")
         self.isoforms = os.path.join(self.wd, "isoforms.tsv")
@@ -401,9 +423,10 @@ class Toga:
 
     def __find_two_bit(self, db):
         """Find a 2bit file."""
-        # TODO: in public release must be simplified
         if os.path.isfile(db):
             return db
+        # For now here is a hillerlab-oriented solution
+        # you can write your own template for 2bit files location
         with_alias = f"/projects/hillerlab/genome/gbdb-HL/{db}/{db}.2bit"
         if os.path.isfile(with_alias):
             return with_alias

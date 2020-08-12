@@ -730,7 +730,7 @@ def get_exon_num_corr(codons_data):
 
 def compute_intact_perc(codon_table, mutations, q_name, v=False):
     """Compute intact %ID-related features."""
-    # compute per query (TODO: maybe redundant)
+    # compute per query
     query_muts = [m for m in mutations if m.chain == q_name]
     gene_len = len(codon_table)
     # initiate codon_status, mark deleted codons with D, the rest with I
@@ -784,7 +784,7 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
             # get list of codon numbers of this exon
             codon_pos_at_exon = [n for n, c in enumerate(codon_table) if c["t_exon_num"] == ssm_exon]
             if len(codon_pos_at_exon) == 0 and ssm_exon == 0:
-                # TODO: check if I need this condition
+                # very short (<3bp) 1st exon affected: simpler to assign 0
                 affected_num = 0
             elif m.position == 0:  # left side, first codon of this exon
                 affected_num = codon_pos_at_exon[0]

@@ -14,6 +14,7 @@ from modules.common import bed_extract_id
 from modules.common import make_cds_track
 from modules.common import eprint
 from modules.common import die
+from modules.common import load_chain_dict
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -427,25 +428,6 @@ def chain_feat_extractor(chain_id, genes, chain_file, bed_file, chain_dict,
         # human-readable version
         output = extended_output(result, t0)
     return output
-
-
-def load_chain_dict(chain_index_file):
-    """Load dict chain ID: position in the file."""
-    ans = {}
-    if not os.path.isfile(chain_index_file):
-        sys.exit(f"Error! File {chain_index_file} not found.")
-    f = open(chain_index_file, "r")
-    # tab-separated file
-    # chain_ID, start_byte, offset
-    for line in f:
-        line_data = line.rstrip().split("\t")
-        chain_id = int(line_data[0])
-        start_byte = int(line_data[1])
-        offset = int(line_data[2])
-        val = (start_byte, offset)
-        ans[chain_id] = val
-    f.close()
-    return ans
 
 
 def main():

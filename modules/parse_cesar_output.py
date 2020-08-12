@@ -262,7 +262,6 @@ def main():
     ref_seq = lines[1]
     que_seq = lines[3]
     codons_data = parse_cesar_out(ref_seq, que_seq)
-    # TODO: make a better output format
     for elem in codons_data:
         print(elem)
 

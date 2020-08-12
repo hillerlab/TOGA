@@ -98,7 +98,6 @@ def classify_transcripts(meta_data_file, ort_score_file, hq_threshold, output):
             t_mark = "partial"
         elif all(x == "HQ" for x in marks) and trans_score >= hq_threshold:
             # only if all exons are high-confidence we say the projection is high-confidence
-            # TODO: implement not so strict rules
             t_mark = "high_confidence"
         else:
             # the rest: average (medium) confidence

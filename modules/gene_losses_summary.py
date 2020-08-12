@@ -13,9 +13,13 @@ from datetime import datetime as dt
 try:
     from modules.common import make_cds_track
     from modules.common import split_proj_name
+    from modules.common import die
+    from modules.common import eprint
 except ImportError:
     from common import make_cds_track
     from common import split_proj_name
+    from common import die
+    from common import eprint
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -65,17 +69,6 @@ STOP = "STOP"
 REM_T_L = 0.35  # less than REM_T_L of CDS left -> it's lost
 REM_T_G = 0.49  # less than REM_T_G of CDS left -> it's grey
 PART_THR = 0.5  # border between missing and partially intact
-
-
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(str(msg) + end)
-
-
-def die(msg, rc=0):
-    """Write msg to stderr and abort program."""
-    eprint(msg)
-    sys.exit(rc)
 
 
 def parse_args():
@@ -252,7 +245,6 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
         # parse inactivating mutations
         all_mutations = projection_to_mutations.get(projection, [])
         # get only inactivating mutations, which are not compensations and not masked
-        # TODO: figure out why missing exon event might be either compensated or not
         mutations = [m for m in all_mutations if m[4] is False or m[2] == MISS_EXON]  # m[4]: bool MASKED
         mutations = [m for m in mutations if m[2] != COMPENSATION]
 
@@ -514,7 +506,8 @@ def color_bed_file(bed_in, bed_out, proj_to_class):
         # take projection ID from the line and then it's class
         projection_id = line_data[3]
         projection_class = proj_to_class.get(projection_id, N_)
-        # N_ must never occur, TODO: raise an error
+        if projection_class == N_:
+            eprint(f"Warning! Class of {projection_id} not found")
         color = CLASS_TO_COL[projection_class]
         # write corresponding color to file
         line_data[8] = color

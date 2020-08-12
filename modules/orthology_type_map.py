@@ -14,11 +14,13 @@ try:
     from modules.common import flatten
     from modules.common import eprint
     from modules.common import die
+    from modules.common import get_graph_components
 except ImportError:
     from common import split_proj_name
     from common import flatten
     from common import eprint
     from common import die
+    from common import get_graph_components
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -157,15 +159,7 @@ def connect_genes(t_trans_to_gene, t_trans_to_q_proj, q_proj_to_q_gene):
 def extract_orth_connections(graph, r_genes_all, q_genes_all):
     """Split graph in orth connections."""
     orth_connections = []
-    nx_v = float(nx.__version__)
-    if nx_v < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
-        graph_components = list(nx.connected_component_subgraphs(graph))
-        msg = f"Warning! You use networkx v{nx_v}\nSplitting components with " \
-              f"nx.connected_component_subgraphs(), which is deprecated.\n" \
-              f"Please upgrade networkx to suppress this warning\n"
-        sys.stderr.write(msg)
-    else:
-        graph_components = [graph.subgraph(c) for c in nx.connected_components(graph)]
+    graph_components = get_graph_components(graph)
 
     for component in graph_components:
         # each component contains some reference and query gene ids
