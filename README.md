@@ -11,7 +11,7 @@ related species and to accurately distinguish orthologs from paralogs or process
 This tutorial explains how to get started using TOGA.
 It shows how to install and execute TOGA, and how to handle possible issues that may occur.
 
-## Installation and preparing
+## Installation
 
 TOGA supports both Linux and MacOS systems.
 The package was properly tested on Python version 3.6.5. and 3.7.3.
@@ -20,7 +20,7 @@ It is highly recommended to have access to computational cluster, but
 for small or partial genomes with short genes a desktop PC will be enough.
 
 TOGA requires [Nextflow](https://www.nextflow.io), which in turn requires java >=8.
-Check your version of java and install it using one of the following commands:
+Check your version of java and install nextflow using one of the following commands:
 
 ```shell
 curl -fsSL https://get.nextflow.io | bash
@@ -61,13 +61,14 @@ JH567521 395878 449234 ENST00000259400.1169 942 + 395878 449234 0,0,200 7 123,66
 Success!
 ```
 
-But if you experienced any errors please go to the troubleshooting section.
+If you experience any problems installing TOGA, please visit the troubleshooting section.
 
 ### Configuring TOGA for cluster
 
 TOGA uses nextflow to run cluster-dependent steps.
 To run a pipeline on cluster nextflow requires a configuration file defining "executors" component.
-This repository contains configuration files for slurm cluster, please find them in the nextflow_config_files directory.
+This repository contains configuration files for slurm cluster,
+please find them in the nextflow_config_files directory.
 
 To create configuration files for non-slurm cluster do the following:
 
@@ -77,12 +78,11 @@ Most likely, you can use slurm configuration files as a reference.
 3) Create "extract_chain_features_config.nf" file.
 This file contains configuration for chain features extraction step.
 These jobs are expected to be short and not memory consuming, so 1 hour of runtime limit
-and 5Gb of memory would be enough.
+and 10Gb of memory would be enough.
 4) Create "call_cesar_config_template.nf" file.
 This configuration file is for CESAR jobs.
 These jobs usually take much longer that chain feature extraction, it's recommended to request 24 hors for them.
-You don't have to provide an exact amount of memory for these jobs,
-TOGA will compute this itself.
+You don't have to provide an exact amount of memory for these jobs, TOGA will compute this itself.
 Please write a placeholder instead, as follows: process.memory = "${\_MEMORY\_}G".
 
 ### Final test
