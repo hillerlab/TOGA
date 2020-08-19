@@ -1,6 +1,7 @@
 twobitreader
 networkx
 pandas
+numpy
 xgboost
 scikit-learn
 joblib

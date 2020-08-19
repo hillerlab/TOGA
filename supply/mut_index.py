@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Make mutations index file."""
 import sys
+import os
 from collections import defaultdict
 import numpy as np
 import h5py
@@ -9,7 +10,7 @@ MUT_LINE_FIELDS = 8
 
 
 def make_mut_index(in_txt, out_bdb):
-    """Make mut index: transcipt: mutations."""
+    """Make mut index: transcript: mutations."""
     transcript_to_lines = defaultdict(list)
     f = open(in_txt, "r")
     for line in f:
@@ -32,9 +33,10 @@ def make_mut_index(in_txt, out_bdb):
 
 
 if __name__ == "__main__":
+    os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
     try:
-        in_txt = sys.argv[1]
-        out_db = sys.argv[2]
+        in_txt_arg = sys.argv[1]
+        out_db_arg = sys.argv[2]
     except IndexError:
         sys.exit(f"Usage: {sys.argv[0]} [in_muts] [out_bdb]")
-    make_mut_index(in_txt, out_db)
+    make_mut_index(in_txt_arg, out_db_arg)
