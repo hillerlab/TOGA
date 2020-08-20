@@ -40,7 +40,7 @@ struct Regions
 // read chain file format explanation for extra info
 struct Chain_info parse_head(char *header_string)
 {
-    struct Chain_info head = {};  // init empty struct
+    struct Chain_info head;  // init empty struct
     // space-separated fields:
     char *split_head = strtok(header_string, " ");
     short int field = 0;
@@ -92,7 +92,7 @@ struct Chain_info parse_head(char *header_string)
 // pls read chain docs for more information
 struct Block parse_block(char *block_string)
 {
-    struct Block block = {};
+    struct Block block;
     // default values
     block.size = 0;
     block.dq = 0;

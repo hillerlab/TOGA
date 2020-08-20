@@ -31,7 +31,7 @@ typedef struct{
 } Point;
 
 // initite empty node
-Point NOTHING = {};
+// Point NOTHING = {};
 
 
 int compare_structs
@@ -48,14 +48,14 @@ int compare_structs
 }   
 
 
-void print_point
+// void print_point
 // for debug: print point data
-(Point *point)
-{
-    printf("Chain ID %llu;", point->chain_id);
-    printf("Start byte %llu;", point->start_byte);
-    printf("Offset %llu\n", point->offset);
-}
+// (Point *point)
+// {
+//     printf("Chain ID %llu;", point->chain_id);
+//     printf("Start byte %llu;", point->start_byte);
+//     printf("Offset %llu\n", point->offset);
+// }
 
 
 void copy_point
