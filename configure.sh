@@ -10,7 +10,6 @@ gcc $CFLAGS -o ${mydir}/modules/chain_filter_by_id ${mydir}/modules/chain_filter
 gcc $CFLAGS -fPIC -shared -o ${mydir}/modules/chain_coords_converter_slib.so ${mydir}/modules/chain_coords_converter_slib.c
 gcc $CFLAGS -fPIC -shared -o ${mydir}/modules/extract_subchain_slib.so ${mydir}/modules/extract_subchain_slib.c
 gcc $CFLAGS -fPIC -shared -o ${mydir}/modules/chain_bst_lib.so ${mydir}/modules/chain_bst_lib.c
-exit ${exit_status}
 
 if [[ -f "./cesar" ]]
 then
