@@ -193,6 +193,25 @@ def flatten(lst):
     return [item for sublist in lst for item in sublist]
 
 
+def split_in_n_lists(lst, n):
+    """Split a list into n list of more or less equal length."""
+    if n <= 0:  # must never happen
+        sys.stderr.write("Error! Method split_in_n_lists called with n == 0\n")
+        sys.exit(1)
+    lst_len = len(lst)
+    if n >= lst_len:
+        # pigeonhole principle in work
+        return [[x, ] for x in lst]
+    ret = []  # list of lists
+    sublist_len = lst_len / float(n)
+    last = 0.0
+    while last < len(lst):
+        sublist = lst[int(last): int(last + sublist_len)]
+        ret.append(sublist)
+        last += sublist_len
+    return ret
+
+
 def split_proj_name(proj_name):
     """Split projection name.
     

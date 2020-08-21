@@ -309,7 +309,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
     die(f"Error! {input_dir} is not a dir!") \
         if not os.path.isdir(input_dir) else None
     # get list of bdb files (output of CESAR part)
-    bdbs = [x for x in os.listdir(input_dir) if x.endswith(".bdb")]
+    bdbs = [x for x in os.listdir(input_dir) if x.endswith(".txt")]
 
     # initiate lists for different types of output:
     bed_summary = []
@@ -357,7 +357,6 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
 
     # save output
     eprint("Saving the output")
-
     if len(bed_summary) == 0:
         # if so, no need to continue
         eprint("! merge_cesar_output.py:")

@@ -9,9 +9,9 @@
 *.so
 modules/chain_filter_by_id
 modules/chain_score_filter
+CESAR2.0/
 cesar
 *.dSYM
-CESAR2.0/
 
 # Python and temp stuff
 __pycache__/*

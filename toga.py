@@ -52,6 +52,7 @@ class Toga:
         self.__check_completeness()
         self.nextflow_dir = self.__get_nf_dir(args.nextflow_dir)
         self.nextflow_config_dir = args.nextflow_config_dir
+        self.nextflow_bigmem_config = args.cesar_bigmem_config
         self.__check_nf_config()
         # to avoid crash on filesystem without locks:
         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
@@ -340,7 +341,7 @@ class Toga:
         self.GENE_LOSS_SUMMARY = os.path.join(self.LOCATION, "modules", "gene_losses_summary.py")
         self.ORTHOLOGY_TYPE_MAP = os.path.join(self.LOCATION, "modules", "orthology_type_map.py")
         self.MODEL_TRAINER = os.path.join(self.LOCATION, "train_model.py")
-        self.DEFAULT_CESAR = os.path.join(self.LOCATION, "cesar")
+        self.DEFAULT_CESAR = os.path.join(self.LOCATION, "CESAR2.0", "cesar")
         self.nextflow_rel_ = os.path.join(self.LOCATION, "execute_joblist.nf")
         self.NF_EXECUTE = os.path.abspath(self.nextflow_rel_)
 
@@ -389,6 +390,10 @@ class Toga:
     
     def __check_nf_config(self):
         """Check that nextflow configure files are here."""
+        if self.nextflow_bigmem_config and not os.path.isfile(self.nextflow_bigmem_config):
+            # bigmem config is special for now | sanity check -> defined and no file -> crash
+            self.die(f"Error! File {self.nextflow_bigmem_config} not found!")
+
         if self.nextflow_config_dir is None:
             # no nextflow config provided -> using local executor
             self.cesar_config_template = None
@@ -598,6 +603,7 @@ class Toga:
         cesar_jobs_dir = os.path.join(self.wd, "cesar_jobs")
         self.cesar_combined = os.path.join(self.wd, "cesar_combined")
         self.cesar_results = os.path.join(self.wd, "cesar_results")
+        self.cesar_bigmem_jobs = os.path.join(self.wd, "cesar_bigmem")
         self.temp_files.append(cesar_jobs_dir)
         self.temp_files.append(self.cesar_combined)
 
@@ -615,6 +621,7 @@ class Toga:
                           f"--jobs_dir {cesar_jobs_dir} " \
                           f"--jobs_num {self.cesar_jobs_num} " \
                           f"--combined {self.cesar_combined} " \
+                          f"--bigmem {self.cesar_bigmem_jobs} " \
                           f"--results {self.cesar_results} " \
                           f"--buckets {self.cesar_buckets} " \
                           f"--mem_limit {self.cesar_mem_limit} " \
@@ -639,7 +646,27 @@ class Toga:
         if self.gene_loss_data:
             split_cesar_cmd += f" --check_loss {self.gene_loss_data}"
         self.__call_proc(split_cesar_cmd, "Could not split CESAR jobs!")
-    
+
+    def __get_cesar_jobs_for_bucket(self, comb_file, bucket_req):
+        """Extract all cesar jobs belong to the bucket."""
+        lines = []
+        f = open(comb_file, "r")
+        for line in f:
+            line_data = line.split()
+            if not line_data[0].endswith("cesar_runner.py"):
+                # just a sanity check: each line is a command
+                # calling cesar_runner.py
+                self.die(f"CESAR joblist {comb_file} is corrupted!")
+            # cesar job ID contains data of the bucket
+            jobs = line_data[1]
+            jobs_basename_data = os.path.basename(jobs).split("_")
+            bucket = jobs_basename_data[-1]
+            if bucket_req != bucket:
+                continue
+            lines.append(line)
+        f.close()
+        return "".join(lines)
+
     def __run_cesar_jobs(self):
         """Run CESAR jobs using nextflow.
         
@@ -651,18 +678,19 @@ class Toga:
         project_paths = []  # dirs with logs
         processes = []  # keep subprocess objects here
         timestamp = str(time.time()).split(".")[1]  # for project name
+
         # get a list of buckets
         if self.cesar_buckets == "0":
             buckets = [0, ]  # a single bucket
         else:  # several buckets, each int -> memory limit in gb
             buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
         print(f"Pushing {len(buckets)} joblists")
-        # cmd to grep bucket-related commands
-        grep_bucket_template = "cat {0} | grep _{1}.bdb"
+
         for b in buckets:
             # create config file
             # 0 means that that buckets were not split
             mem_lim = b if b != 0 else self.cesar_mem_limit
+
             if not self.local_executor:
                 # running on cluster, need to create config file
                 # for this bucket's memory requirement
@@ -675,12 +703,10 @@ class Toga:
             else:  # no config dir given: use local executor
                 # OK if there is a single bucket
                 config_file_abspath = None
-            # extract jobs related to this bucket (if it's not 0)
-            if b != 0:
-                grep_bucket_cmd = grep_bucket_template.format(self.cesar_combined, b)
-                try:
-                    bucket_tasks = subprocess.check_output(grep_bucket_cmd, shell=True).decode("utf-8")
-                except subprocess.CalledProcessError:
+
+            if b != 0:  # extract jobs related to this bucket (if it's not 0)
+                bucket_tasks = self.__get_cesar_jobs_for_bucket(self.cesar_combined, str(b))
+                if len(bucket_tasks) == 0:
                     eprint(f"There are no jobs in the {b} bucket")
                     continue
                 joblist_name = f"cesar_joblist_queue_{b}.txt"
@@ -691,20 +717,45 @@ class Toga:
                 self.temp_files.append(joblist_path)
             else:  # nothing to extract, there is a single joblist
                 joblist_abspath = os.path.abspath(self.cesar_combined)
+
             # create project directory for logs
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_{b}"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
             os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
+
             # create subprocess object
             nf_cmd = f"nextflow {self.NF_EXECUTE} " \
                      f"--joblist {joblist_abspath}"
             if config_file_abspath:
                 nf_cmd += f" -c {config_file_abspath}"
+
             p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
-            sys.stderr.write(f"Pushed cluster jobs with {nf_cmd}")
+            sys.stderr.write(f"Pushed cluster jobs with {nf_cmd}\n")
             processes.append(p)
             time.sleep(CESAR_PUSH_INTERVAL)
+        
+        if self.nextflow_bigmem_config and False:
+            # if provided: push bigmem jobs also
+            nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+            nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
+            nf_cmd = f"nextflow {self.NF_EXECUTE} " \
+                     f"--joblist {self.cesar_bigmem_jobs} -c {self.nextflow_bigmem_config}"
+            # if bigmem joblist is empty or not exist: do nothing
+            is_file = os.path.isfile(self.cesar_bigmem_jobs)
+            if is_file:  # if a file: we can open and count lines
+                f = open(self.cesar_bigmem_jobs, "r")
+                big_lines_num = len(f.readlines())
+                f.close()
+            else:  # file doesn't exist, equivalent to an empty file in our case
+                big_lines_num = 0
+            # if it's empty: do nothing
+            if big_lines_num == 0:
+                pass
+            else:
+                p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
+                sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
+                processes.append(p)
 
         # monitor jobs
         iter_num = 0
@@ -730,7 +781,7 @@ class Toga:
 
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
-        eprint("Merging CESAR output to make final fasta and pre-final bed files.")
+        eprint("Merging CESAR output to make fasta and bed files.")
         merge_c_stage_skipped = os.path.join(self.rejected_dir,
                                              "CESAR_MERGE.txt")
         self.temp_files.append(self.intermediate_bed)
@@ -864,6 +915,9 @@ def parse_args():
                           "for details.")
     app.add_argument("--do_not_del_nf_logs", "--nfnd", action="store_true",
                      dest="do_not_del_nf_logs")
+    app.add_argument("--cesar_bigmem_config", "--nb", default=None, help="File containing "
+                     "nextflow config for BIGMEM CESAR jobs. If not provided, these "
+                     "jobs will not run (but list of them saved)/ NOT IMPLEMENTED YET")
     # chain features related
     app.add_argument("--chain_jobs_num", "--chn", type=int, default=100,
                      help="Number of cluster jobs for extracting chain features. "

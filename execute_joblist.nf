@@ -7,6 +7,12 @@
 // params section: basically command line arguments
 params.joblist = 'NONE'  // file containing jobs
 
+// if still default -> nothing assigned: show usage message and quit
+if (params.joblist == "NONE"){
+    printf("Usage: nextflow execute_joblist.nf  --joblist [joblist file] -c [config file]\n")
+    System.exit(2);
+} 
+
 // create channel lines -> we need to execute lines in parallel
 joblist = file(params.joblist)
 lines = Channel.from(joblist.readLines())

@@ -12,6 +12,7 @@ from collections import defaultdict
 from datetime import datetime as dt
 import ctypes
 from modules.common import parts
+from modules.common import split_in_n_lists
 from modules.common import chain_extract_id
 from modules.common import eprint
 from modules.common import die
@@ -29,9 +30,11 @@ WRAPPER_TEMPLATE = WRAPPER_ABSPATH \
                    + " --uhq_flank {8}"
 CESAR_RUNNER = os.path.abspath(os.path.join(LOCATION, "cesar_runner.py"))  # script that will run jobs
 LONG_LOCI_FIELDS = {"GGLOB", "TRANS"}  # chain classes that could lead to very long query loci
+BIGMEM_LIM = 1000  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
-ABS_LENGTH_TRH = 500000
+ABS_LENGTH_TRH = 1000000
 EXTRA_MEM = 100000  # extra memory "just in case"
+BIGMEM_JOBSNUM = 10  # TODO: make a parameter?
 
 # connect shared lib; define input and output data types
 chain_coords_conv_lib_path = os.path.join(LOCATION,
@@ -87,6 +90,7 @@ def parse_args():
                      help="Skip genes requiring more than X GB to call CESAR")
     app.add_argument("--jobs_dir", default="cesar_jobs", help="Save jobs in.")
     app.add_argument("--combined", default="cesar_combined", help="Combined cluster jobs.")
+    app.add_argument("--bigmem", default="cesar_bigmem", help="CESAR bigmem joblist")
     app.add_argument("--results", default="cesar_results", help="Save results to.")
     app.add_argument("--check_loss", default=None, help="Call internal gene loss pipeline")
     app.add_argument("--u12", default=None, help="Add U12 introns data")
@@ -298,7 +302,8 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
             gene = genes[num]
             field = chain_gene_field.get((chain_id, gene))
             # check that corresponding region in the query is not too long
-            # if so: skip this
+            # for instance query locus is 50 times longer than the gene
+            # or it's longer than 1M base and also this is a TRANS chain
             high_rel_len = delta_gene_times > REL_LENGTH_THR
             high_abs_len = len_delta > ABS_LENGTH_TRH
             long_loci_field = field in LONG_LOCI_FIELDS
@@ -357,6 +362,42 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
     return to_combine
 
 
+def save_bigmem_jobs(bigmem_joblist, jobs_dir):
+    """Save bigmem jobs."""
+    # TODO: try to merge with save_jobs() func
+    bigmem_parts = split_in_n_lists(bigmem_joblist, BIGMEM_JOBSNUM)
+    bigmem_files_num = len(bigmem_parts)  # in case if num of jobs < BIGMEM_JOBSNUM
+    bigmem_paths = []
+    if bigmem_files_num == 0:
+        return None # no bigmem jobs at all
+    for num, bigmem_part in enumerate(bigmem_parts):
+        file_name = f"cesar_job_{num}_bigmem"
+        file_path = os.path.abspath(os.path.join(jobs_dir, file_name))
+        f = open(file_path, "w")
+        f.write("\n".join(bigmem_part) + "\n")
+        f.close()
+        bigmem_paths.append(file_path)
+    return bigmem_paths
+
+
+def save_combined_joblist(to_combine, combined_file, results_dir, inact_mut_dat, rejected_log):
+    """Save joblist of joblists (combined joblist)."""
+    f = open(combined_file, "w")
+    for num, comb in enumerate(to_combine, 1):
+        basename = os.path.basename(comb).split(".")[0]
+        results_path = os.path.abspath(os.path.join(results_dir, basename + ".txt"))
+        combined_command = f"{CESAR_RUNNER} {comb} {results_path}"
+        if inact_mut_dat:
+            loss_data_path = os.path.join(inact_mut_dat,
+                                          f"{basename}.inact_mut.txt")
+            combined_command += f" --check_loss {loss_data_path}"
+        if rejected_log:
+            log_path = os.path.join(rejected_log, f"{num}.txt")
+            combined_command += f" --rejected_log {log_path}"
+        f.write(combined_command + "\n")
+    f.close()
+
+
 def main():
     """Entry point."""
     t0 = dt.now()
@@ -400,6 +441,7 @@ def main():
     # start making the jobs
     all_jobs = {}
     skipped_3 = []
+    bigmem_jobs = []
 
     for gene in batch.keys():
         u12_this_gene = u12_data.get(gene)
@@ -440,16 +482,7 @@ def main():
                  (num_states * 304) + \
                  (2 * q_length_max + r_length) * 8 + \
                  (q_length_max + r_length) * 2 * 1 + EXTRA_MEM
-
-        # convert to gigs + 0.25 extra gig
-        gig = math.ceil(memory / 1000000000) + 0.25 
-        if gig > mem_limit:
-            # it is going to consume TOO much memory
-            # skip this gene -> save to log
-            skipped_3.append((gene, ",".join(chains),
-                             f"memory limit ({mem_limit} gig) exceeded (needs {gig})"))
-            continue
-
+        gig = math.ceil(memory / 1000000000) + 0.25
         # # 0 gene; 1 chains; 2 bed_file; 3 bdb chain_file; 4 tDB; 5 qDB; 6 output; 7 cesar_bin
         job = WRAPPER_TEMPLATE.format(gene, chains_arg,
                                       os.path.abspath(args.bdb_bed_file),
@@ -467,7 +500,17 @@ def main():
         # add U12 introns data if this gene has them:
         job = job + f" --u12 {os.path.abspath(args.u12)}" if u12_this_gene else job
 
-        all_jobs[job] = gig
+        # define whether it's an ordinary or a bigmem job
+        # depending on the memory requirements
+        if gig <= mem_limit:  # ordinary job
+            all_jobs[job] = gig
+        elif gig <= BIGMEM_LIM:
+            skipped_3.append((gene, ",".join(chains),
+                              f"requires {gig}) -> bigmem job"))
+            bigmem_jobs.append(job)
+        else:
+            skipped_3.append((gene, ",".join(chains),
+                              f"big mem limit ({BIGMEM_LIM} gig) exceeded (needs {gig})"))    
 
     eprint(f"\nThere are {len(all_jobs.keys())} jobs in total.")
     eprint("Splitting the jobs.")
@@ -479,6 +522,7 @@ def main():
         if 0 not in filled_buckets.keys() else {0: 1.0}
     eprint("Bucket proportions are:")
     eprint("\n".join([f"{k} -> {v}" for k, v in buckets_prop.items()]))
+    eprint(f"Also there are {len(bigmem_jobs)} bigmem jobs")
     # get number of jobs for each bucket
     bucket_jobs_num = {k: math.ceil(args.jobs_num * v) for k, v in buckets_prop.items()}
     # save jobs, get comb lines
@@ -488,20 +532,13 @@ def main():
     os.mkdir(args.check_loss) if args.check_loss \
         and not os.path.isdir(args.check_loss) else None
 
-    f = open(args.combined, "w")
-    for num, comb in enumerate(to_combine, 1):
-        basename = os.path.basename(comb).split(".")[0]
-        results_path = os.path.abspath(os.path.join(args.results, basename + ".bdb"))
-        combined_command = f"{CESAR_RUNNER} {comb} {results_path}"
-        if args.check_loss:
-            loss_data_path = os.path.join(args.check_loss,
-                                          f"{basename}.inact_mut.txt")
-            combined_command += f" --check_loss {loss_data_path}"
-        if args.rejected_log:
-            log_path = os.path.join(args.rejected_log, f"{num}.txt")
-            combined_command += f" --rejected_log {log_path}"
-        f.write(combined_command + "\n")
-    f.close()
+    # save joblist of joblists
+    save_combined_joblist(to_combine, args.combined, args.results, args.check_loss, args.rejected_log)
+
+    # save bigmem jobs, a bit different logic
+    bigmem_paths = save_bigmem_jobs(bigmem_jobs, args.jobs_dir)
+    if bigmem_paths:
+        save_combined_joblist(bigmem_paths, args.bigmem, args.results, args.check_loss, args.rejected_log)
 
     # save skipped genes if required
     if args.skipped_genes:
@@ -512,8 +549,8 @@ def main():
         f.write("\n".join(["\t".join(x) for x in skipped]) + "\n")
         f.close()
 
-    f = open(args.paralogs_log, "w")
     # save IDs of paralogous projections
+    f = open(args.paralogs_log, "w")
     for k, v in chain_gene_field.items():
         if v != "PARALOG":
             continue

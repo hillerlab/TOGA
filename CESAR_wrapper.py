@@ -54,6 +54,7 @@ ch_lib.chain_coords_converter.restype = ctypes.POINTER(ctypes.c_char_p)
 
 # connect extract subchain lib
 extract_subchain_lib_path = os.path.join(LOCATION, "modules", "extract_subchain_slib.so")
+DEFAULT_CESAR = os.path.join(LOCATION, "CESAR2.0", "cesar")
 ex_lib = ctypes.CDLL(extract_subchain_lib_path)
 ex_lib.extract_subchain.argtypes = [ctypes.c_char_p,
                                     ctypes.c_char_p,
@@ -1701,7 +1702,7 @@ def realign_exons(args):
     append_u12(args["u12"], args["gene"], ref_ss_data)
     make_cesar_in(prepared_exons, query_sequences, cesar_in_filename, ref_ss_data)
     # run cesar itself
-    cesar_bin = args.get("cesar_binary") if args.get("cesar_binary") else os.path.join(LOCATION, "cesar")
+    cesar_bin = args.get("cesar_binary") if args.get("cesar_binary") else DEFAULT_CESAR
     if not args["cesar_output"]:
         cesar_raw_out = run_cesar(cesar_in_filename, memory, is_temp, memlim, cesar_bin)
     else:  # very specific case, load already saved CESAR output
