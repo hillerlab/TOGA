@@ -52,7 +52,10 @@ class Toga:
         self.__check_completeness()
         self.nextflow_dir = self.__get_nf_dir(args.nextflow_dir)
         self.nextflow_config_dir = args.nextflow_config_dir
-        self.nextflow_bigmem_config = args.cesar_bigmem_config
+        if args.cesar_bigmem_config:
+            self.nextflow_bigmem_config = os.path.abspath(args.cesar_bigmem_config)
+        else:  # if none: we cannot call os.path.abspath method
+            self.nextflow_bigmem_config = None
         self.__check_nf_config()
         # to avoid crash on filesystem without locks:
         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
@@ -735,7 +738,7 @@ class Toga:
             processes.append(p)
             time.sleep(CESAR_PUSH_INTERVAL)
         
-        if self.nextflow_bigmem_config and False:
+        if self.nextflow_bigmem_config:
             # if provided: push bigmem jobs also
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
@@ -753,6 +756,8 @@ class Toga:
             if big_lines_num == 0:
                 pass
             else:
+                os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
+                project_paths.append(nf_project_path)
                 p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
                 sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
                 processes.append(p)
@@ -776,6 +781,7 @@ class Toga:
                 iter_num += 1
         if not self.keep_nf_logs:
             # remove nextflow intermediate files
+            print("Removing nextflow temp files")
             for path in project_paths:
                 shutil.rmtree(path)
 

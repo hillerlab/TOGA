@@ -380,7 +380,7 @@ def save_bigmem_jobs(bigmem_joblist, jobs_dir):
     return bigmem_paths
 
 
-def save_combined_joblist(to_combine, combined_file, results_dir, inact_mut_dat, rejected_log):
+def save_combined_joblist(to_combine, combined_file, results_dir, inact_mut_dat, rejected_log, name=""):
     """Save joblist of joblists (combined joblist)."""
     f = open(combined_file, "w")
     for num, comb in enumerate(to_combine, 1):
@@ -392,7 +392,7 @@ def save_combined_joblist(to_combine, combined_file, results_dir, inact_mut_dat,
                                           f"{basename}.inact_mut.txt")
             combined_command += f" --check_loss {loss_data_path}"
         if rejected_log:
-            log_path = os.path.join(rejected_log, f"{num}.txt")
+            log_path = os.path.join(rejected_log, f"{num}_{name}.txt")
             combined_command += f" --rejected_log {log_path}"
         f.write(combined_command + "\n")
     f.close()
@@ -538,7 +538,8 @@ def main():
     # save bigmem jobs, a bit different logic
     bigmem_paths = save_bigmem_jobs(bigmem_jobs, args.jobs_dir)
     if bigmem_paths:
-        save_combined_joblist(bigmem_paths, args.bigmem, args.results, args.check_loss, args.rejected_log)
+        save_combined_joblist(bigmem_paths, args.bigmem, args.results,
+                              args.check_loss, args.rejected_log, name="bigmem")
 
     # save skipped genes if required
     if args.skipped_genes:
