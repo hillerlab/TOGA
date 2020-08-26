@@ -3,6 +3,6 @@
 // take too long
 process.executor = 'slurm'
 process.queue = 'bigmem'
-process.memory = '1000G'
+process.memory = '500G'
 process.time = '24h'
 process.cpus = 1
