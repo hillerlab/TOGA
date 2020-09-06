@@ -130,17 +130,19 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
             rejected.append((name, "Out-of-frame gene"))
             continue
 
-        # if there are non-unique transcript IDs: die
-        # I kill it there, not earlier to show them altogether
-        if any(v > 1 for v in names.values()):
-            eprint("Error! There are non-uniq transcript IDs:")
-            for k in names.keys():
-                eprint(k)
-            die("Abort")
         # we keep this transcript: add in to the list
         new_line = "\t".join([str(x) for x in line_data])
         new_lines.append(new_line)
     f.close()
+
+    # if there are non-unique transcript IDs: die
+    # I kill it there, not earlier to show them altogether
+    if any(v > 1 for v in names.values()):
+        eprint("Error! There are non-uniq transcript IDs:")
+        duplicates = [k for k, v in names.items() if v > 1]
+        for d in duplicates:
+            eprint(d)
+        die("Abort")
 
     if len(new_lines) == 0:
         # no transcripts pass the filter: probably an input data mistake
