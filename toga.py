@@ -50,6 +50,7 @@ class Toga:
         self.__modules_addr()
         self.__check_dependencies()
         self.__check_completeness()
+        self.para = args.para
         self.nextflow_dir = self.__get_nf_dir(args.nextflow_dir)
         self.nextflow_config_dir = args.nextflow_config_dir
         if args.cesar_bigmem_config:
@@ -66,7 +67,7 @@ class Toga:
         # create project dir
         self.project_name = chain_basename.split(".")[1] if not args.project_name \
             else args.project_name
-        self.wd = args.project_folder if args.project_folder else  \
+        self.wd = os.path.abspath(args.project_dir) if args.project_dir else  \
             os.path.join(os.getcwd(), self.project_name)
         # for safety; need this to make paths later
         self.project_name = self.project_name.replace("/", "")
@@ -403,6 +404,9 @@ class Toga:
             self.nf_chain_extr_config_file = None
             self.local_executor = True
             return
+        # check conflict: if we set para; nf args should not be set
+        if self.para and self.nextflow_config_dir:
+            self.die("Conflict: --para and --nf_dir should not be used at the same time")
         # check that required config files are here
         if not os.path.isdir(self.nextflow_config_dir):
             self.die(f"Error! Nextflow config dir {self.nextflow_config_dir} does not exist!")
@@ -548,24 +552,32 @@ class Toga:
     
     def __extract_chain_features(self):
         """Execute extract chain features jobs."""
-        nf_cmd = f"nextflow {self.NF_EXECUTE} " \
-                 f"--joblist {self.chain_cl_jobs_combined}"
-        if not self.local_executor:
-            # not local executor -> provided config files
-            # need abspath for nextflow execution
-            nf_cmd += f" -c {self.nf_chain_extr_config_file}"
         # get timestamp to name the project and create a dir for that
         #  time() returns something like: 1595861493.8344169
         timestamp = str(time.time()).split(".")[0]
-        nf_project_name = f"{self.project_name}_chain_feats_at_{timestamp}"
-        nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
-        os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
-        rc = subprocess.call(nf_cmd, shell=True, cwd=nf_project_path)
-        if rc != 0:
-            self.die(f"Error! Process {nf_cmd} died")
-        if not self.keep_nf_logs:
+        project_name = f"{self.project_name}_chain_feats_at_{timestamp}"
+        project_path = os.path.join(self.nextflow_dir, project_name)
+
+        if self.para:  # run jobs with para, skip nextflow
+            cmd = f"para make {project_name} {self.chain_cl_jobs_combined} -q=\"short\""
+            rc = subprocess.call(cmd, shell=True)
+        else:  # calling jobs with nextflow
+            cmd = f"nextflow {self.NF_EXECUTE} " \
+                  f"--joblist {self.chain_cl_jobs_combined}"
+            if not self.local_executor:
+                # not local executor -> provided config files
+                # need abspath for nextflow execution
+                cmd += f" -c {self.nf_chain_extr_config_file}"
+
+            os.mkdir(project_path) if not os.path.isdir(project_path) else None
+            rc = subprocess.call(cmd, shell=True, cwd=project_path)
+
+        if rc != 0:  # if process (para or nf) died: terminate execution
+            self.die(f"Error! Process {cmd} died")
+        if not self.keep_nf_logs and not self.para:
             # remove nextflow intermediate files
-            shutil.rmtree(nf_project_path)
+            # if para: this dir doesn't exist
+            shutil.rmtree(project_path) if os.path.isdir(project_path) else None
 
     def __merge_chains_output(self):
         """Call parse results."""
@@ -725,20 +737,27 @@ class Toga:
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_{b}"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
-            os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
 
+            if not self.para:  # create nextflow cmd
+                os.mkdir(nf_project_path) if not os.path.isdir(nf_project_path) else None
+
+                cmd = f"nextflow {self.NF_EXECUTE} " \
+                      f"--joblist {joblist_abspath}"
+                if config_file_abspath:
+                    cmd += f" -c {config_file_abspath}"
+                p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
+            else:  # create cmd for para
+                memory_mb = b * 1000
+                cmd = f"para make {nf_project_name} {joblist_abspath} -q=\"day\""
+                if memory_mb > 0:
+                    cmd += f" --memoryMb={memory_mb}"
+                p = subprocess.Popen(cmd, shell=True)
             # create subprocess object
-            nf_cmd = f"nextflow {self.NF_EXECUTE} " \
-                     f"--joblist {joblist_abspath}"
-            if config_file_abspath:
-                nf_cmd += f" -c {config_file_abspath}"
-
-            p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
-            sys.stderr.write(f"Pushed cluster jobs with {nf_cmd}\n")
+            sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
             processes.append(p)
             time.sleep(CESAR_PUSH_INTERVAL)
         
-        if self.nextflow_bigmem_config:
+        if self.nextflow_bigmem_config and not self.para:
             # if provided: push bigmem jobs also
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
@@ -762,10 +781,8 @@ class Toga:
                 sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
                 processes.append(p)
 
-        # monitor jobs
-        iter_num = 0
-        while True:
-            # Run until all jobs are done (or crashed)
+        iter_num = 0  # monitor jobs, iteration counter
+        while True:  # Run until all jobs are done (or crashed)
             all_done = True  # default val, re-define if something is not done
             for p in processes:
                 # check if each process is still running
@@ -783,7 +800,7 @@ class Toga:
             # remove nextflow intermediate files
             print("Removing nextflow temp files")
             for path in project_paths:
-                shutil.rmtree(path)
+                shutil.rmtree(path) if os.path.isdir(path) else None
 
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
@@ -890,13 +907,13 @@ def parse_args():
     app.add_argument("qDB", default=None,
                      help="Query genome sequence in 2bit format.")
     # global ops
-    app.add_argument("--project_folder", default=None,
+    app.add_argument("--project_dir", "--pd", default=None,
                      help="Project directory. TOGA will save all intermediate and output files "
                           "exactly in this directory. If not specified, use CURRENT_DIR/PROJECT_NAME "
                           "as default (see below).")
     app.add_argument("--project_name", "--pn", default=None,
                      help="If you don't like to provide a full path to the project directory with "
-                          "--project_folder you can use this parameter. In this case TOGA will "
+                          "--project_dir you can use this parameter. In this case TOGA will "
                           "create project directory in the current directory as "
                           "\"CURRENT_DIR/PROJECT_NAME\". If not provided, TOGA will try to extract "
                           "the project name from chain filename, which is not recommended.")
@@ -924,6 +941,9 @@ def parse_args():
     app.add_argument("--cesar_bigmem_config", "--nb", default=None, help="File containing "
                      "nextflow config for BIGMEM CESAR jobs. If not provided, these "
                      "jobs will not run (but list of them saved)/ NOT IMPLEMENTED YET")
+    app.add_argument("--para", "-p", action="store_true", dest="para",
+                     help="Hillerlab feature, use para instead of nextflow to "
+                          "manage cluster jobs.")
     # chain features related
     app.add_argument("--chain_jobs_num", "--chn", type=int, default=100,
                      help="Number of cluster jobs for extracting chain features. "
