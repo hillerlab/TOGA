@@ -2,7 +2,7 @@
 """Plot TOGA-detected mutations.
 
 Original script provided by Björn Langer, 2014.
-Adopted for TOGA by Bogdan Kirilenko, 2020.
+Adapted for TOGA by Bogdan Kirilenko, 2020.
 """
 import argparse
 import sys
@@ -10,7 +10,6 @@ import os
 import re
 from copy import copy
 from collections import defaultdict
-import numpy as np
 import h5py
 
 # Mutation classes
@@ -42,10 +41,9 @@ BLUE = "#3366ff"
 BLACK = "#121212"
 EXON_COLOR = "#ffeb00"
 
-
 MAX_VERTICAL_SPACE = 100  # pixels
 HALF_EXON_HEIGHT = 15  # pixels
-HALF_UTR_HEIGHT  = 5  # pixels
+HALF_UTR_HEIGHT = 5  # pixels
 UTR_WIDTH = 0  # pixels
 
 EXON_BASE_SIZE = 0.8  # pixels per base
@@ -77,9 +75,10 @@ SS_LABEL_FONTSIZE = 18
 MO_FONTSIZE = 18
 STACKING_THRESHOLD = 35  # pixels
 J_STYLE = False
+picture_width = 0
 
 
-class MouseOver():
+class MouseOver:
     id_counter = 0
 
     def __init__(self, pos, texts):
@@ -88,7 +87,7 @@ class MouseOver():
         self.id_counter = MouseOver.id_counter
         lens_ = [len(x) - 4 * x.count("<cc>") for x in texts if not x.startswith("http://")]
         self.width = max(lens_) * 0.65 * MO_FONTSIZE
-        self.height = MO_FONTSIZE * sum([(1,0)[t.startswith("http://")] for t in texts])
+        self.height = MO_FONTSIZE * sum([(1, 0)[t.startswith("http://")] for t in texts])
         # align text horizontally and vertically to image boarder 
         self.pos = ((pos[0], max(0, picture_width - self.width))[pos[0] + self.width > picture_width],
                     (pos[1], pos[1] + self.height)[pos[1] - self.height < 0])
@@ -103,7 +102,7 @@ class MouseOver():
                 if self.texts[i].startswith("http://"):
                     # create link
                     elem_list.append('>')
-                    xlink_ = self.texts[i].replace('&','&amp;')
+                    xlink_ = self.texts[i].replace('&', '&amp;')
                     elem_list.append(f'<a xlink:href="{xlink_}" target="_blank">')
                     i += 1
                     elem_list.append('<tspan>')
@@ -137,7 +136,7 @@ class MouseOver():
             return ""
 
 
-class Textstack():
+class Textstack:
     def __init__(self, pos, direction, label, mouseover=None, fontsize=STOP_LABEL_FONTSIZE,
                  style="", anchor="", color=None):
         self.pos = pos
@@ -168,20 +167,20 @@ class Textstack():
     def toString(self):
         global picture_width  # TODO: needs to be refactored
         out_lines = []
-        mouseovers  = []
+        mouseovers = []
         if self.direction == 'upwards' or self.direction == 'downwards':
             print("deprecated text direction")
             # some hacks because 'writing-mode="tb"' and 'glyph-orientation-vertical:360'
             # are not supported by firefox yet
             self.labels = [(" ".join(label[0]), label[1]) for label in self.labels]
-            length = len(self.labels) + sum([len(l[0]) for l in self.labels])
-            offset = HALF_EXON_HEIGHT + 0.5 * self.size 
+            length = len(self.labels) + sum([len(label[0]) for label in self.labels])
+            offset = HALF_EXON_HEIGHT + 0.5 * self.size
 
             if self.direction == 'upwards':
-                self.labels = [(l[0][::-1], l[1]) for l in self.labels]  # reverse each label
+                self.labels = [(label[0][::-1], label[1]) for label in self.labels]  # reverse each label
                 rotation = 90
                 pos_of_ = self.pos[1] - offset
-                pos_of_len_ =  self.pos[1] - offset - length * self.size
+                pos_of_len_ = self.pos[1] - offset - length * self.size
                 path = f'M{self.pos[0]} {pos_of_} V{pos_of_len_}'
             else:
                 rotation = 270
@@ -235,7 +234,7 @@ class Textstack():
             return outstr, -1 * height
 
 
-class Exon():
+class Exon:
     def __init__(self, pos, width, is_exon=True, opacity=OPACITY, color=None, ancestral=True, annotation=None):
         self.pos = [pos[0], pos[1]]
         self.width = width
@@ -325,28 +324,28 @@ class Exon():
         y = self.pos[1]
         color_ = GREY if is_masked else BLACK
         style_ = STOP_CODON_STYLE.format(color_)
-        self.data.append(drawLine((x, y - HALF_EXON_HEIGHT),
-                                  (x, y + HALF_EXON_HEIGHT),
-                                  style_))
+        self.data.append(draw_line((x, y - HALF_EXON_HEIGHT),
+                                   (x, y + HALF_EXON_HEIGHT),
+                                   style_))
         self.labels[("up", start_base_pos)] = (tag, y, mouseover, color_)
 
     def add_deletion(self, start_base_pos, length, mouseover, is_masked):
         color = GREY if is_masked else RED
         style = DEL_STYLE.format(color, length * EXON_BASE_SIZE)
-        self.data.append(drawLine((self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
-                                                  self.pos[1] - HALF_EXON_HEIGHT),
-                                  (self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
-                                                  self.pos[1] + HALF_EXON_HEIGHT),
-                                  style))
+        self.data.append(draw_line((self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
+                                    self.pos[1] - HALF_EXON_HEIGHT),
+                                   (self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
+                                   self.pos[1] + HALF_EXON_HEIGHT),
+                                   style))
         self.labels[("up", start_base_pos)] = ("-" + str(length), self.pos[1], mouseover, color)
 
     def add_missing_sequence(self, start_base_pos, length, mouseover):
         style = MISSSEQ_STYLE.format(GREY, length * EXON_BASE_SIZE)
-        self.data.append(drawLine((self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
-                                                  self.pos[1] - HALF_EXON_HEIGHT),
-                                  (self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
-                                                  self.pos[1] + HALF_EXON_HEIGHT),
-                                  style))
+        self.data.append(draw_line((self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
+                                    self.pos[1] - HALF_EXON_HEIGHT),
+                                   (self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
+                                   self.pos[1] + HALF_EXON_HEIGHT),
+                                   style))
         self.labels[("up", start_base_pos)] = (str(length), self.pos[1], mouseover, GREY)
 
     def add_insertion(self, base_pos, length, mouseover, is_masked):
@@ -377,7 +376,8 @@ class Exon():
         if self.mouseover == "":
             attr_lines = []
         else:
-            mo_id_str_ = str(self.mouseover.id_counter)
+            # mo_id_str_ = str(self.mouseover.id_counter)
+            mo_id_str_ = ""
             attr_lines = [f'onmouseover="mouseover(evt, \'Mouseover{mo_id_str_}\')"', ]
 
         extra_attr = f' rx="{HALF_EXON_HEIGHT / 3}" ry ="{HALF_EXON_HEIGHT / 3}" '  # B: don't know what it stands for
@@ -387,9 +387,9 @@ class Exon():
                                   self.annotation)
             mo_str_ = str(mouseover)
             dline_str = f'style="stroke:white; stroke-width:5;" onmouseover="mouseover(evt, \'Mouseover{mo_str_}\')"'
-            dline_ = drawLine([self.pos[0], self.pos[1] + self.half_height],
-                              [self.pos[0] + self.width, self.pos[1] + self.half_height],
-                              dline_str)
+            dline_ = draw_line([self.pos[0], self.pos[1] + self.half_height],
+                               [self.pos[0] + self.width, self.pos[1] + self.half_height],
+                               dline_str)
             annotation = str(mouseover) + dline_
         else:
             annotation = ""
@@ -403,13 +403,13 @@ class Exon():
         fill_opac_ = self.opacity / 100.0
         attributes = "".join(attr_lines)
         data_str = "".join(self.data)
-        rect_line = f'  <rect class="{rect_class_}anc_exon" x="{x_}" y="{y_}" width="{self.width}" '\
+        rect_line = f'  <rect class="{rect_class_}anc_exon" x="{x_}" y="{y_}" width="{self.width}" ' \
                     f'height="{height_}" style="fill:{self.color};fill-opacity:{fill_opac_:1.2f}" {attributes}/>\n'
         result_line = f"{annotation}{self_mo_str_}{rect_line}{data_str}"
         return result_line, self.height
 
 
-class Intron():
+class Intron:
     def __init__(self, pos, width, seperated=False):
         self.pos = [pos[0], pos[1]]
         self.width = width
@@ -420,21 +420,21 @@ class Intron():
 
     def toString(self):
         if not self.seperated:
-            line = drawLine(self.pos, (self.pos[0] + self.width, self.pos[1]), INTRON_STYLE)
+            line = draw_line(self.pos, (self.pos[0] + self.width, self.pos[1]), INTRON_STYLE)
         else:
             gap_l = self.pos[0] + self.width // 2 - GAP_WIDTH // 2
             gap_r = gap_l + GAP_WIDTH
             line_pieces = []
-            line_pieces.append(drawLine(self.pos, (gap_l, self.pos[1]), INTRON_STYLE))
-            line_pieces.append(drawLine((gap_l, self.pos[1] - HALF_GAP_HEIGHT),
-                                        (gap_l, self.pos[1] + HALF_GAP_HEIGHT),
-                                        INTRON_STYLE))
-            line_pieces.append(drawLine((gap_r, self.pos[1] - HALF_GAP_HEIGHT),
-                                        (gap_r, self.pos[1] + HALF_GAP_HEIGHT),
-                                        INTRON_STYLE))
-            line_pieces.append(drawLine((gap_r, self.pos[1]),
-                                        (self.pos[0] + self.width, self.pos[1]),
-                                        INTRON_STYLE))
+            line_pieces.append(draw_line(self.pos, (gap_l, self.pos[1]), INTRON_STYLE))
+            line_pieces.append(draw_line((gap_l, self.pos[1] - HALF_GAP_HEIGHT),
+                                         (gap_l, self.pos[1] + HALF_GAP_HEIGHT),
+                                         INTRON_STYLE))
+            line_pieces.append(draw_line((gap_r, self.pos[1] - HALF_GAP_HEIGHT),
+                                         (gap_r, self.pos[1] + HALF_GAP_HEIGHT),
+                                         INTRON_STYLE))
+            line_pieces.append(draw_line((gap_r, self.pos[1]),
+                                         (self.pos[0] + self.width, self.pos[1]),
+                                         INTRON_STYLE))
             line = "".join(line_pieces)
         return line, 2 * HALF_GAP_HEIGHT
 
@@ -443,11 +443,11 @@ class Intron():
         return Intron(upd_pos, self.width, self.seperated)
 
 
-def drawLine(pos1, pos2, otherAttributes):
+def draw_line(pos1, pos2, otherAttributes):
     return f'  <line x1="{pos1[0]}" y1="{pos1[1]}" x2="{pos2[0]}" y2="{pos2[1]}" {otherAttributes}/>\n'
 
 
-def drawCompIndel(pos1, pos2):
+def draw_comp_indel(pos1, pos2):
     center = " ".join(2 * [str((pos1[0] + pos2[0]) // 2), str(pos1[1] - HALF_UTR_HEIGHT)])
     d = f"M{pos1[0]} {pos1[1] - HALF_EXON_HEIGHT} C {center} {pos2[0]} {pos2[1] - HALF_EXON_HEIGHT}"
     return f'  <path d="{d}" {COMP_INDEL_STYLE} />\n'
@@ -513,7 +513,7 @@ def get_mut_list(mut_file, trans):
             trans_lines_str = b_mut_lines.astype(u_type)
             trans_related_lines = trans_lines_str.split("\n")
         except KeyError:
-            trans_related_lines = ["", ]  
+            trans_related_lines = ["", ]
         h.close()
         return trans_related_lines
     else:  # ordinary text file
@@ -597,10 +597,10 @@ def comp_width(trans_data):
     """Compute picture width."""
     exon_coords = trans_data["exons"]
     gene_width = UTR_WIDTH \
-                 + int((exon_coords[0][1] - exon_coords[0][0]) * EXON_BASE_SIZE) \
-                 + max(UTR_WIDTH, 2 * SS_LABEL_FONTSIZE)
+        + int((exon_coords[0][1] - exon_coords[0][0]) * EXON_BASE_SIZE) \
+        + max(UTR_WIDTH, 2 * SS_LABEL_FONTSIZE)
     for i in range(1, trans_data["exon_num"]):
-        intron_length = (exon_coords[i][0] - exon_coords[i-1][1])
+        intron_length = (exon_coords[i][0] - exon_coords[i - 1][1])
         intron_length = min(max(intron_length, MIN_INTRON_SIZE), MAX_INTRON_SIZE)
         gene_width += int(intron_length * INTRON_BASE_SIZE)
         gene_width += int((exon_coords[i][1] - exon_coords[i][0]) * EXON_BASE_SIZE)
@@ -704,7 +704,7 @@ def prepare_mut_data(mut_lines, sp, rel_starts, chain_lim=None):
     return to_ret
 
 
-def write_pic(svg_path, filebuffer, picture_width, picture_height, vbox_h, mcv, alt_template):
+def write_pic(filebuffer, picture_width, picture_height, vbox_h, mcv, alt_template):
     """Write picture data."""
     if os.path.isfile(TEMPLATE_PATH_1):
         template_file = TEMPLATE_PATH_1
@@ -731,9 +731,7 @@ def write_pic(svg_path, filebuffer, picture_width, picture_height, vbox_h, mcv, 
     rep_d = {re.escape(k): v for k, v in rep.items()}
     pattern = re.compile("|".join(rep_d.keys()))
     text = pattern.sub(lambda m: rep[re.escape(m.group(0))], template)
-    f = open(svg_path, "w") if svg_path != "stdout" else sys.stdout
-    f.write(text)
-    f.close() if svg_path != "stdout" else None
+    return text
 
 
 def trans_data_direction(trans_data):
@@ -749,13 +747,12 @@ def trans_data_direction(trans_data):
 
 def init_human_exons(x, y, ancestral_exons, trans_data):
     """Just init human exons list."""
-    human_exons = []
-    human_exons.append(Exon((0, y), x[0], is_exon=False))
+    human_exons = [Exon((0, y), x[0], is_exon=False), ]
     # 1 is always in ancestrals!
     # one_in_anc_exons = "1" in ancestral_exons
     human_exons.append(Exon((x[0], y),
                             x[1] - x[0],
-                            opacity=OPACITY, 
+                            opacity=OPACITY,
                             ancestral=True,
                             annotation=None))
 
@@ -805,15 +802,15 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
         # check if we are at the same projection or now
         if projection != curr_projection or sp != curr_sp:
             # initiate new plot!
-            if PRINT_EXON_SCHEME or curr_projection != None:
+            if PRINT_EXON_SCHEME or curr_projection is not None:
                 height = 0
                 for e in exons:  # draw genome of last projection
                     s, h = e.toString()
                     filebuffer_substrings.append(s)
                     height = max(height, h)
-                for l in labels:
+                for label in labels:
                     # draw defects and labels of last species
-                    filebuffer_substrings.append(l.toString()[0])
+                    filebuffer_substrings.append(label.toString()[0])
                 vert_offset += MAX_VERTICAL_SPACE
             # initiate new drawing!
             compensations = "".join(comp_substrings)
@@ -827,8 +824,8 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
                                  HORIZONTAL,
                                  label,
                                  fontsize=MO_FONTSIZE))]
-            for l in labels:
-                l.shift_vertical(vert_offset)
+            for label in labels:
+                label.shift_vertical(vert_offset)
             curr_projection = projection
             curr_sp = sp
             speciesdata = {}
@@ -857,13 +854,13 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             try:
                 data1, data2 = speciesdata[fs_1_id], speciesdata[fs_2_id]
                 start = (exons[2 * int(data1[0]) - 1].pos[0] + data1[2] * EXON_BASE_SIZE,
-                        exons[2 * int(data1[0]) - 1].pos[1])
+                         exons[2 * int(data1[0]) - 1].pos[1])
                 end = (exons[2 * int(data2[0]) - 1].pos[0] + data2[1] * EXON_BASE_SIZE,
-                    exons[2 * int(data2[0]) - 1].pos[1])
-                comp_substrings.append(drawCompIndel(start, end))
+                       exons[2 * int(data2[0]) - 1].pos[1])
+                comp_substrings.append(draw_comp_indel(start, end))
             except KeyError:
                 # TODO: check why FS2 could be deleted from list
-                # if it belongs to a deleted exon: why conpensation is
+                # if it belongs to a deleted exon: why compensation is
                 # still there?
                 pass
             continue
@@ -922,7 +919,7 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             exon.add_stop_codon(pos, codon, mouseover, is_masked)
         else:
             pass
-    
+
     if curr_projection is not None:
         vert_offset += MAX_VERTICAL_SPACE
         vbox_h = 0
@@ -932,8 +929,8 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             vbox_h = max(vbox_h, h)
         compensations = "".join(comp_substrings)
         filebuffer_substrings.append(compensations)
-        for l in labels:
-            filebuffer_substrings.append(l.toString()[0])
+        for label in labels:
+            filebuffer_substrings.append(label.toString()[0])
 
     filebuffer = "".join(filebuffer_substrings)
     return filebuffer, len(uniq_projections), vbox_h
@@ -946,7 +943,7 @@ def compute_pic_and_vbox_h(up_num, vbox_h):
     picture_height += up_num * MAX_VERTICAL_SPACE
     if up_num == 1:
         picture_height = max(picture_height, MAX_VERTICAL_SPACE / 2 + vbox_h)
-    else: 
+    else:
         vbox_h = MAX_VERTICAL_SPACE / 2
     return picture_height, vbox_h
 
@@ -980,39 +977,45 @@ def get_sp_to_mbd_data(mut_files_list):
     return sp_to_file
 
 
-def main():
+def make_plot(bed_file, toga_mut_file, transcripts, chain,
+              isoforms_file, multi_species, alt_template,
+              inact_lines=None):
     """Enrty point."""
-    args = parse_args()
-    if args.isoforms_file is None:
-        transcripts = [t for t in args.transcripts.split(",") if t != ""]
+    if isoforms_file is None:
+        transcripts = [t for t in transcripts.split(",") if t != ""]
     else:
-        transcripts = get_transcripts(args.transcripts, args.isoforms_file)
-    
-    if args.multi_species is True:
-        sp_to_mdb = get_sp_to_mbd_data(args.toga_mut_file)
+        transcripts = get_transcripts(transcripts, isoforms_file)
+
+    if multi_species is True:
+        sp_to_mdb = get_sp_to_mbd_data(toga_mut_file)
     else:
-        sp_to_mdb = {"SP": args.toga_mut_file}
+        sp_to_mdb = {"SP": toga_mut_file}
 
     all_mut_lines = []
     trans_to_h_exons = {}
     picture_width = 0
 
     for transcript in transcripts:
-        trans_bed = get_transcript(args.bed_file, transcript)
+        trans_bed = get_transcript(bed_file, transcript)
         if trans_bed is None:
             # not found 
-            sys.stderr.write(f"Warning! Cannot find {transcript} in the bed {args.bed_file}\n")
+            sys.stderr.write(f"Warning! Cannot find {transcript} in the bed {bed_file}\n")
             continue
-        
+
         trans_data = parse_trans_data(trans_bed)
         trans_data_direction(trans_data)
 
         for sp, mdb in sp_to_mdb.items():
-            mut_lines_raw = get_mut_list(mdb, transcript)
+            if inact_lines is None:
+                # ~100% cases
+                mut_lines_raw = get_mut_list(mdb, transcript)
+            else:
+                # called by external program: inact data already extracted
+                mut_lines_raw = inact_lines
             mut_lines = prepare_mut_data(mut_lines_raw, sp, trans_data["rel_starts"],
-                                         chain_lim=args.chain)
+                                         chain_lim=chain)
             all_mut_lines.extend(mut_lines)
-    
+
         t_picture_width = comp_width(trans_data)
         picture_width = t_picture_width if t_picture_width > picture_width else picture_width
 
@@ -1035,9 +1038,20 @@ def main():
 
     # save figure
     mouse_counter_val = MouseOver.id_counter + 1
-    write_pic(args.output, filebuffer, picture_width,
-              picture_height, vbox_h, mouse_counter_val, args.alt_template)
+    svg_line = write_pic(filebuffer, picture_width, picture_height,
+                         vbox_h, mouse_counter_val, alt_template)
+    return svg_line
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    svg_line = make_plot(args.bed_file,
+                         args.toga_mut_file,
+                         args.transcripts,
+                         args.chain,
+                         args.isoforms_file,
+                         args.multi_species,
+                         args.alt_template)
+    f = open(args.output, "w") if args.output != "stdout" else sys.stdout
+    f.write(svg_line)
+    f.close() if args.output != "stdout" else None
