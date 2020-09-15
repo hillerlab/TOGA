@@ -1,5 +1,3 @@
--- TOGA inactivating mutations
-
 CREATE TABLE TOGAInactMut (
 	transcript varchar(50) not null,  -- unique projection ID: ${ref_transcript_ID}.${chain_ID}
     exon_num int unsigned not null,  -- exon number
