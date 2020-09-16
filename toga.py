@@ -51,6 +51,9 @@ class Toga:
         self.__check_dependencies()
         self.__check_completeness()
         self.para = args.para
+        self.toga_exe_path = os.path.dirname(__file__)
+        self.version = self.__get_version()
+        self.para_bigmem = args.para_bigmem
         self.nextflow_dir = self.__get_nf_dir(args.nextflow_dir)
         self.nextflow_config_dir = args.nextflow_config_dir
         if args.cesar_bigmem_config:
@@ -756,7 +759,8 @@ class Toga:
             sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
             processes.append(p)
             time.sleep(CESAR_PUSH_INTERVAL)
-        
+
+        # TODO: para bigmem option
         if self.nextflow_bigmem_config and not self.para:
             # if provided: push bigmem jobs also
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
@@ -881,6 +885,15 @@ class Toga:
         buffer.close()
         shutil.rmtree(dir_name)
 
+    def __get_version(self):
+        """Get git hash if possible."""
+        cmd = "git rev-parse HEAD"
+        try:
+            version = subprocess.check_output(cmd, shell=True, cwd=self.toga_exe_path).decode("utf-8")
+        except subprocess.CalledProcessError:
+            version = "unknown"
+        return version
+
     def __merge_split_files(self):
         """Merge intermediate/temp files."""
         # merge rejection logs
@@ -944,6 +957,8 @@ def parse_args():
     app.add_argument("--para", "-p", action="store_true", dest="para",
                      help="Hillerlab feature, use para instead of nextflow to "
                           "manage cluster jobs.")
+    app.add_argument("--para_bigmem", "--pb", action="store_true", dest="para_bigmem",
+                     help="Hillerlab feature, push bigmem jobs with para")
     # chain features related
     app.add_argument("--chain_jobs_num", "--chn", type=int, default=100,
                      help="Number of cluster jobs for extracting chain features. "
