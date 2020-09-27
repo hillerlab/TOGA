@@ -284,7 +284,9 @@ def get_sequence_data(wd, all_projections):
                 # query seq
                 projection_to_prot_seq[projection_id] = sequence
             continue
-
+        elif "CODON" in header_data:
+            # codon alignment -> not used for now
+            continue
         else:
             # nucleotide seq, again ref or query
             # projection -> the same fields
