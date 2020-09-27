@@ -94,8 +94,8 @@ def main():
     """Entry point."""
     args = parse_args()
     # call generate_tab_files.py and make_togaPlot.py
-    # call_gen_tab_files(args.project_dir)
-    # call_gen_plot_files(args.project_dir)
+    call_gen_tab_files(args.project_dir)
+    call_gen_plot_files(args.project_dir)
     # merge 4 transcriptID-related tables into a single one
     make_toga_data(args.project_dir)
 
