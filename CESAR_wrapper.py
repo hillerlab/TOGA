@@ -88,6 +88,10 @@ AA_CODE = {"TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L",
            "GGT": "G", "GGC": "G", "GGA": "G", "GGG": "G",
            "---": "-", "NNN": "X"}
 
+XXX_CODON = "XXX"
+GAP_CODON = "---"
+NNN_CODON = "NNN"
+
 # CESAR2.0 necessary files location
 FIRST_CODON_PROFILE = "extra/tables/human/firstCodon_profile.txt"
 LAST_CODON_PROFILE = "extra/tables/human/lastCodon_profile.txt"
@@ -133,6 +137,7 @@ def parse_args():
     app.add_argument("--output", default="stdout", help="Final output, stdout as default "
                      "unreachable if params --raw_output or --estimate_memory are set.")
     app.add_argument("--prot_out", "--po", default="stdout", help="Save protein sequence")
+    app.add_argument("--codon_out", "--cdo", default="stdout", help="Save codon alignment")
     app.add_argument("--verbose", "-v", action="store_true", dest="verbose")
     app.add_argument("--exon_flank", default=2, type=int, help="When intersecting exons and intersected blocks"
                      "add flanks to extend exons range.")
@@ -152,6 +157,9 @@ def parse_args():
     app.add_argument("--no_fpi", action="store_true", dest="no_fpi",
                      help="Consider some frame-preserving mutations as inactivating. "
                           "See documentation for details.")
+    app.add_argument("--fragments", "--fr", action="store_true", dest="fragments",
+                     help="Stitch scaffolds -> in case of a fragmented genome")
+
     if len(sys.argv) == 1:
         app.print_help()
         sys.exit(0)
@@ -327,7 +335,7 @@ def check_ref_exons(exon_seqs, mask_stops):
     eprint("Warning! There are inframe stop codons!")
     for stop in stop_codons:
         eprint(f"Codon num {stop[0] + 1} - {stop[1]}")
-        codons[stop[0]] = "NNN" if mask_stops else codons[stop[0]]
+        codons[stop[0]] = NNN_CODON if mask_stops else codons[stop[0]]
         if stop[1] == "TGA":
             # maybe a sec codon
             sec_codons.add(stop[0])
@@ -1321,10 +1329,58 @@ def check_codons_for_aa_sat(codons_data):
     return exon_verdict
 
 
+def check_codon(codon):
+    """Mask codon if FS or stop."""
+    if codon in STOPS:
+        # mask stop
+        return XXX_CODON
+    elif codon == GAP_CODON:
+        # jsut a gap
+        return codon
+    elif codon.count("-") > 0:
+        # FS
+        return XXX_CODON
+    else:  # normal codon
+        return codon
+
+
+def extract_codon_data(codon_table):
+    """Get codon alignment."""
+    t_codons = []
+    q_codons = []
+    for codon in codon_table:
+        ref_codon = codon["ref_codon"]
+        que_codon = codon["que_codon"]
+        if len(ref_codon) == len(que_codon) == 3:
+            # the simplest case
+            ref_codon = check_codon(ref_codon)
+            que_codon = check_codon(que_codon)
+            t_codons.append(ref_codon)
+            q_codons.append(que_codon)
+            continue
+        elif len(que_codon) % 3 == 0:
+            # frame-preserving insertion
+            ref_subcodons = [check_codon(x) for x in parts(ref_codon, 3)]
+            que_subcodons = [check_codon(x) for x in parts(que_codon, 3)]
+            t_codons.extend(ref_subcodons)
+            q_codons.extend(que_subcodons)
+            continue
+        else:
+            ref_int = check_codon(ref_codon[-3:])
+            que_int = check_codon(que_codon[-3:])
+            fs_ref = GAP_CODON
+            fs_que = XXX_CODON
+            t_codons.append(fs_ref)
+            q_codons.append(fs_que)
+            t_codons.append(ref_int)
+            q_codons.append(que_int)
+    return {"ref": t_codons, "que": q_codons}
+
+
 def process_cesar_out(cesar_raw_out, query_loci, inverts):
     """Extract data from raw cesar output."""
     raw_data = parts(cesar_raw_out.split("\n"), n=4)[:-1]
-    exon_queries, exon_refs, percIDs, blosums, query_coords, prot_seqs = {}, {}, {}, {}, {}, {}
+    exon_queries, exon_refs, percIDs, blosums, query_coords, prot_seqs, codon_seqs = {}, {}, {}, {}, {}, {}, {}
     exon_num_corr = {}  # query exon num -> target exon nums
     aa_sat_seq = {}  # exon num -> no dels
 
@@ -1339,6 +1395,8 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
         # extract protein sequences also here, just to do it in one place
         part_pIDs, part_blosums, prot_seqs_part = compute_score(codons_data)
         prot_seqs[chain_id] = prot_seqs_part
+        codon_seqs_part = extract_codon_data(codons_data)
+        codon_seqs[chain_id] = codon_seqs_part
         exon_query_seqs, exon_ref_seqs, empty_q_exons, exon_query_inds = extract_query_seq(codons_data)
         exon_num_corr[chain_id] = get_exon_num_corr(codons_data)
         aa_sat_part = check_codons_for_aa_sat(codons_data)
@@ -1367,7 +1425,7 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
         percIDs[chain_id] = part_pIDs
         blosums[chain_id] = part_blosums
         query_coords[chain_id] = abs_coords
-    return exon_queries, exon_refs, percIDs, blosums, query_coords, exon_num_corr, prot_seqs, aa_sat_seq
+    return exon_queries, exon_refs, percIDs, blosums, query_coords, exon_num_corr, prot_seqs, codon_seqs, aa_sat_seq
 
 
 def merge_regions(reg_list):
@@ -1497,6 +1555,24 @@ def save_prot(gene_name, prot_seq, prot_out):
         f.write(f">{proj_name} | PROT | QUERY\n")
         f.write(f"{que_aa_seq}\n")
     f.close() if prot_out != "stdout" else None
+
+
+def save_codons(gene_name, cds_data_all, output):
+    """Save codon aligmnemtns."""
+    if output is None:
+        return
+    f = open(output, "w") if output != "stdout" else sys.stdout
+    for key, cds_data in cds_data_all.items():
+        proj_name = f"{gene_name}.{key}"
+        ref_codons = cds_data["ref"]
+        que_codons = cds_data["que"]
+        ref_seq = " ".join(ref_codons)
+        que_seq = " ".join(que_codons)
+        f.write(f">{proj_name} | CODON | REFERENCE\n")
+        f.write(f"{ref_seq}\n")
+        f.write(f">{proj_name} | CODON | QUERY\n")
+        f.write(f"{que_seq}\n")
+    f.close() if output != "stdout" else None
 
 
 def get_a_plus(chain_exon_class, aa_cesar_sat, aa_block_sat_chain, aa_ex_len):
@@ -1720,7 +1796,8 @@ def realign_exons(args):
     query_coords = proc_out[4]  # genomic coordinates in the query
     exon_num_corr = proc_out[5]  # in case of intron del: ref/que correspondence
     prot_s = proc_out[6]  # protein sequences in query
-    aa_cesar_sat = proc_out[7]  # says whether an exon has outstanding quality
+    codon_s = proc_out[7]
+    aa_cesar_sat = proc_out[8]  # says whether an exon has outstanding quality
     aa_eq_len = aa_eq_len_check(exon_sequences, query_exon_sequences)
     
     if chains:
@@ -1748,8 +1825,9 @@ def realign_exons(args):
     else:  # do not call inact mut scanner
         loss_report = None
 
-    # save protein and text output
+    # save protein/codon ali and text output
     save_prot(args["gene"], prot_s, args["prot_out"])
+    save_codons(args["gene"], codon_s, args["codon_out"])
     save(final_output, args["output"], t0, loss_report)
     sys.exit(0)
 

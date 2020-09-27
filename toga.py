@@ -150,10 +150,12 @@ class Toga:
         self.o2o_only = args.o2o_only
         self.keep_nf_logs = args.do_not_del_nf_logs
         self.cesar_ok_merged = None
+        self.fragmented_genome = args.fragmented_genome
 
         self.chain_results_df = os.path.join(self.wd, "chain_results_df.tsv")
         self.nucl_fasta = os.path.join(self.wd, "nucleotide.fasta")
         self.prot_fasta = os.path.join(self.wd, "prot.fasta")
+        self.codon_fasta = os.path.join(self.wd, "codon.fasta")
         self.final_bed = os.path.join(self.wd, "query_annotation.bed")
         self.low_conf_bed = os.path.join(self.wd, "low_confidence.bed")
         self.meta_data = os.path.join(self.wd, "exons_meta_data.tsv")
@@ -194,18 +196,28 @@ class Toga:
             elif not os.path.isfile(item):
                 self.die(f"Error! File {item} not found!")
 
-        # sanity checks
+        # sanity checks: check that bed file chroms match reference 2bit
         with open(self.ref_bed, "r") as f:
             lines = [line.rstrip().split("\t") for line in f]
             t_in_bed = set(x[3] for x in lines)
             chroms_in_bed = set(x[0] for x in lines)
+            # 2bit check function accepts a dict chrom: size
+            # from bed12 file we cannot infer sequence length
+            # None is just a placeholder that indicated that we don't need
+            # to compare chrom lengths with 2bit
+            chrom_sizes_in_bed = {x: None for x in chroms_in_bed}
         self.__check_isoforms_file(t_in_bed)
         self.__check_u12_file(t_in_bed)
-        self.__check_2bit_file(self.t_2bit, chroms_in_bed)
-        # need to check that query 2bit chroms match qchroms from chain file
+        self.__check_2bit_file(self.t_2bit, chrom_sizes_in_bed, self.ref_bed)
+        # need to check that chain chroms and their sizes match 2bit file data
         with open(self.chain_file, "r") as f:
-            q_chrom_in_chain = set(x.split()[7] for x in f if x.startswith("chain"))
-        self.__check_2bit_file(self.q_2bit, q_chrom_in_chain)
+            header_lines = [x.rstrip().split() for x in f if x.startswith("chain")]
+            t_chrom_to_size = {x[2]: int(x[3]) for x in header_lines}
+            q_chrom_to_size = {x[7]: int(x[8]) for x in header_lines}
+        # q_chrom_in_chain = set(x.split()[7] for x in f if x.startswith("chain"))
+        f.close()
+        self.__check_2bit_file(self.t_2bit, t_chrom_to_size, self.chain_file)
+        self.__check_2bit_file(self.q_2bit, q_chrom_to_size, self.chain_file)
 
     def __get_nf_dir(self, nf_dir_arg):
         """Define nextflow directory."""
@@ -217,21 +229,42 @@ class Toga:
             os.mkdir(nf_dir_arg) if not os.path.isdir(nf_dir_arg) else None
             return nf_dir_arg
 
-    def __check_2bit_file(self, two_bit_file, chroms):
+    def __check_2bit_file(self, two_bit_file, chroms_sizes, chrom_file):
         """Check that 2bit file is readable."""
         try:  # try to catch EOFError: if 2bitreader cannot read file
             two_bit_reader = TwoBitFile(two_bit_file)
             # check what sequences are in the file:
-            sequences = set(two_bit_reader.sequence_sizes().keys())
-            print(f"Detected {len(sequences)} sequences in {two_bit_file}")
+            twobit_seq_to_size = two_bit_reader.sequence_sizes()
+            twobit_sequences = set(twobit_seq_to_size.keys())
+            print(f"Detected {len(twobit_sequences)} sequences in {two_bit_file}")
         except EOFError as err:  # this is a file but twobit reader couldn't read it
-            sequences = None  # to suppress linter
+            twobit_seq_to_size = None  # to suppress linter
+            twobit_sequences = None
             print(str(err))
             print(f"twobitreader cannot open {two_bit_file}")
             self.die("Abort")
         # another check: that bed or chain chromosomes intersect 2bit file sequences
-        if len(sequences.intersection(chroms)) == 0:
-            self.die("Error! 2bit chromosomes|scaffold names dont match names in bed|chain file!")
+        check_chroms = chroms_sizes.keys()
+        intersection = twobit_sequences.intersection(check_chroms)
+        if len(intersection) == 0:
+            err = f"Error! 2bit file: {two_bit_file}; chain/bed file: {chrom_file}; " \
+                  f"Different sets of chromosomes!"
+            self.die(err)
+        # check that sizes also match
+        for chrom in intersection:
+            twobit_seq_len = twobit_seq_to_size[chrom]
+            comp_file_seq_len = chroms_sizes[chrom]
+            # if None: this is from bed file: cannot compare
+            if comp_file_seq_len is None:
+                continue
+            if twobit_seq_len == comp_file_seq_len:
+                continue
+            # got different sequence length in chain and 2bit files
+            # which means these chains come from something different
+            err = f"Error! 2bit file: {two_bit_file}; chain_file: {chrom_file} " \
+                  f"Chromosome: {chrom}; Sizes don't match! " \
+                  f"Size in twobit: {twobit_seq_len}; size in chain: {comp_file_seq_len}"
+            self.die(err)
         return
 
     def __check_u12_file(self, t_in_bed):
@@ -560,9 +593,12 @@ class Toga:
         timestamp = str(time.time()).split(".")[0]
         project_name = f"{self.project_name}_chain_feats_at_{timestamp}"
         project_path = os.path.join(self.nextflow_dir, project_name)
+        eprint(f"Extract chain features, project name: {project_name}")
+        eprint(f"Project path: {project_path}")
 
         if self.para:  # run jobs with para, skip nextflow
             cmd = f"para make {project_name} {self.chain_cl_jobs_combined} -q=\"short\""
+            eprint(f"Calling {cmd}")
             rc = subprocess.call(cmd, shell=True)
         else:  # calling jobs with nextflow
             cmd = f"nextflow {self.NF_EXECUTE} " \
@@ -571,7 +607,7 @@ class Toga:
                 # not local executor -> provided config files
                 # need abspath for nextflow execution
                 cmd += f" -c {self.nf_chain_extr_config_file}"
-
+            eprint(f"Calling {cmd}")
             os.mkdir(project_path) if not os.path.isdir(project_path) else None
             rc = subprocess.call(cmd, shell=True, cwd=project_path)
 
@@ -819,6 +855,7 @@ class Toga:
                                     self.meta_data,
                                     merge_c_stage_skipped,
                                     self.prot_fasta,
+                                    self.codon_fasta,
                                     self.trash_exons)
         if all_ok:
             # there are no empty output files
@@ -1003,6 +1040,9 @@ def parse_args():
     app.add_argument("--no_fpi", action="store_true", dest="no_fpi",
                      help="Consider some frame-preserving mutations as inactivating. "
                           "See documentation for details.")
+    app.add_argument("--fragmented_genome", "-f", dest="fragmented_genome", action="store_true",
+                     help="Annotation of a fragmented genome: need to assemble query genes "
+                          "from pieces")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()

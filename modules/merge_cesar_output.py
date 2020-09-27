@@ -50,6 +50,7 @@ def parse_args():
     app.add_argument("output_fasta", help="Save fasta fasta to...")
     app.add_argument("meta_data", help="Save exons metadata to...")
     app.add_argument("prot_fasta", help="Save protein fasta to...")
+    app.add_argument("codon_fasta", help="Save codon alignment fasta to...")
     app.add_argument("skipped", help="Save skipped genes")
     app.add_argument("--output_trash", default=None)
     # print help if there are no args
@@ -115,6 +116,7 @@ def parse_cesar_bdb(arg_input, v=False):
     wrong_exons = []  # exons that are predicted but actually deleted/missing
     all_meta_data = [META_HEADER]  # to collect exons meta data
     prot_data = []  # protein sequences
+    codon_data = []  # codon sequences
 
     for elem in content:
         # one elem - one CESAR call (one ref transcript and >=1 chains)
@@ -134,6 +136,7 @@ def parse_cesar_bdb(arg_input, v=False):
         query_headers = [h for h in order if h.endswith("query_exon")]
         ref_headers = [h for h in order if h.endswith("reference_exon")]
         prot_ids = [h for h in order if "PROT" in h]
+        codon_ids = [h for h in order if "CODON" in h]
 
         # parse reference exons, quite simple
         for header in ref_headers:
@@ -150,6 +153,12 @@ def parse_cesar_bdb(arg_input, v=False):
             prot_seq = sequences[prot_id]
             prot_line = f">{prot_id}\n{prot_seq}\n"
             prot_data.append(prot_line)
+
+        # save codon alignment data
+        for codon_id in codon_ids:
+            codon_seq = sequences[codon_id]
+            codon_line_line = f">{codon_id}\n{codon_seq}\n"
+            codon_data.append(codon_line_line)
 
         # get gene: exons dict to trace deleted exons
         gene_chain_exon_status = defaultdict(dict)
@@ -297,13 +306,14 @@ def parse_cesar_bdb(arg_input, v=False):
     meta_str = "\n".join(all_meta_data) + "\n"
     skipped_str = "\n".join(skipped) + "\n"
     prot_fasta = "".join(prot_data)
+    codon_fasta = "".join(codon_data)
     fasta_lines = "".join(fasta_lines_lst)
-    return bed_lines, trash_exons, fasta_lines, meta_str, prot_fasta, skipped_str
+    return bed_lines, trash_exons, fasta_lines, meta_str, prot_fasta, codon_fasta, skipped_str
 
 
 def merge_cesar_output(input_dir, output_bed, output_fasta,
                        meta_data_arg, skipped_arg, prot_arg,
-                       output_trash):
+                       codon_arg, output_trash):
     """Merge multiple CESAR output files."""
     # check that input dir is correct
     die(f"Error! {input_dir} is not a dir!") \
@@ -317,6 +327,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
     trash_summary = []
     meta_summary = []
     prot_summary = []
+    codon_summary = []
     skipped = []
     all_ok = True
 
@@ -338,7 +349,8 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         fasta_lines = parsed_data[2]
         meta_data = parsed_data[3]
         prot_fasta = parsed_data[4]
-        skip = parsed_data[5]
+        codon_fasta = parsed_data[5]
+        skip = parsed_data[6]
 
         if len(bed_lines) == 0:
             # actually should not happen, but can
@@ -353,6 +365,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         meta_summary.append(meta_data)
         skipped.append(skip)
         prot_summary.append(prot_fasta)
+        codon_summary.append(codon_fasta)
         eprint(f"Reading file {num + 1}/{task_size}", end="\r")
 
     # save output
@@ -373,6 +386,8 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         f.write("\n".join(skipped))
     with open(prot_arg, "w") as f:
         f.write("\n".join(prot_summary))
+    with open(codon_arg, "w") as f:
+        f.write("\n".join(codon_summary))
 
     if output_trash:
         # if requested: provide trash annotation
@@ -391,6 +406,7 @@ def main():
                        args.meta_data,
                        args.skipped,
                        args.prot_fasta,
+                       args.codon_fasta,
                        args.output_trash)
 
 

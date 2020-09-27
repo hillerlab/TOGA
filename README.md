@@ -538,8 +538,11 @@ Isoforms file for the query.
 
 ### Fasta files
 
-TOGA produces 2 fasta files: prot.fasta and nucleotide.fasta.
+TOGA produces 3 fasta files: prot.fasta, codon.fasta nucleotide.fasta.
 It saves both the reference and predicted query sequences.
+- prot.fasta contains protein sequences of reference genes and predicted transcripts.
+- codon.fasta contains codon alignments, corrected for frameshiring insertions and deletions
+- nucleotide.fasta contains exon nucleotide alignments
 
 ### orthology_classification.tsv
 
