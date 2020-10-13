@@ -13,6 +13,8 @@ SPACE = "&nbsp;"
 PLACE_HOLDER_EXON_MID = "".join([SPACE for _ in range(5)])
 INACT_FEATS = ["INTACT_PERC_IGNORE_M", "INTACT_PERC_INTACT_M", "INTACT_CODONS_PROP",
                "OUT_OF_CHAIN_PROP", "MIDDLE_80%_INTACT", "MIDDLE_80%_PRESENT"]
+# for assembled from fragments: we cannot get chain class features
+FRAGM_FEATS = (0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
 REF_BED = "toga_filt_ref_annot.bed"
 QUE_BED = "query_annotation.bed"
@@ -195,12 +197,13 @@ def save_toga_info_tab(out_dir, projections_list, proj_to_q_coords,
     print("Saving TOGAInfo tab file")
     f = open(toga_info_tab_path, "w")
     for projection in projections_list:
-        trans, chain = projection.split(".")
+        trans, chain = split_proj_name(projection)
         glp_class = projection_to_loss_class[projection]
-        chain_score = proj_to_chain_score[projection]
+        # default 0.5 for fragmented assemblies
+        chain_score = proj_to_chain_score.get(projection, 0.5)
         query_region = proj_to_q_coords[projection]
         ref_region = ref_trans_to_region[trans]
-        chain_feats = proj_to_chain_features[projection]
+        chain_feats = proj_to_chain_features.get(projection, FRAGM_FEATS)
         # parse chain ml features
         synteny = chain_feats[0]
         flank = chain_feats[1]
@@ -210,7 +213,8 @@ def save_toga_info_tab(out_dir, projections_list, proj_to_q_coords,
         intr_cov = chain_feats[5]
         tab_row = (projection, trans, ref_region, query_region, chain_score,
                    synteny, flank, gl_exo, loc_exo, exon_cov, intr_cov, glp_class)
-        f.write("\t".join(tab_row))
+        tab_strs_ = map(str, tab_row)
+        f.write("\t".join(tab_strs_))
         f.write("\n")
     print(f"Saved togaInfo tab at {toga_info_tab_path}")
     f.close()
@@ -257,6 +261,8 @@ def get_sequence_data(wd, all_projections):
     # protein sequences collector
     projection_to_prot_seq = {}
     reference_to_prot_seq = {}
+    projection_to_codon_seq = {}
+    reference_to_codon_seq = {}
 
     while True:
         # reading lines two-by-two
@@ -285,7 +291,17 @@ def get_sequence_data(wd, all_projections):
                 projection_to_prot_seq[projection_id] = sequence
             continue
         elif "CODON" in header_data:
-            # codon alignment -> not used for now
+            # codon alignment
+            # see comments in the previous (PROT) branch
+            projection_id = header_data[0]
+            if projection_id not in all_projections:
+                continue
+            if header_data[-1] == "REFERENCE":
+                # reference seq
+                reference_to_codon_seq[projection_id] = sequence
+            else:
+                # query seq
+                projection_to_codon_seq[projection_id] = sequence
             continue
         else:
             # nucleotide seq, again ref or query
@@ -315,13 +331,19 @@ def get_sequence_data(wd, all_projections):
                 ref_exon_to_nucl_seq[exon_id] = sequence
             continue
     f.close()
+    # save protein and codon alignments
     projection_to_prot_ali = {}
     for proj, que_prot_seq in projection_to_prot_seq.items():
         ref_prot_seq = reference_to_prot_seq[proj]
         prot_ali = format_as_ali(ref_prot_seq, que_prot_seq)
         projection_to_prot_ali[proj] = prot_ali
-    projection_exon_data = []
+    projection_to_codon_ali = {}
+    for proj, que_codon_seq in projection_to_codon_seq.items():
+        ref_codon_seq = reference_to_codon_seq[proj]
+        prot_ali = format_as_ali(ref_codon_seq, que_codon_seq)
+        projection_to_codon_ali[proj] = prot_ali
 
+    projection_exon_data = []
     # save exons data
     for exon_id, exon_data in query_exon_to_nucl_data.items():
         projection_id, exon_num = exon_id
@@ -335,7 +357,7 @@ def get_sequence_data(wd, all_projections):
         rest = exon_data[:-1]
         fields = (projection_id, exon_num, *rest, ali)
         projection_exon_data.append(fields)
-    return projection_exon_data, projection_to_prot_ali
+    return projection_exon_data, projection_to_prot_ali, projection_to_codon_ali
 
 
 def save_toga_nucl_tab(out_dir, exon_data):
@@ -457,7 +479,10 @@ def main():
     proj_to_chain_score = get_chain_scores(args.wd, all_projections)
     proj_to_chain_features = get_chain_features(args.wd, all_projections)
     projection_to_loss_class = get_projection_class(args.wd)
-    projection_exon_data, projection_to_prot_ali = get_sequence_data(args.wd, all_projections)
+    seq_data = get_sequence_data(args.wd, all_projections)
+    projection_exon_data = seq_data[0]
+    projection_to_prot_ali = seq_data[1]
+    projection_to_codon_ali = seq_data[2]
     proj_to_inact_feat, proj_to_inact_mut = get_inact_data(args.wd, all_projections)
     save_toga_info_tab(args.output,
                        all_projections,

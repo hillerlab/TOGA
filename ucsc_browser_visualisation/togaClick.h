@@ -2,6 +2,18 @@
 #ifndef TOGACLICK_H
 #define TOGACLICK_H
 
+#define YES_ "Yes"
+#define NO_ "No"
+#define ONE_ "1"
+
+#define HLTOGA_BED_PREFIX "HLTOGAannot"
+#define HLTOGA_BED_PREFIX_LEN 11
+#define HLTOGA_DATA_PREFIX "HLTOGAData"
+#define HLTOGA_NUCL_PREFIX "HLTOGANucl"
+#define HLTOGA_INACT_PREFIX "HLTOGAInactMut"
+
+#define HLTOGA_MAXCHAR 255
+
 
 struct togaData
 {
@@ -79,7 +91,11 @@ void togaInactMutFree(struct togaInactMut **pEl);
 /* Free a single dynamically allocated togaInactMut such as created
  * with togaInactMutLoad(). */
 
-void doHillerLabTOGAGene(struct trackDb *tdb, char *item);
+void extractHLTOGAsuffix(char *suffix);
+/* Extract suffix from TOGA table name.
+Prefix must be HLTOGAannot */
+
+void doHillerLabTOGAGene(struct trackDb *tdb, char *item, char *table_name);
 /* Put up TOGA Gene track info. */
 
 #endif  // TOGACLICK_H

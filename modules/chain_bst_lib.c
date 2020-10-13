@@ -1,6 +1,6 @@
 /*
 To be compiled as a shared library
-make_index and  get_s_byte funtions
+make_index and  get_s_byte functions
 
 Store binary search tree (index) for a chain_file.
 In detail BST contains start byte and offset for each
@@ -30,7 +30,7 @@ typedef struct{
     bool is_terminal;
 } Point;
 
-// initite empty node
+// initiate empty node
 // Point NOTHING = {};
 
 
@@ -97,7 +97,7 @@ uint64_t low, uint64_t high, uint64_t i)
     copy_point(&points[mid], &bst[i]);
 
     if (2 * i > bst_size)
-    // this point has no childs
+    // this point has no children
     {
         // printf("Terminal branch (second half of array)\n");
         bst[i].is_terminal = true;
@@ -116,7 +116,7 @@ uint64_t low, uint64_t high, uint64_t i)
         left_mid = 0;
     }
     add_node(points, bst, bst_size, low, left_mid, 2 * i);
-    // add rigth branch
+    // add right branch
     add_node(points, bst, bst_size, mid + 1, high, (2 * i) + 1);
     return;
 }
@@ -164,7 +164,7 @@ int make_index
 // python provides 3 arrays:
 // chain identifiers, starting positions and offsets
 // + length of these arrays (they must be same)
-// this funcrion packs them into an array of Point structures
+// this function packs them into an array of Point structures
 // and saves into the BST table
 (uint64_t *chain_ids, uint64_t *start_bytes, uint64_t *offsets,
 uint64_t arr_size, char *table_path)
@@ -240,7 +240,7 @@ uint64_t *start_byte, uint64_t *offset)
         // basically a binary search procedure
         if (chain_id > reader.chain_id)
         // requested chain_id is greater than current
-        // goto the rigth branch
+        // goto the right branch
         {
             cur = (2 * n + 1);
         } else if (chain_id < reader.chain_id)
@@ -258,7 +258,7 @@ uint64_t *start_byte, uint64_t *offset)
         ++n;  // increment current struct number
     }
     fclose(fp);
-    // if we found nothing: offset and strat byte are not changed
+    // if we found nothing: offset and start byte are not changed
     // upstream function will catch this
     return 0;
 }

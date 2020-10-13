@@ -28,7 +28,7 @@ struct Block{
     int dq;
 };
 
-// struct describing genic region CHROM START END
+// struct describing genomic region CHROM START END
 struct Regions
 {
     char chrom[MAXCHAR];

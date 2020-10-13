@@ -14,6 +14,8 @@ from datetime import datetime as dt
 from re import finditer, IGNORECASE
 from collections import defaultdict
 import ctypes
+from operator import and_
+from functools import reduce
 from twobitreader import TwoBitFile
 from modules.common import parts, bed_extract_id_text
 from modules.common import bed_extract_id, chain_extract_id
@@ -35,6 +37,7 @@ complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G', 'N': 'N',
 STOPS = {"TAG", "TGA", "TAA"}
 LOCATION = os.path.dirname(os.path.abspath(__file__))
 VERBOSE = False
+UNDEF_REGION = "None:0-0"
 
 acceptor_site = ("ag", )
 donor_site = ("gt", "gc", )
@@ -99,6 +102,8 @@ ACC_PROFILE = "extra/tables/human/acc_profile.txt"
 DO_PROFILE = "extra/tables/human/do_profile.txt"
 EQ_ACC_PROFILE = os.path.join(LOCATION, "supply", "eq_acc_profile.txt")
 EQ_DO_PROFILE = os.path.join(LOCATION, "supply", "eq_donor_profile.txt")
+
+FRAGMENT = -1
 
 
 def verbose(msg):
@@ -886,10 +891,11 @@ def make_query_seq(chain_id, search_locus, q_db, chain_strand, bed_strand):
     # find the locus
     verbose(f"Looking for exons in range: {qName}:{Q_start}-{Q_end} for chain {chain_id}")
     query_seq_no_dir = chrom_seq[Q_start: Q_end]
-    query_seq = query_seq_no_dir if chain_strand == bed_strand else revert(query_seq_no_dir)
+    directed = chain_strand == bed_strand
+    query_seq = query_seq_no_dir if directed else revert(query_seq_no_dir)
     verbose(f"Query length for {chain_id} in locus {search_locus}: {len(query_seq)}")
     die(f"Error! No query sequence for chain {chain_id}!", 1) if len(query_seq) == 0 else None
-    return query_seq, chain_strand == bed_strand
+    return query_seq, directed
 
 
 def find_gaps(query_seq, search_locus, gap_size, directed):
@@ -1411,7 +1417,7 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
         abs_query_end = int(region.split("-")[1])
         for exon_num, indexes in exon_query_inds.items():
             if exon_num in empty_q_exons:
-                abs_coords[exon_num] = "None:0-0"
+                abs_coords[exon_num] = UNDEF_REGION
                 continue
             rel_start, rel_len = indexes[0], len(indexes)
             exon_abs_start = abs_query_start + rel_start if directed else abs_query_end - rel_start
@@ -1425,7 +1431,91 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
         percIDs[chain_id] = part_pIDs
         blosums[chain_id] = part_blosums
         query_coords[chain_id] = abs_coords
-    return exon_queries, exon_refs, percIDs, blosums, query_coords, exon_num_corr, prot_seqs, codon_seqs, aa_sat_seq
+    ret = (exon_queries, exon_refs, percIDs, blosums, query_coords,
+           exon_num_corr, prot_seqs, codon_seqs, aa_sat_seq)
+    return ret
+
+
+def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts):
+    """Process CESAR output for assembled from fragments gene."""
+    exon_queries, exon_refs, percIDs, blosums, query_coords, = {}, {}, {}, {}, {}
+    prot_seqs, codon_seqs, exon_num_corr, aa_sat_seq = {}, {}, {}, {}
+    cesar_raw_lines = cesar_raw_out.split("\n")
+    target_seq_raw = cesar_raw_lines[1]
+    query_seq_raw = cesar_raw_lines[3]
+
+    codons_data = parse_cesar_out(target_seq_raw, query_seq_raw, v=False)
+    # extract protein sequences also here, just to do it in one place
+    part_pIDs, part_blosums, prot_seqs_part = compute_score(codons_data)
+    prot_seqs[FRAGMENT] = prot_seqs_part
+    codon_seqs_part = extract_codon_data(codons_data)
+    codon_seqs[FRAGMENT] = codon_seqs_part
+    exon_query_seqs, exon_ref_seqs, empty_q_exons, exon_query_inds = extract_query_seq(codons_data)
+    exon_num_corr[FRAGMENT] = get_exon_num_corr(codons_data)
+    aa_sat_part = check_codons_for_aa_sat(codons_data)
+    aa_sat_seq[FRAGMENT] = aa_sat_part
+    abs_coords = {}
+
+    # extract coordinates of different exons!
+    q_lens = [x[7] for x in fragm_data]
+    verbose(f"QLens: {q_lens}")
+    # print(q_lens)
+    q_limits = [0, ]
+    for q_len in q_lens:
+        new_el = q_len + q_limits[-1]
+        q_limits.append(new_el)
+    verbose(f"q limits: {q_limits}")
+
+    for exon_num, indexes in exon_query_inds.items():
+        verbose(exon_num)
+        if exon_num in empty_q_exons:
+            verbose("In empry Q exons")
+            abs_coords[exon_num] = UNDEF_REGION
+            continue
+        rel_start_not_corr, rel_len = indexes[0], len(indexes)
+        borders_below_start = [x for x in q_limits if x <= rel_start_not_corr]
+        num_borders_before = len(borders_below_start)
+        chain_index_in_list = num_borders_before - 1
+        closest_border = max(borders_below_start)
+        resp_chain = fragm_data[chain_index_in_list]
+        chain_id = resp_chain[0]
+        q_size_ = resp_chain[8]
+        directed = inverts[chain_id]
+        verbose(f"Direction: {directed}")
+        locus = query_loci[chain_id]
+        rel_start = rel_start_not_corr - closest_border
+        verbose(f"Rel starts not corr: {rel_start_not_corr}, corr: {rel_start}")
+        verbose(f"closest: {closest_border}")
+
+        q_chrom, region = locus.split(":")
+        verbose(f"Chain_ID: {chain_id} Q chrom: {q_chrom}")
+        abs_query_start = int(region.split("-")[0])
+        abs_query_end = int(region.split("-")[1])
+
+        exon_abs_start = abs_query_start + rel_start if directed else abs_query_end - rel_start
+        exon_abs_end = abs_query_start + rel_start + rel_len if directed else \
+            abs_query_end - rel_start - rel_len
+        # check that everything in borders
+        left_side_ok = exon_abs_start > 0 and exon_abs_end > 0
+        rigth_size_ok = exon_abs_start <= q_size_ and exon_abs_end <= q_size_
+        if not left_side_ok or not rigth_size_ok:
+            # out of borders: this is possible
+            # let's just skip this exon
+            exon_grange = UNDEF_REGION
+        else:
+            # this is completely OK
+            exon_grange = f"{q_chrom}:{exon_abs_start}-{exon_abs_end}"
+        abs_coords[exon_num] = exon_grange
+    # add to the global dicts
+    exon_queries[FRAGMENT] = exon_query_seqs
+    exon_refs[FRAGMENT] = exon_ref_seqs
+    percIDs[FRAGMENT] = part_pIDs
+    blosums[FRAGMENT] = part_blosums
+    query_coords[FRAGMENT] = abs_coords
+    # return the same values as process_cesar_out does
+    ret = (exon_queries, exon_refs, percIDs, blosums, query_coords,
+           exon_num_corr, prot_seqs, codon_seqs, aa_sat_seq)
+    return ret
 
 
 def merge_regions(reg_list):
@@ -1505,7 +1595,8 @@ def arrange_output(gene, exon_seqs, query_exon_sequences, p_ids, p_bl, all_query
             output += ref_datum
             # and then merge all this stuff altogether
             header = header_template.format(gene, exon_num, chain, coord, query_pid, query_blo,
-                                            is_gap, exon_class, exp_reg[0], exp_reg[1], reg_data, is_paral)
+                                            is_gap, exon_class, exp_reg[0], exp_reg[1], reg_data,
+                                            is_paral)
             output += header
             output += "{0}\n".format(query_seq)
             chain_to_excl[chain] = exon_to_inc
@@ -1640,6 +1731,21 @@ def append_u12(u12_base, gene, ref_ss_data):
     f.close()
 
 
+def merge_dicts(dicts_list):
+    """Merge a list of dicts."""
+    ret = {}
+    for d in dicts_list:
+        ret.update(d)
+    return ret
+
+
+def intersect_lists(lists):
+    """Perform intersection operation on several lists."""
+    sets = [set(x) for x in lists]
+    intersection = reduce(and_, sets)
+    return list(intersection)
+
+
 def realign_exons(args):
     """Entry point."""
     memlim = float(args["memlim"]) if args["memlim"] != "Auto" else None
@@ -1649,7 +1755,8 @@ def realign_exons(args):
     # parse gene bed-track: get exon coordinates, sequences and splice sites
     exon_coordinates, exon_sequences, s_sites = get_exons(bed_data, args["tDB"])
     # read chain IDs list:
-    chains = [int(x) for x in args["chains"].split(",") if x != ""]if args["chains"] != "region" else []
+    chains = [int(x) for x in args["chains"].split(",") if x != ""] \
+        if args["chains"] != "region" else []
     # get path to the chain file (most likely just arg)
     chain_file = find_chain_file(args["ref"], args["bdb_chain_file"]) \
         if args["chains"] != "region" else args["bdb_chain_file"]
@@ -1664,23 +1771,36 @@ def realign_exons(args):
     gene_range = "{0}:{1}-{2}".format(bed_data["chrom"], bed_data["chromStart"], bed_data["chromEnd"])
     chain_exon_gap, chain_exon_class, chain_exon_exp_reg, chain_missed = {}, {}, {}, {}
     aa_block_sat_chain = {}  # one of dicts to mark exceptionally good exon predictions
-
+    fragments_data = []  # required for fragmented genomes
+    chains_in_input = True
+    verbose("Reading query regions")
+    # if chains and args["fragments"]:
+    # the normal branch: call CESAR vs 1+ query sequences
     for chain_id in chains:  # in region more this part is skipped
-        verbose("\nReading chains...####")  # only one place where I need chain data
+        verbose(f"\nLoading chain {chain_id}")   # only one place where I need chain data
         # extract chain and coordinates of locus; extract sequence from query genome
         chain_str = get_chain(chain_file, chain_id)
+        verbose(f"Chain {chain_id} extracted")
+        chain_header = chain_str.split("\n")[0].split()
         # most likely we need only the chain part that intersects the gene
         # and skip the rest:
+        verbose("Cutting the chain...")
         search_locus, subch_locus, chain_data = chain_cut(chain_str,
                                                           gene_range,
                                                           args["gene_flank"],
                                                           args["extra_flank"])
+        # chain data: t_strand, t_size, q_strand, q_size
         chain_qStrand = chain_data[2]
+        chain_qSize = chain_data[3]
+        verbose("Chain cut is done.")
 
         # this call of make_query_seq is actually for extracting
         # query sequence for CESAR:
+        verbose("Extracting query sequence...")
         query_seq, directed = make_query_seq(chain_id, search_locus, args["qDB"],
                                              chain_qStrand, bed_data["strand"])
+        verbose("Query sequence extracted")
+        q_seq_len = len(query_seq)
         # this is extended query seq (larger locus) for assembly gaps search only!
         # We do not call CESAR for this _query_seq_ext sequence
         _query_seq_ext, directed = make_query_seq(chain_id, subch_locus, args["qDB"],
@@ -1732,11 +1852,27 @@ def realign_exons(args):
         inverts[chain_id] = directed
         aa_block_sat_chain[chain_id] = aa_block_sat
 
+        # some features that we need in case of fragmented gene
+        t_start = int(chain_header[5])
+        t_end = int(chain_header[6])
+        q_chrom, q_start_end_str = search_locus.split(":")
+        q_start_end_tup = q_start_end_str.split("-")
+        q_start = int(q_start_end_tup[0])
+        q_end = int(q_start_end_tup[1])
+        q_strand = True if chain_header[9] == "+" else False
+
+        # chain_qSize -> query chromosome/scaffold length
+        # q_seq_len -> query sequence (that comes to CESAR) length
+        fragment_data = (chain_id, q_chrom, q_strand, q_start,
+                         q_end, t_start, t_end, q_seq_len, chain_qSize)
+        fragments_data.append(fragment_data)
+
     if not chains:
         # it is possible in the case of "region" mode
         # possible if CESAR wrapper is used as a standalone script
         # a region given directly
         verbose("Working in the region mode")
+        chains_in_input = False
         region_chrom, region_start_end = chain_file.replace(",", "").split(":")
         region_start, region_end = [int(x) for x in region_start_end.split("-")]
         if region_start < region_end:
@@ -1756,6 +1892,43 @@ def realign_exons(args):
         query_sequences[-1] = query_seq
         query_loci[-1] = search_locus
         inverts[-1] = directed
+
+    if chains_in_input and args["fragments"]:
+        # sort chains, get proper chain_id sorting
+        if bed_data["strand"]:  # gene is + -> sort directly
+            fragments_data = sorted(fragments_data, key=lambda x: x[5])
+        else:  # gene is - -> reverse sort of chains
+            fragments_data = sorted(fragments_data, key=lambda x: x[6], reverse=True)
+        # merge query feat dictionaries
+        exon_gap = merge_dicts(chain_exon_gap.values())
+        exon_class = merge_dicts(chain_exon_class.values())
+        exon_exp_region = merge_dicts(chain_exon_exp_reg.values())
+        aa_block_sat = merge_dicts(aa_block_sat_chain.values())
+        missing_exons = intersect_lists(chain_missed.values())
+
+        query_seq_chunks = []
+        for elem in fragments_data:
+            # stitch query seq in a proper order; elem[0] -> chain_id
+            query_seq_chunks.append(query_sequences[elem[0]])
+        query_seq = "".join(query_seq_chunks)
+
+        # remove chain_id data from dicts
+        chain_ids = list(chain_exon_gap.keys())
+        for chain_id in chain_ids:
+            del chain_exon_gap[chain_id]
+            del chain_exon_class[chain_id]
+            del chain_exon_exp_reg[chain_id]
+            del aa_block_sat_chain[chain_id]
+            del chain_missed[chain_id]
+            del query_sequences[chain_id]
+        # load new values
+        chain_exon_gap[FRAGMENT] = exon_gap
+        chain_exon_class[FRAGMENT] = exon_class
+        chain_exon_exp_reg[FRAGMENT] = exon_exp_region
+        aa_block_sat_chain[FRAGMENT] = aa_block_sat
+        chain_missed[FRAGMENT] = missing_exons
+        query_sequences[FRAGMENT] = query_seq
+        inverts[FRAGMENT] = None
 
     # some queries might be skipped -> we can eventually skip all of them
     # which means that there is nothing to call CESAR on
@@ -1788,7 +1961,11 @@ def realign_exons(args):
     # save raw CESAR output and close if required
     save(cesar_raw_out, args["raw_output"], t0) if args["raw_output"] else None
     # process the output, extract different features per exon
-    proc_out = process_cesar_out(cesar_raw_out, query_loci, inverts)
+    if args["fragments"]:
+        # bit more complicated parsing of fragmented output
+        proc_out = process_cesar_out__fragments(cesar_raw_out, fragments_data, query_loci, inverts)
+    else:  # not fragmented: use classic procedure
+        proc_out = process_cesar_out(cesar_raw_out, query_loci, inverts)
     query_exon_sequences = proc_out[0]  # sequences of predicted exons in query
     ref_exon_sequences_ali = proc_out[1]  # reference sequences -> aligned
     pIDs = proc_out[2]  # nucleotide %IDs
@@ -1814,6 +1991,7 @@ def realign_exons(args):
     # this is for inact mutations check:
     chain_to_exon_to_properties = (chain_exon_class, chain_exon_gap, pIDs,
                                    pBl, chain_missed, chain_ex_inc, exon_to_len)
+    verbose(f"Chain to exon to properties = {chain_to_exon_to_properties}")
     if args["check_loss"]:  # call inact mutations scanner,
         loss_report = inact_mut_check(cesar_raw_out,
                                       v=VERBOSE,

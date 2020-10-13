@@ -103,6 +103,7 @@ def parse_args():
     app.add_argument("--no_fpi", action="store_true", dest="no_fpi",
                      help="Consider some frame-preserving mutations as inactivating. "
                           "See documentation for details.")
+    app.add_argument("--fragments_data", help="Gene: fragments file for fragmented genomes.")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -392,10 +393,26 @@ def save_combined_joblist(to_combine, combined_file, results_dir, inact_mut_dat,
                                           f"{basename}.inact_mut.txt")
             combined_command += f" --check_loss {loss_data_path}"
         if rejected_log:
-            log_path = os.path.join(rejected_log, f"{num}_{name}.txt")
+            log_path = os.path.join(rejected_log, f"{basename}.txt")
             combined_command += f" --rejected_log {log_path}"
         f.write(combined_command + "\n")
     f.close()
+
+
+def read_fragments_data(in_file):
+    """Read gene: fragments file."""
+    ret = {}
+    f = open(in_file, "r")
+    for line in f:
+        line_data = line.rstrip().split("\t")
+        gene = line_data[0]
+        chain_str = line_data[1]
+        # chains = [int(x) for x in line_data.split(",") if x != ""]
+        # actually there are strings:
+        chains = [x for x in chain_str.split(",") if x != ""]
+        ret[gene] = chains
+    f.close()
+    return ret
 
 
 def main():
@@ -429,6 +446,12 @@ def main():
     die(f"Error! Cannot find cesar executable at {args.cesar_binary}!") if \
         not os.path.isfile(args.cesar_binary) else None
 
+    # if this is a fragmmented genome: we need to change CESAR commands for
+    # split genes
+    if args.fragments_data:
+        gene_fragments_dict = read_fragments_data(args.fragments_data)
+    else:  # better to create empty dict and call dict.get()
+        gene_fragments_dict = dict()
     # pre-compute chain : gene : region data
     # collect the second list of skipped genes
     # skipped_2 -> too long corresponding regions in query
@@ -469,13 +492,22 @@ def main():
             continue
         elif len(gene_chains_data) == 0:
             continue
-
+        
+        gene_fragments = gene_fragments_dict.get(gene, False)
+        if gene_fragments:
+            # this is a fragmented gene, need to change the procedure a bit
+            gene_chains_data = {k: v for k, v in gene_chains_data.items() if k in gene_fragments}
         chains = gene_chains_data.keys()
         chains_arg = ",".join(chains)  # chain ids -> one of the cmd args
         
         # now compute query sequence-related parameters
         query_lens = [v for v in gene_chains_data.values()]
-        q_length_max = max(query_lens)
+        if gene_fragments:  # in case of fragmented genome: we stitch queries together
+            # so query length = sum of all queries
+            q_length_max = sum(query_lens)
+        else:  # not fragmented genome: processins queries separately
+            # thus we need only the max length
+            q_length_max = max(query_lens)
         # and now compute the amount of required memory
         memory = (num_states * 4 * 8) + \
                  (num_states * q_length_max * 4) + \
@@ -496,6 +528,7 @@ def main():
         job = job + " --mask_stops" if args.mask_stops else job
         job = job + " --check_loss" if args.check_loss else job
         job = job + " --no_fpi" if args.no_fpi else job
+        job = job + " --fragments" if gene_fragments else job
 
         # add U12 introns data if this gene has them:
         job = job + f" --u12 {os.path.abspath(args.u12)}" if u12_this_gene else job

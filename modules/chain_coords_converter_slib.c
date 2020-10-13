@@ -1,6 +1,6 @@
 /*
 To be compiled as a shared library
-chain_coords_converter funtion
+chain_coords_converter function
 For a chain and a list of regions in the reference genome
 make a list of corresponding regions in the query genome
 Briefly: project regions through a chain
@@ -50,11 +50,11 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
     for (int i = 0; i<regions_num; i++)
     {
         // check that start < end in each region
-        // if that not true -> swith them
+        // if that not true -> switch them
         if (t_regions[i].start > t_regions[i].end)
         {
             // this is an extraordinary situation, so let user know about this
-            fprintf(stderr, "Warinig! End < Start in the region num %d! Swithing...\n", i);
+            fprintf(stderr, "Warning! End < Start in the region num %d! Switching...\n", i);
             int temp = t_regions[i].start;
             t_regions[i].start = t_regions[i].end;
             t_regions[i].end = temp;
@@ -63,7 +63,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
 
     // global search iterables
     // about most of them: they are arrays, one per region
-    bool head_catched = false;  // flag; true if header was parsed
+    bool head_caught = false;  // flag; true if header was parsed
     bool starts_found[regions_num];
     bool ends_found[regions_num];
     bool finished[regions_num];
@@ -87,7 +87,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
 
     // variables describing each block
     // intermediate loop values
-    // varialbes called as pointers BUT
+    // variables called as pointers BUT
     // they are not pointers!
     int t_start_pointer = 0;
     int q_start_pointer = 0;
@@ -111,12 +111,12 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
 
         // parse head if it wasn't
         // this should happen at the first iteration
-        if (!head_catched)
+        if (!head_caught)
         {
-            // chain head should be catched only once
+            // chain head should be caught only once
             // because we operate with a single chain
             // which is also produced by TOGA
-            head_catched = true;
+            head_caught = true;
             head = parse_head(curLine);
             t_start_pointer = head.tStart;
             q_start_pointer = head.qStart;
@@ -193,16 +193,16 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
         }
 
         starts_buff[0] = blockQStarts;
-        // allfinished == true is default value
+        // all_finished == true is default value
         // it could be changed further
-        bool AllFinished = true;
+        bool all_finished = true;
 
         // then intersect this chain block with each region
         for (int i = 0; i < regions_num; i++)
         {
             // if the region was mapped -> skip it
-            // if not -> allfinished flag to false
-            if (finished[i]) {continue;} else {AllFinished = false;}
+            // if not -> all_finished flag to false
+            if (finished[i]) {continue;} else {all_finished = false;}
 
             if ((!starts_found[i]) && (blockTStarts > t_regions[i].start))
             {  // start in between of blocks
@@ -266,7 +266,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
         prevBlockQEnds = blockQEnds;
 
         // if all blocks are finished -> nothing could switch this flag to false
-        if (AllFinished) {break;}
+        if (all_finished) {break;}
     }
 
     // post-process
@@ -330,7 +330,7 @@ char ** chain_coords_converter(char *chain, int shift, int regions_num, char **g
 int main()
 {
     // should be compiled with -fPIC and -shared flags!
-    printf("Warining! This code is not intended to be compiled as a standalone tool.\n");
+    printf("Warning! This code is not intended to be compiled as a standalone tool.\n");
     printf("Please compile this file with -fPIC and -shared flags.\n");
     printf("and create the /modules/chain_coords_converter_slib.so shared library file.\n");
     return 0;

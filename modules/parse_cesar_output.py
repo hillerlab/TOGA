@@ -204,7 +204,7 @@ def parse_args():
     return args    
 
 
-def classify_exon(ex_class, incl, pid, blosum):
+def classify_exon(ex_class, incl, pid, blosum, v=False):
     """Decide what do we do with this exon."""
     # ex_class: how exon aligns
     # A - chain aligns exon perfectly

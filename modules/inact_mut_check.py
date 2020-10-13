@@ -620,7 +620,8 @@ def compute_percent_id(seq_1, seq_2):
 
 
 def classify_exons(gene, que, codon_table, exon_class, exon_gap,
-                   exon_pid, exon_blosum, missing_exons, ex_inc):
+                   exon_pid, exon_blosum, missing_exons, ex_inc,
+                   v=False):
     """Classify exons as intact, deleted and missing."""
     del_num, miss_num = 1, 1  # counters for mutation IDs
     # get a list of exon numbers:
@@ -631,6 +632,7 @@ def classify_exons(gene, que, codon_table, exon_class, exon_gap,
         # 0-based to 1-based
         ex_num_ = exon_num + 1
         if exon_num in missing_exons:
+            print(f"Exon num {exon_num} in missing exons list") if v else None
             # a priori missing
             # missing exons list is 0-based
             # exon_num - 0 based, exon_num_ (with underscore) is 1-based
@@ -647,7 +649,10 @@ def classify_exons(gene, que, codon_table, exon_class, exon_gap,
         ex_blosum = exon_blosum.get(exon_num, 0)  # blosum score
         exon_excl = ex_inc.get(exon_num, None)  # detected outside expected region
         # classify whether it's deleted or not:
-        del_, q = classify_exon(ex_class, exon_excl, ex_pid, ex_blosum)
+        # print(f"Exon {exon_num} classification with the following params: ") if v else None
+        # print(ex_class, exon_excl, ex_pid, ex_blosum) if v else None
+        del_, q = classify_exon(ex_class, exon_excl, ex_pid, ex_blosum, v=v)
+        # print(f"Results are: {del_} {q}") if v else None
 
         if ex_class == "M" or ex_gap:
             # if intersects assembly gap or M: write a mutation
@@ -804,7 +809,7 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
         if codon_status[affected_num] != "M":
             codon_status[affected_num] = "L"
 
-    if all(x is "I" for x in codon_status):
+    if all(x == "I" for x in codon_status):
         # nearly impossible, all codons are intact
         return 1.0, 1.0, 1.0, True, True
 
@@ -1142,6 +1147,7 @@ def inact_mut_check(cesar_data, u12_introns=None, v=False, gene="None",
     i_codons_prop = {}
     out_of_b_vals = {}
     mutations = []
+    ex_prop_provided = ex_prop is not None
 
     for cesar_fraction in cesar_fractions:
         # analyze cesar fractions one-by-one
@@ -1149,12 +1155,13 @@ def inact_mut_check(cesar_data, u12_introns=None, v=False, gene="None",
         # cesar_fraction: (query_name, ref_sequence, query_sequence)
         q_name = cesar_fraction[0]  # need to distinguish with other queries
         # if called by TOGA: q_name is numeric (basically just chainID)
-        q_name_d_key = int(q_name) if q_name.isnumeric() else q_name
+        q_name_d_key = int(q_name) if q_name.lstrip("-").isdigit() else q_name
         ref = cesar_fraction[1]
         query = cesar_fraction[2]
 
         if v:
-            eprint(f"Detecting inactivating mutations for query: {q_name}")
+            eprint(f"Detecting inactivating mutations for query: {q_name}  ({q_name_d_key})")
+            eprint(f"Types of q_name: {type(q_name)}/ of q_name_d_key: {type(q_name_d_key)}")
 
         # parse additional information provided by CESAR wrapper
         # chain_to_exon_to_properties = (chain_exon_class, chain_exon_gap, pIDs, pBl, chain_missed)
@@ -1176,6 +1183,9 @@ def inact_mut_check(cesar_data, u12_introns=None, v=False, gene="None",
             missing_exons = ex_prop[4].get(q_name_d_key, set())
             ex_inc = ex_prop[5].get(q_name_d_key, {})
             ex_lens = ex_prop[6]
+            if not exon_class:
+                err_msg = f"Cannot find CESAR wrapper features for query {q_name}"
+                raise ValueError(err_msg)
 
         # now we extract inactivation mutations
         # then add them to fraction_mutations list
@@ -1192,7 +1202,7 @@ def inact_mut_check(cesar_data, u12_introns=None, v=False, gene="None",
         if ex_prop:  # if extra data provided by CESAR wrapper we can classify exons
             exon_del_miss_, exon_stat_ = classify_exons(gene, q_name, codon_table, exon_class,
                                                         exon_gap, exon_pid, exon_blosum, missing_exons,
-                                                        ex_inc)
+                                                        ex_inc, v=v)
             # get lists of deleted/missing exons
             # also find "safe" exon deletions: if they are in-frame
             # or a series of exon deletions in a row is frame-preserving
@@ -1251,7 +1261,6 @@ def inact_mut_check(cesar_data, u12_introns=None, v=False, gene="None",
         out_of_b_vals[q_name] = out_of_borders_prop
         # add it to a overall list of inactivating mutations
         mutations.extend(fraction_mutations)
-
     # create a string that could be saved to a file (or stdout)
     report = muts_to_text(mutations, p_intact_ignore_M, p_intact_intact_M, i_codons_prop,
                           out_of_b_vals, middle_80_intact, middle_80_present, gene)

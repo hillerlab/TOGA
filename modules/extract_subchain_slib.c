@@ -2,7 +2,7 @@
 To be compiled as a shared library.
 Function to be called: extract_subchain
 
-Extact chain blocks that intersect the requested region.
+Extract chain blocks that intersect the requested region.
 You can request subchain for the target or the query genome.
 Usage: extract_subchain [chain] [q/t] [target/query genome range]
 
@@ -33,13 +33,13 @@ Author: Bogdan Kirilenko, 2020;
 #define MAXCHAR 255
 #define ALLOC_START 500
 #define ALLOC_EXT 75
-#define MEM_CHUNCK 5
+#define MEM_CHUNK 5
 
 
 char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
 {
     // read the chain file OR stdin
-    // read genic range mode
+    // read genomic range mode
     bool mode;
     // the region we are interested in might lie in the target
     // as well as in the query genome
@@ -66,11 +66,11 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
 
     // state of the program
     // if reading -> we're going throw the region of interest
-    bool head_catched = false;
+    bool head_caught = false;
     bool reading = false;
 
     // variables describing the block
-    // varialbes called as pointers BUT
+    // variables called as pointers BUT
     // they are not pointers! (in C-meaning)
     int t_start_pointer = 0;
     int q_start_pointer = 0;
@@ -103,9 +103,9 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
 
         // parse head if it wasn't
         // it must happen to the first line
-        if (!head_catched)
+        if (!head_caught)
         {
-            head_catched = true;  // should happen only once
+            head_caught = true;  // should happen only once
             in_chain_head = parse_head(curLine);
 
             // mark starting position
@@ -124,7 +124,7 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
             }
 
             // check chrom, it the requested region has a different chrom,
-            // it is defenitely wrong!
+            // it is definitely wrong!
             // if we are interested in the reference region at chrom 1
             // and provided chain aligned to chrom 2 -> something is definitely wrong!
             if (mode && strcmp(request_region.chrom, in_chain_head.tName) != 0)
@@ -201,7 +201,7 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
             sprintf(answer[rows_added], "%d %d %d %d\n", blockTStarts, blockTEnds, blockQStarts, blockQEnds);
             rows_added++;
 
-            if (rows_added + MEM_CHUNCK > arr_size)
+            if (rows_added + MEM_CHUNK > arr_size)
             // make sure that we have allocated enough memory
             {
                 // need to realloc answer array
@@ -224,7 +224,7 @@ char ** extract_subchain(char *chain, char *mode_ch, char *search_region)
 int main()
 {
     // should be compiled with -fPIC and -shared flags!
-    printf("Warining! This code is not intended to be compiled as a standalone tool.\n");
+    printf("Warning! This code is not intended to be compiled as a standalone tool.\n");
     printf("Please compile this file with -fPIC and -shared flags.\n");
     printf("and create the /modules/extract_subchain_slib.so shared library file.\n");
     return 0;

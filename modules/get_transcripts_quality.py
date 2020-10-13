@@ -11,6 +11,8 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 
 META_DATA_FIELDS_NUM = 12
+FRAGM_GENE_SCORE = 0.5
+FRAGM_SIGNATURE = ".-1"
 
 
 def parse_args():
@@ -88,8 +90,16 @@ def classify_transcripts(meta_data_file, ort_score_file, hq_threshold, output):
     # then get transcript classes
     result = {}
     for trans, marks in transcript_exon_marks.items():
+        trans_is_fragmented = trans.endswith(FRAGM_SIGNATURE)
         # classify projections
-        trans_score = transcripts_scores[trans]
+        if trans_is_fragmented:
+            # in this case we can say nothing
+            trans_score = FRAGM_GENE_SCORE
+        else:
+            trans_score = transcripts_scores.get(trans, None)
+        if trans_score is None:
+            # not found
+            raise ValueError(f"Cannot find orthology score for {trans}")
         if "LQ" in marks:
             # any of exons is low-confidence -> the entire projection is low confidence
             t_mark = "low_confidence"

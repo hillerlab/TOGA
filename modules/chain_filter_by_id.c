@@ -47,13 +47,13 @@ int main(int argc, char **argv)
 {
     if (argc != ARGS_NUM)
     {
-        // jsut show usage
+        // just show usage
         fprintf(stderr, "Usage: %s [chain_file] [chain_id]\n", argv[0]);
         return 0;
     }
 
     // check that second arg is a number
-    // maybe not the mmost elegant way
+    // maybe not the most elegant way
     // negative chain scores are not allowed
     if (strspn(argv[2], "0123456789") != strlen(argv[2]))
     {

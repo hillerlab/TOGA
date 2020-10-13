@@ -12,6 +12,7 @@ import time
 from datetime import datetime as dt
 import json
 import shutil
+import functools
 from twobitreader import TwoBitFile
 from modules.filter_bed import prepare_bed_file
 from modules.bed_hdf5_index import bed_hdf5_index
@@ -24,7 +25,8 @@ from modules.orthology_type_map import orthology_type_map
 from modules.classify_chains import classify_chains
 from modules.get_transcripts_quality import classify_transcripts
 from modules.make_query_isoforms import get_query_isoforms_data
-from modules.common import eprint
+# from modules.common import eprint
+from modules.stitch_fragments import stitch_scaffolds
 
 
 __author__ = "Bogdan Kirilenko, 2020."
@@ -38,6 +40,8 @@ ISOFORMS_FILE_COLS = 2
 NF_DIR_NAME = "nextflow_logs"
 CESAR_PUSH_INTERVAL = 30  # CESAR jobs push interval
 ITER_DURATION = 60  # CESAR jobs check interval
+# automatically enable flush
+print = functools.partial(print, flush=True)
 
 
 class Toga:
@@ -47,6 +51,8 @@ class Toga:
         self.t0 = dt.now()
         # check if all files TOGA needs are here
         self.temp_files = []  # remove at the end, list of temp files
+        print("#### Initiating TOGA class ####")
+        print("Checking dependencies...")
         self.__modules_addr()
         self.__check_dependencies()
         self.__check_completeness()
@@ -64,17 +70,17 @@ class Toga:
         # to avoid crash on filesystem without locks:
         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
 
-        eprint("mkdir_and_move_chain in progress...")
         chain_basename = os.path.basename(args.chain_input)
 
         # create project dir
-        self.project_name = chain_basename.split(".")[1] if not args.project_name \
+        self.project_name = self.__gen_project_name() if not args.project_name \
             else args.project_name
         self.wd = os.path.abspath(args.project_dir) if args.project_dir else  \
             os.path.join(os.getcwd(), self.project_name)
         # for safety; need this to make paths later
         self.project_name = self.project_name.replace("/", "")
         os.mkdir(self.wd) if not os.path.isdir(self.wd) else None
+        print(f"Output directory: {self.wd}")
 
         # dir to collect log files with rejected reference genes:
         self.rejected_dir = os.path.join(self.wd, "rejected")
@@ -156,7 +162,6 @@ class Toga:
         self.nucl_fasta = os.path.join(self.wd, "nucleotide.fasta")
         self.prot_fasta = os.path.join(self.wd, "prot.fasta")
         self.codon_fasta = os.path.join(self.wd, "codon.fasta")
-        self.final_bed = os.path.join(self.wd, "query_annotation.bed")
         self.low_conf_bed = os.path.join(self.wd, "low_confidence.bed")
         self.meta_data = os.path.join(self.wd, "exons_meta_data.tsv")
         self.intermediate_bed = os.path.join(self.wd, "intermediate.bed")
@@ -166,9 +171,17 @@ class Toga:
         self.gene_loss_data = os.path.join(self.wd, "inact_mut_data")
         self.query_annotation = os.path.join(self.wd, "query_annotation.bed")
         self.loss_summ = os.path.join(self.wd, "loss_summ_data.tsv")
+        self.bed_fragm_exons_data = os.path.join(self.wd, "bed_fragments_to_exons.tsv")
         self.u12_arg = args.u12
         self.u12 = None  # assign after U12 file check
+        print("Checking input files correctness...")
         self.__check_param_files()
+
+        # create symlinks to 2bits: let user know what 2bits were used
+        self.t_2bit_link = os.path.join(self.wd, "t2bit.link")
+        self.q_2bit_link = os.path.join(self.wd, "q2bit.link")
+        self.__make_symlink(self.t_2bit, self.t_2bit_link)
+        self.__make_symlink(self.q_2bit, self.q_2bit_link)
 
         # dump input parameters, object state
         self.toga_params_file = os.path.join(self.wd, "toga_init_state.json")
@@ -178,7 +191,27 @@ class Toga:
             json.dump(self.__dict__, f, default=str)
         with open(self.toga_args_file, "w") as f:
             json.dump(vars(args), f, default=str)
-        print("TOGA initiated successfully!")
+        print("#### TOGA initiated successfully! ####")
+
+    @staticmethod
+    def __make_symlink(src, dest):
+        """Create a symlink.
+
+        os.symlink expects that dest doesn't exist.
+        Need to make a couple of checks before calling it.
+        """
+        if os.path.islink(dest):
+            return
+        elif os.path.isfile(dest):
+            return
+        os.symlink(src, dest)
+
+    def __gen_project_name(self):
+        """Generate project name automatically."""
+        today_and_now = dt.now().strftime("%Y.%m.%d_at_%H:%M:%S")
+        project_name = f"TOGA_project_on_{today_and_now}"
+        print(f"Using automatically generated project name: {project_name}")
+        return project_name
 
     def __check_param_files(self):
         """Check that all parameter files exist."""
@@ -305,7 +338,7 @@ class Toga:
             self.die(err_msg)
         with open(self.u12, "w") as f:
             f.write("".join(filt_lines))
-        eprint("U12 file is correct")
+        print("U12 file is correct")
 
     def __check_isoforms_file(self, t_in_bed):
         """Sanity checks for isoforms file."""
@@ -347,15 +380,15 @@ class Toga:
         # write isoforms file
         with open(self.isoforms, "w") as f:
             f.write("".join(filt_isoforms_lines))
-        eprint("Isoforms file is OK")
+        print("Isoforms file is OK")
 
     def die(self, msg, rc=1):
         """Show msg in stderr, exit with the rc given."""
-        sys.stderr.write(msg + "\n")
-        sys.stderr.write("Program finished with exit code {}\n".format(rc))
-        for t_file in self.temp_files:  # remove temp files if required
-            os.remove(t_file) if os.path.isfile(t_file) and not self.keep_temp else None
-            shutil.rmtree(t_file) if os.path.isdir(t_file) and not self.keep_temp else None
+        print(msg)
+        print(f"Program finished with exit code {rc}\n")
+        # for t_file in self.temp_files:  # remove temp files if required
+        #     os.remove(t_file) if os.path.isfile(t_file) and not self.keep_temp else None
+        #     shutil.rmtree(t_file) if os.path.isdir(t_file) and not self.keep_temp else None
         sys.exit(rc)
 
     def __modules_addr(self):
@@ -387,14 +420,14 @@ class Toga:
 
     def __check_dependencies(self):
         """Check all dependencies."""
-        eprint("check if binaries are compiled and libs are installed...")
+        print("check if binaries are compiled and libs are installed...")
         c_not_compiled = any(os.path.isfile(f) is False for f in [self.CHAIN_SCORE_FILTER,
                                                                   self.CHAIN_COORDS_CONVERT_LIB,
                                                                   self.CHAIN_FILTER_BY_ID,
                                                                   self.EXTRACT_SUBCHAIN_LIB,
                                                                   self.CHAIN_INDEX_SLIB])
         if c_not_compiled:
-            eprint("Warning! C code is not compiled, trying to compile...")
+            print("Warning! C code is not compiled, trying to compile...")
         imports_not_found = False
         try:
             import twobitreader
@@ -404,12 +437,12 @@ class Toga:
             import joblib
             import h5py
         except ImportError:
-            eprint("Warning! Some of the required packages are not installed.")
+            print("Warning! Some of the required packages are not installed.")
             imports_not_found = True
 
         not_all_found = any([c_not_compiled, imports_not_found])
         self.__call_proc(self.CONFIGURE, "Could not call configure.sh!")\
-            if not_all_found else eprint("All dependencies found")
+            if not_all_found else print("All dependencies found")
 
     def __check_completeness(self):
         """Check if all modules are presented."""
@@ -465,12 +498,12 @@ class Toga:
 
     def __call_proc(self, cmd, extra_msg=None):
         """Call a subprocess and catch errors."""
-        eprint(f"{cmd} in progress...")
+        print(f"{cmd} in progress...")
         rc = subprocess.call(cmd, shell=True)
         if rc != 0:
-            eprint(extra_msg) if extra_msg else None
+            print(extra_msg) if extra_msg else None
             self.die(f"Error! Process {cmd} died! Abort.")
-        eprint(f"{cmd} done with code 0")
+        print(f"{cmd} done with code 0")
 
     def __find_two_bit(self, db):
         """Find a 2bit file."""
@@ -490,41 +523,63 @@ class Toga:
         # move chain file filtered
         # define initial values
         # make indexed files for the chain
+        print("#### STEP 0: making chain and bed file indexes\n")
         self.__make_indexed_chain()
         self.__make_indexed_bed()
         self.__time_mark("Made indexes")
 
         # 1) make joblist for chain features extraction
+        print("#### STEP 1: Generate extract chain features jobs\n")
         self.__split_chain_jobs()
         self.__time_mark("Split chain jobs")
+
         # 2) extract chain features: parallel process
+        print("#### STEP 2: Extract chain features: parallel step\n")
         self.__extract_chain_features()
         self.__time_mark("Chain jobs done")
+
         # 3) create chain features dataset
+        print("#### STEP 3: Merge step 2 output\n")
         self.__merge_chains_output()
         self.__time_mark("Chains output merged")
+
         # 4) classify chains as orthologous, paralogous, etc using xgboost
+        print("#### STEP 4: Classify chains using gradient boosting model\n")
         self.__classify_chains()
         self.__time_mark("Chains classified")
+
         # 5) create cluster jobs for CESAR2.0
+        print("#### STEP 5: Generate CESAR jobs")
         self.__split_cesar_jobs()
         self.__time_mark("Split cesar jobs done")
+
         # 6) Create bed track for processed pseudogenes
+        print("# STEP 6: RESERVED (PLACEHOLDER)\n")
         # self.__get_proc_pseudogenes_track()
+
         # 7) call CESAR jobs: parallel step
+        print("#### STEP 7: Execute CESAR jobs: parallel step (the most time consuming)\n")
         self.__run_cesar_jobs()
-        self.__time_mark("Done cesar jobs")
+        self.__time_mark("Cesar jobs done")
+
         # 8) parse CESAR output, create bed / fasta files
+        print("#### STEP 8: Merge STEP 7 output\n")
         self.__merge_cesar_output()
         self.__time_mark("Merged cesar output")
+
         # 9) classify projections/genes as lost/intact
         # also measure projections confidence levels
+        print("#### STEP 9: Gene loss pipeline classification\n")
         self.__transcript_quality()
         self.__gene_loss_summary()
         self.__time_mark("Got gene loss summary")
+
         # 10) classify genes as one2one, one2many, etc orthologs
+        print("#### STEP 10: Create orthology relationships table\n")
         self.__orthology_type_map()
+
         # 11) merge logs containing information about skipped genes,transcripts, etc.
+        print("#### STEP 11: Cleanup: merge parallel steps output files")
         self.__merge_split_files()
         # Everything is done
 
@@ -537,14 +592,14 @@ class Toga:
     def __make_indexed_chain(self):
         """Make chain index file."""
         # make *.bb file
-        eprint("make_indexed in progress...")
+        print("make_indexed in progress...")
         chain_bst_index(self.chain_file,
                         self.chain_index_file,
                         txt_index=self.chain_index_txt_file)
         self.temp_files.append(self.chain_index_file)
         self.temp_files.append(self.chain_file)
         self.temp_files.append(self.chain_index_txt_file)
-        eprint("Indexed")
+        print("Indexed")
 
     def __time_mark(self, msg):
         """Left time mark."""
@@ -556,10 +611,10 @@ class Toga:
 
     def __make_indexed_bed(self):
         """Create gene_ID: bed line bdb indexed file."""
-        eprint("index_bed in progress...")
+        print("index_bed in progress...")
         bed_hdf5_index(self.ref_bed, self.index_bed_file)
         self.temp_files.append(self.index_bed_file)
-        eprint("Bed file indexed")
+        print("Bed file indexed")
 
     def __split_chain_jobs(self):
         """Wrap split_jobs.py script."""
@@ -593,12 +648,12 @@ class Toga:
         timestamp = str(time.time()).split(".")[0]
         project_name = f"{self.project_name}_chain_feats_at_{timestamp}"
         project_path = os.path.join(self.nextflow_dir, project_name)
-        eprint(f"Extract chain features, project name: {project_name}")
-        eprint(f"Project path: {project_path}")
+        print(f"Extract chain features, project name: {project_name}")
+        print(f"Project path: {project_path}")
 
         if self.para:  # run jobs with para, skip nextflow
             cmd = f"para make {project_name} {self.chain_cl_jobs_combined} -q=\"short\""
-            eprint(f"Calling {cmd}")
+            print(f"Calling {cmd}")
             rc = subprocess.call(cmd, shell=True)
         else:  # calling jobs with nextflow
             cmd = f"nextflow {self.NF_EXECUTE} " \
@@ -607,7 +662,7 @@ class Toga:
                 # not local executor -> provided config files
                 # need abspath for nextflow execution
                 cmd += f" -c {self.nf_chain_extr_config_file}"
-            eprint(f"Calling {cmd}")
+            print(f"Calling {cmd}")
             os.mkdir(project_path) if not os.path.isdir(project_path) else None
             rc = subprocess.call(cmd, shell=True, cwd=project_path)
 
@@ -621,15 +676,15 @@ class Toga:
     def __merge_chains_output(self):
         """Call parse results."""
         # define where to save intermediate table
-        eprint("Merging chain output...")        
+        print("Merging chain output...")        
         merge_chains_output(self.ref_bed, self.isoforms,
                             self.chain_class_results, self.chain_results_df)
-        self.temp_files.append(self.chain_results_df)
+        # .append(self.chain_results_df)  -> UCSC plugin needs that
 
     def __classify_chains(self):
         """Run decision tree."""
         # define input and output."""
-        eprint("Decision tree in progress...")
+        print("Decision tree in progress...")
         self.orthologs = os.path.join(self.wd, "trans_to_chain_classes.tsv")
         self.pred_scores = os.path.join(self.wd, "orthology_scores.tsv")
         self.se_model = os.path.join(self.LOCATION, "models", "se_model.dat")
@@ -644,7 +699,7 @@ class Toga:
 
     def __get_proc_pseudogenes_track(self):
         """Create annotation of processed genes in query."""
-        eprint("Creating processed pseudogenes track.")
+        print("Creating processed pseudogenes track.")
         proc_pgenes_track = os.path.join(self.wd, "proc_pseudogenes.bed")
         create_ppgene_track(self.orthologs, self.chain_file, self.index_bed_file, proc_pgenes_track)
 
@@ -653,6 +708,24 @@ class Toga:
         if not self.t_2bit or not self.q_2bit:
             self.die("There is no 2 bit files provided, cannot go ahead and call CESAR.", rc=0)
 
+        if self.fragmented_genome:
+            print("Detect fragmented transcripts")
+            # need to stitch fragments together
+            gene_fragments = stitch_scaffolds(self.chain_file, self.pred_scores, self.ref_bed, True)
+            # for now split exon realign jobs is a subprocess, not a callable function
+            # TODO: fix this
+            fragm_dict_file = os.path.join(self.wd, "gene_fragments.txt")
+            f = open(fragm_dict_file, "w")
+            for k, v in gene_fragments.items():
+                v_str = ",".join(map(str, v))
+                f.write(f"{k}\t{v_str}\n")
+            f.close()
+            print(f"Detected {len(gene_fragments.keys())} fragmented transcripts")
+            print(f"Fragments data saved to {fragm_dict_file}")
+        else:
+            # no fragment file: ok
+            print("Skip fragmented genes detection")
+            fragm_dict_file = None
         # if we call CESAR
         cesar_jobs_dir = os.path.join(self.wd, "cesar_jobs")
         self.cesar_combined = os.path.join(self.wd, "cesar_combined")
@@ -665,6 +738,7 @@ class Toga:
         fields = "ORTH,TRANS"
 
         self.temp_files.append(self.cesar_results)
+        self.temp_files.append(self.gene_loss_data)
         skipped_path = os.path.join(self.rejected_dir, "SPLIT_CESAR.txt")
         self.paralogs_log = os.path.join(self.wd, "paralogs.txt")
 
@@ -699,6 +773,8 @@ class Toga:
             else split_cesar_cmd
         if self.gene_loss_data:
             split_cesar_cmd += f" --check_loss {self.gene_loss_data}"
+        if fragm_dict_file:
+            split_cesar_cmd += f" --fragments_data {fragm_dict_file}"
         self.__call_proc(split_cesar_cmd, "Could not split CESAR jobs!")
 
     def __get_cesar_jobs_for_bucket(self, comb_file, bucket_req):
@@ -761,7 +837,7 @@ class Toga:
             if b != 0:  # extract jobs related to this bucket (if it's not 0)
                 bucket_tasks = self.__get_cesar_jobs_for_bucket(self.cesar_combined, str(b))
                 if len(bucket_tasks) == 0:
-                    eprint(f"There are no jobs in the {b} bucket")
+                    print(f"There are no jobs in the {b} bucket")
                     continue
                 joblist_name = f"cesar_joblist_queue_{b}.txt"
                 joblist_path = os.path.join(self.wd, joblist_name)
@@ -796,7 +872,6 @@ class Toga:
             processes.append(p)
             time.sleep(CESAR_PUSH_INTERVAL)
 
-        # TODO: para bigmem option
         if self.nextflow_bigmem_config and not self.para:
             # if provided: push bigmem jobs also
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
@@ -820,8 +895,28 @@ class Toga:
                 p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
                 sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
                 processes.append(p)
+        elif self.para and self.para_bigmem:
+            # if requested: push bigmem jobs with para
+            is_file = os.path.isfile(self.cesar_bigmem_jobs)
+            bm_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+            if is_file:  # if a file: we can open and count lines
+                f = open(self.cesar_bigmem_jobs, "r")
+                big_lines_num = len(f.readlines())
+                f.close()
+            else:  # file doesn't exist, equivalent to an empty file in our case
+                big_lines_num = 0
+            # if it's empty: do nothing
+            if big_lines_num == 0:
+                pass
+            else:  # there ARE cesar bigmem jobs: push them
+                memory_mb = 500 * 1000  # TODO: bigmem memory param
+                cmd = f"para make {bm_project_name} {self.cesar_bigmem_jobs} "\
+                      f"-q=\"bigmem\" --memoryMb={memory_mb}"
+                p = subprocess.Popen(cmd, shell=True)
+                processes.append(p)
 
-        iter_num = 0  # monitor jobs, iteration counter
+        # monitor jobs, iteration counter
+        iter_num = 0
         while True:  # Run until all jobs are done (or crashed)
             all_done = True  # default val, re-define if something is not done
             for p in processes:
@@ -844,7 +939,7 @@ class Toga:
 
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
-        eprint("Merging CESAR output to make fasta and bed files.")
+        print("Merging CESAR output to make fasta and bed files.")
         merge_c_stage_skipped = os.path.join(self.rejected_dir,
                                              "CESAR_MERGE.txt")
         self.temp_files.append(self.intermediate_bed)
@@ -856,7 +951,8 @@ class Toga:
                                     merge_c_stage_skipped,
                                     self.prot_fasta,
                                     self.codon_fasta,
-                                    self.trash_exons)
+                                    self.trash_exons,
+                                    fragm_data=self.bed_fragm_exons_data)
         if all_ok:
             # there are no empty output files
             print("CESAR results merged")
@@ -880,7 +976,7 @@ class Toga:
 
     def __gene_loss_summary(self):
         """Call gene loss summary."""
-        eprint("Calling gene loss summary")
+        print("Calling gene loss summary")
         gene_losses_summary(self.gene_loss_data,
                             self.ref_bed,
                             self.intermediate_bed,
@@ -895,7 +991,7 @@ class Toga:
         query_isoforms_file = os.path.join(self.wd, "query_isoforms.tsv")
         query_gene_spans = os.path.join(self.wd, "query_gene_spans.bed")
         get_query_isoforms_data(self.query_annotation, query_isoforms_file, save_genes_track=query_gene_spans)
-        eprint("Calling orthology_type_map...")
+        print("Calling orthology_type_map...")
         skipped_ref_trans = os.path.join(self.wd, "ref_orphan_transcripts.txt")
         orthology_type_map(self.ref_bed,
                            self.query_annotation,

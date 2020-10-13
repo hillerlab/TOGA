@@ -20,7 +20,7 @@ def parts(lst, n=3):
 
 def eprint(msg, end="\n"):
     """Like print but for stderr."""
-    sys.stderr.write(msg + end)
+    sys.stderr.write(str(msg) + end)
 
 
 def die(msg, rc=1):

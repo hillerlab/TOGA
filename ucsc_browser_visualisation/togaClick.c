@@ -2,10 +2,8 @@
 #include "common.h"
 #include "hgc.h"
 #include "togaClick.h"
+#include "string.h"
 
-#define YES_ "Yes"
-#define NO_ "No"
-#define ONE_ "1"
 
 struct togaData *togaDataLoad(char **row)
 /* Load a togaData from row fetched with select * from togaData
@@ -152,19 +150,52 @@ void togaInactMutFree(struct togaInactMut **pEl)
 }
 
 
-void doHillerLabTOGAGene(struct trackDb *tdb, char *item)
+void extractHLTOGAsuffix(char *suffix)
+/* Extract suffix from TOGA table name.
+Prefix must be HLTOGAannot */
+{
+    int suff_len = strlen(suffix);
+    if (suff_len <= HLTOGA_BED_PREFIX_LEN)
+    // we cannot chop first PREFIX_LEN characters
+    {
+        // TODO: NOT SURE IF IT WORKS; but this must not happen
+        char empty[5] = { '\0' };
+        strcpy(suffix, empty);
+    } else {
+        // just start the string 11 characters upstream
+        memmove(suffix, suffix + HLTOGA_BED_PREFIX_LEN, suff_len - HLTOGA_BED_PREFIX_LEN + 1);
+    }
+}
+
+
+void doHillerLabTOGAGene(struct trackDb *tdb, char *item, char *table_name)
 /* Put up TOGA Gene track info. */
 {
     int start = cartInt(cart, "o");
     char headerTitle[512];
+    char suffix[512];
+    strcpy(suffix, table_name);
+    extractHLTOGAsuffix(suffix);
     safef(headerTitle, sizeof(headerTitle), "%s", item);
     genericHeader(tdb, headerTitle);
     printf("<h2>TOGA gene annotation</h2>\n");
     // htmlHorizontalLine();
     struct sqlConnection *conn = hAllocConn(database);
+    
+    // define TOGA table names: initate with pre-defined prefixes
+    char togaDataTableName[256];
+    char togaNuclTableName[256];
+    char togaInactMutTableName[256];
+    strcpy(togaDataTableName, HLTOGA_DATA_PREFIX);
+    strcpy(togaNuclTableName, HLTOGA_NUCL_PREFIX);
+    strcpy(togaInactMutTableName, HLTOGA_INACT_PREFIX);
+    // add suffix
+    strcat(togaDataTableName, suffix);
+    strcat(togaNuclTableName, suffix);
+    strcat(togaInactMutTableName, suffix);
 
 
-    if (hTableExists(database, "TOGAData")) 
+    if (hTableExists(database, togaDataTableName)) 
     {
         printf("<h3>Projection %s</h3><BR>\n", item);
         char query[256];
@@ -172,7 +203,7 @@ void doHillerLabTOGAGene(struct trackDb *tdb, char *item)
         char **row;
         struct togaData *info = NULL;
 
-        sqlSafef(query, sizeof(query), "select * from TOGAData where transcript='%s'", item);
+        sqlSafef(query, sizeof(query), "select * from %s where transcript='%s'", togaDataTableName, item);
         sr = sqlGetResult(conn, query);
 
         if ((row = sqlNextRow(sr)) != NULL) {
@@ -244,12 +275,12 @@ void doHillerLabTOGAGene(struct trackDb *tdb, char *item)
     // show inactivating mutations if required
     printf("<h4>Inactivating mutations</h4><BR>\n");
 
-    if (hTableExists(database, "TOGAInactMut"))
+    if (hTableExists(database, togaInactMutTableName))
     {
         char query[256];
         struct sqlResult *sr = NULL;
         char **row;
-        sqlSafef(query, sizeof(query), "select * from TOGAInactMut where transcript='%s'", item);
+        sqlSafef(query, sizeof(query), "select * from %s where transcript='%s'", togaInactMutTableName, item);
         sr = sqlGetResult(conn, query);
         printf("<a data-toggle=\"collapse\" href=\"#collapseMuts\">Show inactivating mutations</a>\n");
         printf("<div id=\"collapseMuts\" class=\"panel-collapse collapse\">\n");
@@ -285,14 +316,14 @@ void doHillerLabTOGAGene(struct trackDb *tdb, char *item)
     htmlHorizontalLine();
     printf("<h4>Exons data</h4><BR>\n");
 
-    if (hTableExists(database, "TOGANucl"))
+    if (hTableExists(database, togaNuclTableName))
     {
         char query[256];
         struct sqlResult *sr = NULL;
         char **row;
         printf("<a data-toggle=\"collapse\" href=\"#collapseExons\">Show exon sequences and features</a>\n");
         printf("<div id=\"collapseExons\" class=\"panel-collapse collapse\">\n");
-        sqlSafef(query, sizeof(query), "select * from TOGANucl where transcript='%s'", item);
+        sqlSafef(query, sizeof(query), "select * from %s where transcript='%s'", togaNuclTableName, item);
         sr = sqlGetResult(conn, query);
 
         while ((row = sqlNextRow(sr)) != NULL)

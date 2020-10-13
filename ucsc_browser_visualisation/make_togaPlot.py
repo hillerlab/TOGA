@@ -3,14 +3,20 @@
 import argparse
 import os
 import sys
-sys.path.append('../supply')
-sys.path.append('supply')
 from collections import defaultdict
+
+file_loc = os.path.dirname(__file__)
+supply_loc = os.path.join(file_loc, "..", "supply")
+sys.path.append(supply_loc)
+
 try:
     from ucsc_browser_visualisation.generate_tab_files import split_proj_name
-    from supply.plot_mutations import make_plot
 except ImportError:
     from generate_tab_files import split_proj_name
+
+try:
+    from supply.plot_mutations import make_plot
+except ImportError:
     from plot_mutations import make_plot
 
 
