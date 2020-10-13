@@ -706,12 +706,16 @@ def prepare_mut_data(mut_lines, sp, rel_starts, chain_lim=None):
 
 def write_pic(filebuffer, picture_width, picture_height, vbox_h, mcv, alt_template):
     """Write picture data."""
+    this_file_loc = os.path.dirname(__file__)
+    templ_3 = os.path.join(this_file_loc, "svg_template.txt")
     if os.path.isfile(TEMPLATE_PATH_1):
         template_file = TEMPLATE_PATH_1
     elif os.path.isfile(TEMPLATE_PATH_2):
         template_file = TEMPLATE_PATH_2
     elif alt_template:
         template_file = alt_template
+    elif templ_3:
+        template_file = templ_3
     else:
         sys.exit(f"Error! Cannot locate svg template")
     with open(template_file, "r") as f:

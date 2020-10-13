@@ -10,6 +10,8 @@ from collections import defaultdict
 from numpy import log10
 import pandas as pd
 import joblib
+import xgboost as xgb
+
 try:  # for robustness
     from modules.common import eprint
     from modules.common import die
@@ -129,8 +131,22 @@ def classify_chains(table, output, se_model_path, me_model_path,
 
     # load models
     verbose("Load and apply model")
-    se_model = joblib.load(se_model_path)
-    me_model = joblib.load(me_model_path)
+    try:  # there are 2 potential problems:
+        # no files at all and
+        # cannot load files
+        se_model = joblib.load(se_model_path)
+        me_model = joblib.load(me_model_path)
+    except FileNotFoundError:
+        err_msg = f"Cannot find models {se_model_path} and {me_model_path}\n" \
+                  f"Please call train_model.py to create them.\nAbort."
+        raise FileNotFoundError(err_msg)
+    except xgb.core.XGBoostError:
+        xgboost_version = xgb.__version__
+        err_msg = f"Cannot load models {se_model_path} and {me_model_path} " \
+                  f"Probably, models were trained with a different version of " \
+                  f"XGBoost. You used XBGoost version: {xgboost_version}; " \
+                  f"Please make sure you called train_model.py with the same version."
+        raise ValueError(err_msg)
     # and apply them
     se_pred = se_model.predict_proba(X_se)[:, 1]
     me_pred = me_model.predict_proba(X_me)[:, 1]
