@@ -1419,6 +1419,10 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
             if exon_num in empty_q_exons:
                 abs_coords[exon_num] = UNDEF_REGION
                 continue
+            elif len(indexes) == 0:
+                # 0 indexes: definitely cannot find the exon
+                abs_coords[exon_num] = UNDEF_REGION
+                continue
             rel_start, rel_len = indexes[0], len(indexes)
             exon_abs_start = abs_query_start + rel_start if directed else abs_query_end - rel_start
             exon_abs_end = abs_query_start + rel_start + rel_len if directed else \
@@ -1752,6 +1756,7 @@ def realign_exons(args):
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
     # read gene-related data
     bed_data = read_bed(args["gene"], args["bdb_bed_file"])  # extract gene data from bed file
+    bed_exons_num = len(bed_data["blocks"])
     # parse gene bed-track: get exon coordinates, sequences and splice sites
     exon_coordinates, exon_sequences, s_sites = get_exons(bed_data, args["tDB"])
     # read chain IDs list:
