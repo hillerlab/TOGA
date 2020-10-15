@@ -587,6 +587,7 @@ class Toga:
         if not self.cesar_ok_merged:
             print("PLEASE NOTE: SOME CESAR JOBS CRASHED")
             print("RESULTS ARE LIKELY INCOMPLETE")
+        print(f"Saved results to {self.wd}")
         self.die(f"Done! Estimated time: {dt.now() - self.t0}", rc=0)
 
     def __make_indexed_chain(self):

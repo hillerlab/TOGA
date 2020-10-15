@@ -1183,9 +1183,9 @@ def inact_mut_check(cesar_data, u12_introns=None, v=False, gene="None",
             missing_exons = ex_prop[4].get(q_name_d_key, set())
             ex_inc = ex_prop[5].get(q_name_d_key, {})
             ex_lens = ex_prop[6]
-            if not exon_class:
-                err_msg = f"Cannot find CESAR wrapper features for query {q_name}"
-                raise ValueError(err_msg)
+            # if not exon_class:
+            #     err_msg = f"Cannot find CESAR wrapper features for query {q_name}"
+            #     raise ValueError(err_msg)
 
         # now we extract inactivation mutations
         # then add them to fraction_mutations list
