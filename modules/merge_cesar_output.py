@@ -111,6 +111,28 @@ def read_region(region):
         return {"chrom": "N", "start": 1, "end": 1}
 
 
+def split_ex_reg_in_chrom__direction(exon_list, curr_key):
+    """Split_ex_reg_in_chrom function helper.
+
+    Fill result dict for a direction."""
+    ret = defaultdict(list)
+    ret[curr_key].append(exon_list[0])
+    pieces_num = len(exon_list)
+    chrom, chrom_n = curr_key
+    for i in range(1, pieces_num):
+        prev = exon_list[i - 1]
+        curr = exon_list[i]
+        if prev[1] < curr[1]:
+            # this is fine, the same order
+            pass
+        else:
+            # initiate new bucket
+            chrom_n += 1
+            curr_key = (chrom, chrom_n)
+        ret[curr_key].append(curr)
+    return ret, curr_key
+
+
 def split_ex_reg_in_chrom(exon_regions):
     """For fragmented genes split exons in different buckets.
 
@@ -137,23 +159,22 @@ def split_ex_reg_in_chrom(exon_regions):
             chrom_n_to_pieces[curr_key] = pieces
             continue
         
-        direct = pieces[0][1] < pieces[0][2]
-        pieces_sort = sorted(pieces, key=lambda x: x[0]) if direct \
-            else sorted(pieces, key=lambda x: x[0], reverse=True)
-        # start_prev < start_next must be always
-        chrom_n_to_pieces[curr_key].append(pieces_sort[0])
-        pieces_num = len(pieces_sort)
-        for i in range(1, pieces_num):
-            prev = pieces_sort[i - 1]
-            curr = pieces_sort[i]
-            if prev[1] < curr[1]:
-                # this is fine, the same order
-                pass
-            else:
-                # initiate new bucket
+        direct_pieces = sorted([x for x in pieces if x[1] < x[2]], key=lambda x: x[0])
+        revert_pieces = sorted([x for x in pieces if x[1] > x[2]],
+                               key=lambda x: x[0],
+                               reverse=True)
+        both_dirs = direct_pieces and revert_pieces
+
+        if direct_pieces:
+            dir_dct, curr_key = split_ex_reg_in_chrom__direction(direct_pieces, curr_key)
+            chrom_n_to_pieces.update(dir_dct)
+        if revert_pieces:
+            if both_dirs:  # need to add another sequence
+                chrom_n = curr_key[1]
                 chrom_n += 1
                 curr_key = (chrom, chrom_n)
-            chrom_n_to_pieces[curr_key].append(curr)                
+            rev_dct, curr_key = split_ex_reg_in_chrom__direction(revert_pieces, curr_key)
+            chrom_n_to_pieces.update(rev_dct)
     return chrom_n_to_pieces
 
 
@@ -286,13 +307,7 @@ def parse_cesar_bdb(arg_input, v=False):
             # this transcript is split over different chroms/scaffolds
             # let's look what scaffolds we have, and make a bed file for each
             chrom_to_pieces = split_ex_reg_in_chrom(exon_regions)
-            # chrom_to_pieces = defaultdict(list)
-            # for ex_num, ex_reg in exon_regions.items():
-            #     chrom = ex_reg["chrom"]
-            #     start = ex_reg["start"]
-            #     end = ex_reg["end"]
-            #     piece = (ex_num, start, end)
-            #     chrom_to_pieces[chrom].append(piece)
+
             for chrom_, pieces in chrom_to_pieces.items():
                 chrom, _ = chrom_  # same chrom might appear twice
                 block_starts = []
@@ -337,6 +352,7 @@ def parse_cesar_bdb(arg_input, v=False):
                 bed_track_to_exons_lst = map(str, [chrom, chrom_start, chrom_end, name, exons_range])
                 bed_track_to_exons = "\t".join(bed_track_to_exons_lst)
                 bed_track_and_exon_nums.append(bed_track_to_exons)
+
 
         # ordinary branch: one chain --> one projection
         for chain_id in chain_dir.keys():

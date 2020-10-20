@@ -10,33 +10,22 @@ try:  # for robustness
     from modules.common import die
     from modules.common import eprint
     from modules.common import parts
+    from modules.GLP_values import *
 except ImportError:
     from parse_cesar_output import parse_cesar_out
     from parse_cesar_output import classify_exon
     from common import die
     from common import eprint
     from common import parts
+    from GLP_values import *
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
 __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
-
-# constants
-STOPS = {"TAG", "TAA", "TGA"}
-D_M = {"D", "M"}
-LEFT_SPLICE_CORR = ("ag", )  # acceptor
-RIGHT_SPLICE_CORR = ("gt", "gc", )  # donor
-LEFT_SSID = 0
-RIGHT_SSID = 1
-ACCEPTOR = 0
-DONOR = 1
-
-BIG_INDEL_SIZE = 50
-SAFE_EXON_DEL_SIZE = 40  # actually 39
-FIRST_LAST_DEL_SIZE = 20
-BIG_EXON_THR = BIG_INDEL_SIZE * 5
+# please look for all named constants in the
+# modules/GLP_values.py
 
 # mutation "struct"
 # gene, chain, exon -> exon identifier
@@ -48,19 +37,6 @@ BIG_EXON_THR = BIG_INDEL_SIZE * 5
 #    if SSM -> show what exactly
 # masked -> if in first/last 10% -> ignore
 Mutation = namedtuple("Mutation", "gene chain exon position mclass mut masked mut_id")
-
-# mut classes
-MISS_EXON = "Missing exon"
-DEL_EXON = "Deleted exon"
-DEL_MISS = {MISS_EXON, DEL_EXON}
-COMPENSATION = "COMPENSATION"
-SSM = "SSM"
-START_MISSING = "START_MISSING"
-FS_DEL = "FS_DEL"
-FS_INS = "FS_INS"
-BIG_DEL = "BIG_DEL"
-BIG_INS = "BIG_INS"
-STOP = "STOP"
 
 
 def parse_args():

@@ -14,10 +14,13 @@ try:  # for robustness
     from modules.common import make_cds_track
     from modules.common import eprint
     from modules.common import die
+    from modules.common import read_isoforms_file
 except ImportError:
     from common import make_cds_track
     from common import eprint
     from common import die
+    from common import read_isoforms_file
+
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -56,26 +59,6 @@ def parse_args():
         sys.exit(0)
     args = app.parse_args()
     return args
-
-
-def read_isoforms(isoforms_file):
-    """Read isoform file.
-
-    The required format is:
-    gene_id <tab> comma-sep list of transcripts OR
-    gene_id <tab> transcript_id (BioMart format)
-    """
-    isoforms = {}
-    f = open(isoforms_file, "r")
-    for line in f:
-        line_info = line[:-1].split()
-        gene = line_info[0]
-        transcripts = [x for x in line_info[1].split(",") if x != ""]
-        # we need TRANSCRIPT -to- GENE dict
-        for trans in transcripts:
-            isoforms[trans] = gene
-    f.close()
-    return isoforms
 
 
 def read_bed_data(bed_file):
@@ -287,13 +270,17 @@ def save(data, output):
     f.close()
 
 
-def merge_chains_output(bed_file, isoforms, results_dir,
+def merge_chains_output(bed_file, isoforms_file, results_dir,
                         output, exon_cov_chains=False):
     """Chains output merger core function."""
     # read bed file, get gene features
     bed_data = read_bed_data(bed_file)
     # load isoforms data if provided
-    isoforms = read_isoforms(isoforms) if isoforms else None
+    # returns 3 values, we keep only isoform to gene
+    if isoforms_file:
+        _, isoforms, _ = read_isoforms_file(isoforms_file)
+    else:
+        isoforms = None
     # read result files from unit
     chain_genes_data, chain_raw_data = load_results(results_dir)
     # I need this dict reverted actually

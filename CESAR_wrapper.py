@@ -1341,7 +1341,7 @@ def check_codon(codon):
         # mask stop
         return XXX_CODON
     elif codon == GAP_CODON:
-        # jsut a gap
+        # just a gap
         return codon
     elif codon.count("-") > 0:
         # FS
@@ -1473,7 +1473,7 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
     for exon_num, indexes in exon_query_inds.items():
         verbose(exon_num)
         if exon_num in empty_q_exons:
-            verbose("In empry Q exons")
+            verbose("In empty Q exons")
             abs_coords[exon_num] = UNDEF_REGION
             continue
         rel_start_not_corr, rel_len = indexes[0], len(indexes)
@@ -1501,8 +1501,8 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
             abs_query_end - rel_start - rel_len
         # check that everything in borders
         left_side_ok = exon_abs_start > 0 and exon_abs_end > 0
-        rigth_size_ok = exon_abs_start <= q_size_ and exon_abs_end <= q_size_
-        if not left_side_ok or not rigth_size_ok:
+        right_size_ok = exon_abs_start <= q_size_ and exon_abs_end <= q_size_
+        if not left_side_ok or not right_size_ok:
             # out of borders: this is possible
             # let's just skip this exon
             exon_grange = UNDEF_REGION
@@ -1653,7 +1653,7 @@ def save_prot(gene_name, prot_seq, prot_out):
 
 
 def save_codons(gene_name, cds_data_all, output):
-    """Save codon aligmnemtns."""
+    """Save codon alignments."""
     if output is None:
         return
     f = open(output, "w") if output != "stdout" else sys.stdout
@@ -1944,7 +1944,7 @@ def realign_exons(args):
     memory = memory_check(bed_data["block_sizes"], qlength_max, args["estimate_memory"])
     verbose(f"\nExpecting a memory consumption of: {memory} GB")
     # arrange input for CESAR and save it
-    # istemp is True if /dev/shm is in use; flag to remove that
+    # is_temp is True if /dev/shm is in use; flag to remove that
     cesar_in_filename, is_temp = make_in_filename(args["cesar_input_save_to"])
     # check whether some reference splice sites are non-canonical
     # doesn't apply to single-exon genes

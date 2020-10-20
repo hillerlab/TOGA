@@ -15,12 +15,15 @@ try:
     from modules.common import eprint
     from modules.common import die
     from modules.common import get_graph_components
+    from modules.common import read_isoforms_file
 except ImportError:
     from common import split_proj_name
     from common import flatten
     from common import eprint
     from common import die
     from common import get_graph_components
+    from common import read_isoforms_file
+
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -35,8 +38,10 @@ MANY2ONE = "many2one"
 MANY2MANY = "many2many"
 
 
-def read_isoforms(isoforms_file, transcripts):
-    """Read isoforms data."""
+def read_isoforms__otm(isoforms_file, transcripts):
+    """Read isoforms data.
+
+    Extended orthology type map version."""
     gene_to_transcripts = defaultdict(list)
     transcript_to_gene = {}
     if isoforms_file is None:
@@ -45,19 +50,8 @@ def read_isoforms(isoforms_file, transcripts):
         # gene to transcripts is dict key : list
         gene_to_transcripts = {x: [x, ] for x in transcripts}
         return gene_to_transcripts, transcript_to_gene
-    # need to read a file
-    f = open(isoforms_file, "r")
-    f.__next__()  # first line is header
-    for line in f:
-        line_data = line.rstrip().split("\t")
-        gene = line_data[0]
-        trans = line_data[1]
-        if trans not in transcripts:
-            # exclude unnecessary transcripts
-            # such as filtered out or skipped due to memory reasons
-            continue
-        transcript_to_gene[trans] = gene
-        gene_to_transcripts[gene].append(trans)
+    gene_to_transcripts, transcript_to_gene, _ = read_isoforms_file(isoforms_file,
+                                                                    pre_def_trans_list=transcripts)
     return gene_to_transcripts, transcript_to_gene
 
 
@@ -256,8 +250,8 @@ def orthology_type_map(ref_bed, que_bed, out, ref_iso=None, que_iso=None,
                                                q_trans_paralogs,
                                                trans_to_L_status)
     # read reference and query isoform files; orthology is a story about genes
-    r_gene_to_trans, r_trans_to_gene = read_isoforms(ref_iso, ref_transcripts)
-    q_gene_to_trans, q_trans_to_gene = read_isoforms(que_iso, que_transcripts_all)
+    r_gene_to_trans, r_trans_to_gene = read_isoforms__otm(ref_iso, ref_transcripts)
+    q_gene_to_trans, q_trans_to_gene = read_isoforms__otm(que_iso, que_transcripts_all)
     r_genes_all = set(r_gene_to_trans.keys())
     q_genes_all = set(q_gene_to_trans.keys())
     # make transcript to projections dict:

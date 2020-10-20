@@ -2,6 +2,7 @@
 import os
 import sys
 import ctypes
+from collections import defaultdict
 import h5py
 import networkx as nx
 
@@ -11,6 +12,7 @@ __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 SLIB_NAME = "chain_bst_lib.so"
+ISOFORMS_FILE_COLS = 2
 
 
 def parts(lst, n=3):
@@ -256,3 +258,44 @@ def get_graph_components(graph):
     else:
         graph_components = [graph.subgraph(c) for c in nx.connected_components(graph)]
     return graph_components
+
+
+def read_isoforms_file(isoforms_file, pre_def_trans_list=None):
+    """Read isoforms file.
+
+    Return gene: [isoforms] dict and
+    isoforms: gene dict.
+    Also returns a header (str, str)."""
+    isoform_to_gene = {}
+    gene_to_isoforms = defaultdict(list)
+    if not os.path.isfile(isoforms_file):
+        die(f"Error! Isoforms file {isoforms_file} not found")
+    f = open(isoforms_file, "r")
+    # first line could be a header, or may be not
+    # process it separately just in case
+    header_fields = f.__next__().rstrip().split("\t")
+    header_gene = header_fields[0]
+    header_trans = header_fields[1]
+    header = (header_gene, header_trans)
+    if pre_def_trans_list and header_trans not in pre_def_trans_list:
+        pass
+    else:
+        isoform_to_gene[header_trans] = header_gene
+        gene_to_isoforms[header_gene].append(header_trans)
+    # process the rest of the file
+    for l_num, line in enumerate(f):
+        line_data = line.rstrip().split("\t")
+        if len(line_data) != ISOFORMS_FILE_COLS:
+            err_msg = f"Isoforms file {isoforms_file} line num {l_num} corrupted: " \
+                      f"Expected {ISOFORMS_FILE_COLS} lines, got {len(line_data)}\n"
+            die(err_msg)
+        gene = line_data[0]
+        transcript = line_data[1]
+        # ore defined list of accepted transcripts: if provided, skip
+        # transcripts that do not appear in this list
+        if pre_def_trans_list and transcript not in pre_def_trans_list:
+            continue
+        isoform_to_gene[transcript] = gene
+        gene_to_isoforms[gene].append(transcript)
+    f.close()
+    return gene_to_isoforms, isoform_to_gene, header

@@ -16,11 +16,16 @@ try:
     from modules.common import split_proj_name
     from modules.common import die
     from modules.common import eprint
+    from modules.common import read_isoforms_file
+    from modules.GLP_values import *
 except ImportError:
     from common import make_cds_track
     from common import split_proj_name
     from common import die
     from common import eprint
+    from common import read_isoforms_file
+    from GLP_values import *
+
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -40,31 +45,10 @@ I = 6  # Intact
 # N - skipped due to technical reasons
 NUM_TO_CLASS = {-1: "N", 0: "PG", 1: "PM", 2: "L", 3: "M", 4: "G", 5: "PI", 6: "I"}
 
-# colors
-BLUE = "0,0,200"
-LIGHT_BLUE = "0,200,255"
-LIGHT_RED = "255,50,50"
-SALMON = "255,160,120"
-GREY = "130,130,130"
-BROWN = "159,129,112"
-BLACK = "10,10,10"
-
 # link GLP class to color
 CLASS_TO_COL = {N_: BLACK, PG: BROWN, PM: GREY, L: LIGHT_RED,
                 M: GREY, G: SALMON, PI: LIGHT_BLUE, I: BLUE}
 
-# mut classes:
-MISS_EXON = "Missing exon"
-DEL_EXON = "Deleted exon"
-DEL_MISS = {MISS_EXON, DEL_EXON}
-COMPENSATION = "COMPENSATION"
-SSM = "SSM"
-START_MISSING = "START_MISSING"
-FS_DEL = "FS_DEL"
-FS_INS = "FS_INS"
-BIG_DEL = "BIG_DEL"
-BIG_INS = "BIG_INS"
-STOP = "STOP"
 
 REM_T_L = 0.35  # less than REM_T_L of CDS left -> it's lost
 REM_T_G = 0.49  # less than REM_T_G of CDS left -> it's grey
@@ -471,22 +455,6 @@ def get_exon_sizes(ref_bed):
     return trans_exon_sizes
 
 
-def read_isoforms(isoforms_file, all_transcripts):
-    """Read isoforms file."""
-    gene_to_trans = defaultdict(list)
-    f = open(isoforms_file, "r")
-    f.__next__()
-    for line in f:
-        line_data = line.rstrip().split("\t")
-        gene = line_data[0]
-        trans = line_data[1]
-        if trans not in all_transcripts:
-            continue
-        gene_to_trans[gene].append(trans)
-    f.close()
-    return gene_to_trans
-
-
 def get_paralogs_data(paral_file):
     """Extract paralogous projections."""
     # basically just read a file and save to a set
@@ -519,9 +487,20 @@ def color_bed_file(bed_in, bed_out, proj_to_class):
     out_.close()
 
 
+def remove_unused_trans(gene_to_trans, iforms_to_save):
+    """Remove unnecessary transcripts from the isoforms file."""
+    ret = defaultdict(list)
+    for g, trans in gene_to_trans.items():
+        for t in trans:
+            if t not in iforms_to_save:
+                continue
+            ret[g].append(t)
+    return ret
+
+
 def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
                         bed_out, summary_arg, trace_arg=None,
-                        iforms=None, paral=None):
+                        iforms_file=None, paral=None):
     """Gene losses summary core function."""
     t0 = dt.now()
     # TOGA don't make any conclusions about projections via paralogous chains
@@ -582,8 +561,9 @@ def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
     all_transcripts = set(transcript_class.keys())
 
     # classify genes part
-    if iforms:  # if isoforms provided, get gene: [transcripts] dict
-        gene_to_trans = read_isoforms(iforms, all_transcripts)
+    if iforms_file:  # if isoforms provided, get gene: [transcripts] dict
+        gene_to_trans, _, _ = read_isoforms_file(iforms_file,
+                                                 pre_def_trans_list=all_transcripts)
     else:  # no isoforms provided: nothing we can do next
         gene_to_trans = {}
 
@@ -624,7 +604,7 @@ def main():
                         args.bed_out,
                         args.summary,
                         trace_arg=args.trace,
-                        iforms=args.isoforms,
+                        iforms_file=args.isoforms,
                         paral=args.paral_projections)
 
 

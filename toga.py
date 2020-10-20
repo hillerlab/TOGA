@@ -27,7 +27,7 @@ from modules.get_transcripts_quality import classify_transcripts
 from modules.make_query_isoforms import get_query_isoforms_data
 # from modules.common import eprint
 from modules.stitch_fragments import stitch_scaffolds
-
+from modules.common import read_isoforms_file
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
@@ -206,7 +206,8 @@ class Toga:
             return
         os.symlink(src, dest)
 
-    def __gen_project_name(self):
+    @staticmethod
+    def __gen_project_name():
         """Generate project name automatically."""
         today_and_now = dt.now().strftime("%Y.%m.%d_at_%H:%M:%S")
         project_name = f"TOGA_project_on_{today_and_now}"
@@ -343,31 +344,17 @@ class Toga:
     def __check_isoforms_file(self, t_in_bed):
         """Sanity checks for isoforms file."""
         if not self.isoforms_arg:
+            print("Continue without isoforms file: not provided")
             return  # not provided: nothing to check
         # isoforms file provided: need to check correctness and completeness
         # then check isoforms file itself
-        f = open(self.isoforms_arg, "r")
+        _, isoform_to_gene, header = read_isoforms_file(self.isoforms_arg)
+        header_maybe_gene = header[0]  # header is optional, if not the case: first field is a gene
+        header_maybe_trans = header[1]  # and the second is the isoform
+        # save filtered isoforms file here:  (without unused transcripts)
         self.isoforms = os.path.join(self.wd, "isoforms.tsv")
-        header = f.__next__()  # first line is header
-        filt_isoforms_lines = [header, ]  # remove isoforms that don't appear in the bed file
-        # also we catch isoforms that are in the bed but not in the isoforms file
-        t_in_i = []
-        for num, line in enumerate(f, 2):
-            line_data = line.rstrip().split("\t")
-            if len(line_data) != ISOFORMS_FILE_COLS:
-                err_msg = f"Error! Isoforms file {self.isoforms} line {num}: " \
-                          f"Expected {ISOFORMS_FILE_COLS} fields, got {len(line_data)}"
-                self.die(err_msg)
-            transcript = line_data[1]
-            if transcript in t_in_bed:
-                # this isoforms appears in the bed file: keep it
-                filt_isoforms_lines.append(line)
-                t_in_i.append(line_data[1])
-            else:  # this isoform doesn't appear in the bed: we can skip it
-                continue
-        f.close()
         # this set contains isoforms found in the isoforms file
-        t_in_i = set(t_in_i)
+        t_in_i = set(isoform_to_gene.keys())
         # there are transcripts that appear in bed but not in the isoforms file
         # if this set is non-empty: raise an error
         u_in_b = t_in_bed.difference(t_in_i)
@@ -377,12 +364,28 @@ class Toga:
             err_msg = f"Error! There are {len(u_in_b)} transcripts in the bed file absent in the isoforms file! " \
                       f"There are the transcripts (first 100):\n{extra_t_list}"
             self.die(err_msg)
+
+        t_in_both = t_in_bed.intersection(t_in_i)  # isoforms data that we save
+        # if header absent: second field found in the bed file
+        # then we don't need to write the original header
+        # if present -> let keep it
+        # there is not absolutely correct: MAYBE there is no header at all, but
+        # the first line of the isoforms file is not in the bed file
+        # so we still will write it
+        skip_header = header_maybe_trans in t_in_bed
+
         # write isoforms file
-        with open(self.isoforms, "w") as f:
-            f.write("".join(filt_isoforms_lines))
+        f = open(self.isoforms, "w")
+        if not skip_header:
+            f.write(f"{header_maybe_gene}\t{header_maybe_trans}\n")
+        print(f"Writing {len(t_in_both)} trans")
+        for trans in t_in_both:
+            gene = isoform_to_gene[trans]
+            f.write(f"{gene}\t{trans}\n")
         print("Isoforms file is OK")
 
-    def die(self, msg, rc=1):
+    @staticmethod
+    def die(msg, rc=1):
         """Show msg in stderr, exit with the rc given."""
         print(msg)
         print(f"Program finished with exit code {rc}\n")
@@ -983,7 +986,7 @@ class Toga:
                             self.intermediate_bed,
                             self.query_annotation,
                             self.loss_summ,
-                            iforms=self.isoforms,
+                            iforms_file=self.isoforms,
                             paral=self.paralogs_log)
 
     def __orthology_type_map(self):
