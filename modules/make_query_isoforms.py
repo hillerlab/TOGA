@@ -13,9 +13,13 @@ import networkx as nx
 try:
     from modules.common import flatten
     from modules.common import get_graph_components
+    from modules.GLP_values import *
 except ImportError:
     from common import flatten
     from common import get_graph_components
+    from GLP_values import *
+
+BED_COLORS_TO_KEEP = {BLUE, LIGHT_BLUE, SALMON}
 
 
 def parse_args():
@@ -45,6 +49,14 @@ def read_query_bed(bed_file):
         chrom = line_data[0]
         transcript_name = line_data[3]
         strand = line_data[5]
+        # we interested in the I, PI and G genes only
+        # 0, 0, 200 -> blue -> intact
+        # 0, 200, 255 -> light blue -> p intact
+        # 255, 160, 120 -> salmon -> grey
+        color = line_data[8]
+        if color not in BED_COLORS_TO_KEEP:
+            # M, L and so on: not in the classification
+            continue
         # we need CDS start, end == thickStart & thickEnd
         thickStart = int(line_data[6])
         thickEnd = int(line_data[7])

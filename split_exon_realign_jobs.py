@@ -34,7 +34,7 @@ BIGMEM_LIM = 1000  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 1000000
 EXTRA_MEM = 100000  # extra memory "just in case"
-BIGMEM_JOBSNUM = 10  # TODO: make a parameter?
+BIGMEM_JOBSNUM = 100  # TODO: make a parameter?
 
 # connect shared lib; define input and output data types
 chain_coords_conv_lib_path = os.path.join(LOCATION,
@@ -366,11 +366,18 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
 def save_bigmem_jobs(bigmem_joblist, jobs_dir):
     """Save bigmem jobs."""
     # TODO: try to merge with save_jobs() func
-    bigmem_parts = split_in_n_lists(bigmem_joblist, BIGMEM_JOBSNUM)
+    # one bigmem job per joblist, but not more than 100
+    # if > 100: something is wrong
+    joblist_size = len(bigmem_joblist)
+    num_of_parts = joblist_size if joblist_size <= BIGMEM_LIM else BIGMEM_JOBSNUM
+    if num_of_parts == 0:
+        return None  # no bigmem jobs
+
+    bigmem_parts = split_in_n_lists(bigmem_joblist, num_of_parts)
     bigmem_files_num = len(bigmem_parts)  # in case if num of jobs < BIGMEM_JOBSNUM
     bigmem_paths = []
     if bigmem_files_num == 0:
-        return None # no bigmem jobs at all
+        return None  # no bigmem jobs at all
     for num, bigmem_part in enumerate(bigmem_parts):
         file_name = f"cesar_job_{num}_bigmem"
         file_path = os.path.abspath(os.path.join(jobs_dir, file_name))
@@ -381,7 +388,8 @@ def save_bigmem_jobs(bigmem_joblist, jobs_dir):
     return bigmem_paths
 
 
-def save_combined_joblist(to_combine, combined_file, results_dir, inact_mut_dat, rejected_log, name=""):
+def save_combined_joblist(to_combine, combined_file, results_dir,
+                          inact_mut_dat, rejected_log, name=""):
     """Save joblist of joblists (combined joblist)."""
     f = open(combined_file, "w")
     for num, comb in enumerate(to_combine, 1):

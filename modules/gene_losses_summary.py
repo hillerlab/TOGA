@@ -66,6 +66,7 @@ def parse_args():
     app.add_argument("--isoforms", "-i", help="Provide isoforms data to classify genes")
     app.add_argument("--trace", "-t", default=None, help="Trace a particular isoform fate")
     app.add_argument("--paral_projections", default=None, help="File containing paralogous projections")
+    app.add_argument("--exclude", default=None, help="List of transcripts to exclude")
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -404,6 +405,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                     print(f"Enough affected exons -> L") if tracing_ else None
                     projection_class[projection] = L
                     continue
+                
                 # also check whether there is an exon covering > 40% CDS that has TWO inact mutations
                 muts_occur = Counter(m[0] for m in other_muts)
                 muts_in_40_exons = [muts_occur[x] for x in exon_40_p_nums]
@@ -422,10 +424,14 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
             else:
                 # if %intact > 60: cannot be intact
                 # but not enough evidence to call it lost
-                # class grey
+                # class grey OR missing
                 print(f"% intact M int > 60 branch") if tracing_ else None
-                print(f"not enough evidence for L -> Grey") if tracing_ else None
-                projection_class[projection] = G
+                if frame_oub > PART_THR:
+                    print("-> class PM, too big fraction out of chain borders") if tracing_ else None
+                    projection_class[projection] = PM
+                else:
+                    print(f"not enough evidence for L -> Grey") if tracing_ else None
+                    projection_class[projection] = G
                 continue
     return projection_class
 
@@ -498,13 +504,24 @@ def remove_unused_trans(gene_to_trans, iforms_to_save):
     return ret
 
 
+def read_excluded(exc_arg):
+    """Read the list of excluded genes."""
+    if exc_arg is None:
+        return set()
+    f = open(exc_arg, "r")
+    ret = set(x.rstrip() for x in f)
+    f.close()
+    return ret
+
+
 def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
                         bed_out, summary_arg, trace_arg=None,
-                        iforms_file=None, paral=None):
+                        iforms_file=None, paral=None, exclude_arg=None):
     """Gene losses summary core function."""
     t0 = dt.now()
     # TOGA don't make any conclusions about projections via paralogous chains
     paralogs_set = get_paralogs_data(paral)
+    excluded_genes = read_excluded(exclude_arg)
     # we need transcript exons sizes for decision tree
     trans_exon_sizes = get_exon_sizes(ref_bed)
     # parse inactivating mutations data
@@ -544,6 +561,8 @@ def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
         # projection is: $transcript DOT $chain_id
         # split it to trans and chain (we don't need chain here)
         trans, _ = split_proj_name(proj)
+        if trans in excluded_genes:
+            continue
         transcript_to_projections[trans].append(proj)
 
     # classify transcripts
@@ -605,7 +624,8 @@ def main():
                         args.summary,
                         trace_arg=args.trace,
                         iforms_file=args.isoforms,
-                        paral=args.paral_projections)
+                        paral=args.paral_projections,
+                        exclude_arg=args.exclude)
 
 
 if __name__ == "__main__":

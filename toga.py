@@ -38,6 +38,7 @@ U12_FILE_COLS = 3
 U12_AD_FIELD = {"A", "D"}
 ISOFORMS_FILE_COLS = 2
 NF_DIR_NAME = "nextflow_logs"
+NEXTFLOW = "nextflow"
 CESAR_PUSH_INTERVAL = 30  # CESAR jobs push interval
 ITER_DURATION = 60  # CESAR jobs check interval
 # automatically enable flush
@@ -53,10 +54,10 @@ class Toga:
         self.temp_files = []  # remove at the end, list of temp files
         print("#### Initiating TOGA class ####")
         print("Checking dependencies...")
+        self.para = args.para
         self.__modules_addr()
         self.__check_dependencies()
         self.__check_completeness()
-        self.para = args.para
         self.toga_exe_path = os.path.dirname(__file__)
         self.version = self.__get_version()
         self.para_bigmem = args.para_bigmem
@@ -138,6 +139,7 @@ class Toga:
             else args.cesar_binary
         self.time_log = args.time_marks
         self.stop_at_chain_class = args.stop_at_chain_class
+        self.rejected_log = os.path.join(self.wd, "genes_rejection_reason.tsv")
 
         self.keep_temp = True if args.keep_temp else False
         # define to call CESAR or not to call
@@ -443,6 +445,12 @@ class Toga:
             print("Warning! Some of the required packages are not installed.")
             imports_not_found = True
 
+        not_nf = shutil.which(NEXTFLOW) is None
+        if not self.para and not_nf:
+            msg = "Error! Cannot fild nextflow executable. Please make sure you "\
+                  "have a nextflow binary in a directory listed in your $PATH"
+            self.die(msg)
+
         not_all_found = any([c_not_compiled, imports_not_found])
         self.__call_proc(self.CONFIGURE, "Could not call configure.sh!")\
             if not_all_found else print("All dependencies found")
@@ -591,7 +599,19 @@ class Toga:
             print("PLEASE NOTE: SOME CESAR JOBS CRASHED")
             print("RESULTS ARE LIKELY INCOMPLETE")
         print(f"Saved results to {self.wd}")
+        self.__left_done_mark()
         self.die(f"Done! Estimated time: {dt.now() - self.t0}", rc=0)
+
+    def __left_done_mark(self):
+        """Write a file confirming that everything is done."""
+        mark_file = os.path.join(self.wd, "done.status")
+        f = open(mark_file, "w")
+        now_ = str(dt.now())
+        f.write(f"Done at {now_}\n")
+        if not self.cesar_ok_merged:
+            f.write("\nSome CESAR jobs crashed, please look at:\n")
+            f.write(f"{self.rejected_log}\n")
+        f.close()
 
     def __make_indexed_chain(self):
         """Make chain index file."""
@@ -1004,7 +1024,8 @@ class Toga:
                            que_iso=query_isoforms_file,
                            paralogs_arg=self.paralogs_log,
                            loss_data=self.loss_summ,
-                           save_skipped=skipped_ref_trans)
+                           save_skipped=skipped_ref_trans,
+                           orth_scores_arg=self.pred_scores)
 
     @staticmethod
     def __merge_dir(dir_name, output):
@@ -1034,8 +1055,8 @@ class Toga:
     def __merge_split_files(self):
         """Merge intermediate/temp files."""
         # merge rejection logs
-        rejected_log = os.path.join(self.wd, "genes_rejection_reason.tsv")
-        self.__merge_dir(self.rejected_dir, rejected_log)
+
+        self.__merge_dir(self.rejected_dir, self.rejected_log)
         # save inact mutations data
         inact_mut_file = os.path.join(self.wd, "inact_mut_data.txt")
         self.__merge_dir(self.gene_loss_data, inact_mut_file)

@@ -9,6 +9,7 @@ import sys
 from collections import defaultdict
 from collections import Counter
 import networkx as nx
+
 try:
     from modules.common import split_proj_name
     from modules.common import flatten
@@ -31,19 +32,24 @@ __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 INCLUDE_CLASSES = {"I", "PI", "G"}
+SCORE_THR = 0.9
 ONE2ZERO = "one2zero"
 ONE2ONE = "one2one"
 ONE2MANY = "one2many"
 MANY2ONE = "many2one"
 MANY2MANY = "many2many"
 
+R_GENES = "r_genes"
+Q_GENES = "q_genes"
+C_CLASS = "c_class"
+
 
 def read_isoforms__otm(isoforms_file, transcripts):
     """Read isoforms data.
 
     Extended orthology type map version."""
-    gene_to_transcripts = defaultdict(list)
-    transcript_to_gene = {}
+    # gene_to_transcripts = defaultdict(list)
+    # transcript_to_gene = {}
     if isoforms_file is None:
         # special branch: one gene - one transcript
         transcript_to_gene = {x: x for x in transcripts}
@@ -64,6 +70,28 @@ def read_paralogs(paralogs_file):
     paralogs = set(x.rstrip() for x in f.readlines())
     f.close()
     return paralogs
+
+
+def read_proj_scores(orth_score_file):
+    """Return projection: orthology score dict."""
+    ret = {}
+    if orth_score_file is None:
+        return ret
+    f = open(orth_score_file, "r")
+    f.__next__()  # skip header
+    for line in f:
+        line_datum = line.rstrip().split("\t")
+        trans = line_datum[0]
+        chain = line_datum[1]
+        projection = f"{trans}.{chain}"
+        score = float(line_datum[2])
+        if score == -1:
+            # trans chain: without score
+            # assign default 0.5 value
+            score = 0.5
+        ret[projection] = score
+    f.close()
+    return ret
 
 
 def extract_names_from_bed(bed_file):
@@ -106,6 +134,10 @@ def filter_query_transcripts(transcripts, paralogs, trans_to_status):
         if l_status not in INCLUDE_CLASSES:
             # only grey and intact participate
             continue
+        # is_low_qual = trans in low_score_trans
+        # if is_low_qual:
+        #     # chain orthology score is quite low
+        #     continue
         filt_transcripts.append(trans)
     print(f"After filters {len(filt_transcripts)} transcripts left")
     return set(filt_transcripts)
@@ -121,13 +153,15 @@ def get_t_trans_to_projections(que_projections):
     return trans_to_proj
 
 
-def connect_genes(t_trans_to_gene, t_trans_to_q_proj, q_proj_to_q_gene):
+def connect_genes(t_trans_to_gene, t_trans_to_q_proj, q_proj_to_q_gene, proj_to_score):
     """Create orthology relationships graph.
     
     Nodes are reference and query genes.
     If nodes are connected -> they are orthologs.
+    Also emit ref_gene -> que_gene -> scores dict.
     """
     o_graph = nx.Graph()  # init the graph
+    ref_que_gene_scores = defaultdict(list)
     genes = set(t_trans_to_gene.values())
     o_graph.add_nodes_from(genes)
     q_genes_all = []
@@ -138,7 +172,15 @@ def connect_genes(t_trans_to_gene, t_trans_to_q_proj, q_proj_to_q_gene):
         # also we already know transcript-to-projections (trivial)
         projections = t_trans_to_q_proj[t_trans]
         # from projections (query transcripts) we know query gene ids
-        q_genes = set(q_proj_to_q_gene[p] for p in projections)
+        # also for each t_gene -> q_gene: add score
+        q_genes = set()
+        for proj_ in projections:
+            q_gene = q_proj_to_q_gene[proj_]
+            q_genes.add(q_gene)
+            o_score = proj_to_score.get(proj_, 0.0)
+            score_dict_key = (t_gene, q_gene)
+            ref_que_gene_scores[score_dict_key].append(o_score)
+        # add connections to graph
         for q_gene in q_genes:
             # we can connect all of those q_genes with the reference gene
             conn_count += 1
@@ -147,10 +189,232 @@ def connect_genes(t_trans_to_gene, t_trans_to_q_proj, q_proj_to_q_gene):
     q_genes_all = set(q_genes_all)
     print(f"Added {len(q_genes_all)} query genes on graph")
     print(f"Graph contains {conn_count} connections")
-    return o_graph
+    return o_graph, ref_que_gene_scores
 
 
-def extract_orth_connections(graph, r_genes_all, q_genes_all):
+def get_c_class(r_num, q_num):
+    """Given numbers of reference and query genes return orthology class."""
+    # not many2many branches
+    if q_num == 0:
+        return ONE2ZERO
+    elif r_num == 1 and q_num == 1:
+        return ONE2ONE
+    elif r_num == 1 and q_num > 1:
+        return ONE2MANY
+    elif r_num > 1 and q_num == 1:
+        return MANY2ONE
+    elif r_num > 1 and q_num > 1:
+        return MANY2MANY
+    else:  # something that must never happen
+        err_msg = f"Orthology type map: reached corrupt orthology component\n"\
+                  f"Got numbers of ref genes: {r_num}; query: {q_num}"\
+                  f"Abort."
+        raise RuntimeError(err_msg)
+
+
+def is_complete_bipartite(graph, r_genes, q_genes):
+    """Return True if a complete bipartite graph provided.
+
+    Here we assume that the graph is bipartite.
+    The graph is complete if:
+    1) Each reference gene appears in #q_genes connections,
+    2) Each query gene appears in #r_genes connections."""
+    num_r_genes = len(r_genes)
+    num_q_genes = len(q_genes)
+    connections_flat = flatten(graph.edges())
+    conn_count = Counter(connections_flat)
+    # check criteria 1 and 2
+    all_ref_ok = all(conn_count[r] == num_q_genes for r in r_genes)
+    all_que_ok = all(conn_count[q] == num_r_genes for q in q_genes)
+    if all_ref_ok and all_que_ok:
+        # criteria 1 and 2 satisfied
+        return True
+    # something's not satisfied -> is not complete
+    return False
+
+
+def order_edges(edges_lst, ref_nodes):
+    """Reorder edges such as reference node is on the first position."""
+    ret = []
+    for edge in edges_lst:
+        f_, s_ = edge
+        if f_ in ref_nodes:
+            ref_node = f_
+            que_node = s_
+        else:
+            ref_node = s_
+            que_node = f_
+        item = (ref_node, que_node)
+        ret.append(item)
+    return ret
+
+
+def edges_to_dicts(graph, ref_nodes__set):
+    """Convert list of tuples to dicts."""
+    # in tuple ref and que may go in the different order
+    # this is why we cannot convert this list to dict directly
+    # need to check what on which position in each tuple first
+    edges = order_edges(graph.edges(), ref_nodes__set)
+    ref_nodes_edges = defaultdict(list)
+    que_nodes_edges = defaultdict(list)
+    for edge in edges:
+        ref_nodes_edges[edge[0]].append(edge[1])
+        que_nodes_edges[edge[1]].append(edge[0])
+    return ref_nodes_edges, que_nodes_edges
+
+
+def graph_is_empty(graph):
+    """Check whether graph is empty."""
+    return True if len(graph.nodes()) == 0 else False
+
+
+def graph_has_isolated_points(graph):
+    """Check whether graph has isolated nodes."""
+    return True if len(list(nx.isolates(graph))) > 0 else False
+
+
+def select_strongly_connected_ref_genes(ref_conns, que_conns):
+    """Select strongly connected reference genes.
+
+    Strongly connected genes have >1 common connections.
+    """
+    ret = {}
+    for ref_gene, queries in ref_conns.items():
+        ref_second_order = Counter(flatten(que_conns[q] for q in queries))
+        del ref_second_order[ref_gene]
+        strongly_connected = set(k for k, v in ref_second_order.items() if v > 1)
+        if len(strongly_connected) == 0:
+            continue
+        ret[ref_gene] = strongly_connected
+    return ret
+
+
+def sep_strong_conn(graph, strongly_connected):
+    """Check whether any of strongly connected ref genes are separated."""
+    if len(strongly_connected) == 0:
+        # nothing to check
+        return False
+    graph_nodes = set(graph.nodes())
+    s_conn_appear_here = {k: v for k, v in strongly_connected.items() if k in graph_nodes}
+    if len(s_conn_appear_here) == 0:
+        # nothing to check: no strongly connected genes here
+        return False
+    for k, v in s_conn_appear_here.items():
+        conn_num = len(v)
+        if len(v.intersection(graph_nodes)) < conn_num:
+            # need this set to be included into graph nodes
+            # if not the case: strongly connected nodes are in a different graph
+            return True
+    # nothing bad happened
+    return False
+
+
+def check_low_score_edges_removed(scores_edges_left, scores_edges_removed):
+    """Return True if scores of removed edges are lower in comparison to remaining edges."""
+    if all(x == 0.0 for x in scores_edges_removed):
+        # in this case no orthology scores provided
+        return True
+    # for now a primitive method would be used
+    # TODO: check whether this require any improvement
+    min_score_left = min(scores_edges_left)
+    max_score_rem = max(scores_edges_removed)
+    min_thr = 0.90 * min_score_left
+    if max_score_rem < min_thr:
+        return True
+    elif all(x < 0.75 for x in scores_edges_removed):
+        return True
+    # we are not certain -> difference is not significant enough
+    return False
+
+
+def split_graph(graph, r_genes, q_genes, edge_to_score):
+    """Split many2many graph if possible."""
+    # 1: find lead edges: edges connected to leaf nodes
+    ref_nodes_set = set(r_genes)
+    # query_nodes_set = set(q_genes)
+    ref_conns, que_conns = edges_to_dicts(graph, ref_nodes_set)
+    ref_leaf_edges = [(k, v[0]) for k, v in ref_conns.items() if len(v) == 1]
+    que_leaf_edges = [(v[0], k) for k, v in que_conns.items() if len(v) == 1]
+    leaf_edges = set(ref_leaf_edges + que_leaf_edges)
+    if len(leaf_edges) == 0:
+        # if no leaves: too complicated case, don't try to resolve
+        return [graph, ]
+    # 2: get nodes connected to leaf edges, and set difference
+    leaf_conn_nodes = set(flatten(leaf_edges))
+    not_leaf_conn_nodes = set(graph.nodes()).difference(leaf_conn_nodes)
+    # 3: get list of reference nodes that must be not separated
+    ref_not_separate = select_strongly_connected_ref_genes(ref_conns, que_conns)
+    # 4: get local graph copy for manipulations
+    _loc_graph_copy = nx.Graph()
+    for edge in graph.edges():
+        # probably is faster than deepcopy()
+        _loc_graph_copy.add_edge(edge[0], edge[1])
+    # 5: get part of the graph consisting only leaf+ nodes
+    trimmed_parts_united = _loc_graph_copy.edge_subgraph(leaf_edges).copy()
+    trimmed_parts = get_graph_components(trimmed_parts_united)
+    remainder = _loc_graph_copy.subgraph(not_leaf_conn_nodes)
+    # 6: check that remainder has no isolated nodes
+    # if so: we don't try to resolve this many2many
+    # return original graph
+    if graph_has_isolated_points(remainder):
+        return [graph, ]
+    # add remainder only if it's not empty
+    # otherwise it makes no sense
+    if not graph_is_empty(remainder):
+        trimmed_parts.append(remainder)
+    # check whether we separated strongly connected genes
+    if any(sep_strong_conn(g, ref_not_separate) for g in trimmed_parts):
+        # we separated genes that we didn't want to: return initial graph
+        return [graph, ]
+    # 7: primitive "statistics"
+    # Just check that scores of deleted edges are significantly lower than
+    # scores of remaining edges
+    original_edges = set(order_edges(graph.edges(), ref_nodes_set))
+    edges_left = set(order_edges(flatten(x.edges() for x in trimmed_parts), ref_nodes_set))
+    edges_removed = original_edges.difference(edges_left)
+    edges_left_scores = [edge_to_score.get(e, 0.0) for e in edges_left]
+    edges_rem_scores = [edge_to_score.get(e, 0.0) for e in edges_removed]
+    bool__removed_low_score_edges = check_low_score_edges_removed(edges_left_scores,
+                                                                  edges_rem_scores)
+    # 8: return graph parts or the original graph depending on edge scores
+    if bool__removed_low_score_edges is True:
+        return trimmed_parts
+    else:
+        # here we are not certain, better to return original graph
+        return [graph, ]
+
+
+def get_graph_conn(graph, over__ref_genes, over__que_genes):
+    """Create connection for subgraph."""
+    # TODO: remove code duplicate
+    graph_nodes = graph.nodes()
+    ref_genes = [x for x in over__ref_genes if x in graph_nodes]
+    que_genes = [x for x in over__que_genes if x in graph_nodes]
+    ref_len, que_len = len(ref_genes), len(que_genes)
+    c_class = get_c_class(ref_len, que_len)
+    conn = {R_GENES: ref_genes, Q_GENES: que_genes, C_CLASS: c_class}
+    return conn
+
+
+def resolve_many2many(graph, r_genes, q_genes, edge_to_score):
+    """Resolve many2many graph."""
+    is_b_complete = is_complete_bipartite(graph, r_genes, q_genes)
+    if is_b_complete:
+        # nothing to do actually
+        conn = {R_GENES: r_genes, Q_GENES: q_genes, C_CLASS: MANY2MANY}
+        return [conn, ]
+    # not complete bipartite graph
+    # first, select reference genes that have a single connection
+    # edges = [(node, node), (node, node), ..] -> list of pairs
+    ret = []
+    graph_parts = split_graph(graph, r_genes, q_genes, edge_to_score)
+    for elem in graph_parts:
+        conn = get_graph_conn(elem, r_genes, q_genes)
+        ret.append(conn)
+    return ret
+
+
+def extract_orth_connections(graph, r_genes_all, q_genes_all, edge_to_score):
     """Split graph in orth connections."""
     orth_connections = []
     graph_components = get_graph_components(graph)
@@ -165,23 +429,22 @@ def extract_orth_connections(graph, r_genes_all, q_genes_all):
         # to define the class we need sizes of these groups:
         r_len = len(r_genes)
         q_len = len(q_genes)
-        if q_len == 0:
-            c_class = ONE2ZERO
-        elif r_len == 1 and q_len == 1:
-            c_class = ONE2ONE
-        elif r_len == 1 and q_len > 1:
-            c_class = ONE2MANY
-        elif r_len > 1 and q_len == 1:
-            c_class = MANY2ONE
-        elif r_len > 1 and q_len > 1:
-            c_class = MANY2MANY
-        else:
-            raise RuntimeError("impossible")
+        c_class = get_c_class(r_len, q_len)
+
+        if c_class == MANY2MANY:
+            # this is many2many, a different procedure
+            # maybe this is not a complete bipartite graph
+            # then we should split it into sub graphs
+            connections = resolve_many2many(component, r_genes, q_genes, edge_to_score)
+            orth_connections.extend(connections)
+            continue
+        # not many2many: just save it
         # create connection object and save it
-        conn = {"r_genes": r_genes, "q_genes": q_genes, "c_class": c_class}
+        conn = {R_GENES: r_genes, Q_GENES: q_genes, C_CLASS: c_class}
         orth_connections.append(conn)
+
     # count different orthology classes
-    class_list = [c["c_class"] for c in orth_connections]
+    class_list = [c[C_CLASS] for c in orth_connections]
     print(f"Detected {len(class_list)} orthology components")
     class_count = Counter(class_list)
     print(f"Orthology class sizes:")
@@ -199,9 +462,9 @@ def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_pro
 
     for conn in orth_connections:
         # connection: class + GENES
-        conn_class = conn["c_class"]
-        ref_genes = conn["r_genes"]
-        # que_genes = conn["q_genes"]
+        conn_class = conn[C_CLASS]
+        ref_genes = conn[R_GENES]
+        que_genes = set(conn[Q_GENES])
         # one line per one isoforms line
         if conn_class == ONE2ZERO:
             # special case, nothing to show
@@ -219,6 +482,7 @@ def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_pro
             for ref_transcript in ref_transcripts:
                 # also, there might be > 1 transcript per gene
                 projections = t_trans_to_projections[ref_transcript]
+                proj_not_added = True
                 if not projections:
                     # probably, due to some reasons some transcripts don't have any
                     # associated orthology projection
@@ -228,16 +492,35 @@ def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_pro
                 for proj in projections:
                     # and last, each transcript can be projected > once
                     proj_q_gene = q_trans_to_gene[proj]
+                    if proj_q_gene not in que_genes:
+                        # there are orthologous projections detected earlier but
+                        # we removed them earlier
+                        continue
+                    proj_not_added = False  # if True -> consider this transcript skipped
                     f.write(f"{ref_gene}\t{ref_transcript}\t{proj_q_gene}\t{proj}\t{conn_class}\n")
+                if proj_not_added is True:
+                    # see comments for (if not projections)
+                    non_orthologous_isoforms.append(ref_transcript)
     # close file and return non-orthologous reference isoforms
     f.close() if out != "stdout" else None
     return non_orthologous_isoforms
 
 
+def get_edge_score(ref_que_conn_scores):
+    """Return ref_gene: que_genene: score dict."""
+    ret = {}
+    for edge, scores in ref_que_conn_scores.items():
+        max_score = max(scores)
+        ret[edge] = max_score
+    return ret
+
+
 def orthology_type_map(ref_bed, que_bed, out, ref_iso=None, que_iso=None,
-                       paralogs_arg=None, loss_data=None, save_skipped=None):
+                       paralogs_arg=None, loss_data=None, save_skipped=None,
+                       orth_scores_arg=None):
     """Make orthology classification track."""
     q_trans_paralogs = read_paralogs(paralogs_arg)  # do not include paralogs
+    q_trans_l_score = read_proj_scores(orth_scores_arg)
     ref_transcripts = extract_names_from_bed(ref_bed)  # list of reference transcripts
     que_transcripts_all = extract_names_from_bed(que_bed)  # list of query transcripts
     if loss_data is None:
@@ -257,10 +540,14 @@ def orthology_type_map(ref_bed, que_bed, out, ref_iso=None, que_iso=None,
     # make transcript to projections dict:
     t_trans_to_projections = get_t_trans_to_projections(que_transcripts)
     # create graph to connect orthologous transcripts
-    o_graph = connect_genes(r_trans_to_gene, t_trans_to_projections, q_trans_to_gene)
+    o_graph, ref_que_conn_scores = connect_genes(r_trans_to_gene,
+                                                 t_trans_to_projections,
+                                                 q_trans_to_gene,
+                                                 q_trans_l_score)
+    edge_to_score = get_edge_score(ref_que_conn_scores)
     # if a group of reference and query genes are in the same connected component
     # then they are orthologs
-    orth_connections = extract_orth_connections(o_graph, r_genes_all, q_genes_all)
+    orth_connections = extract_orth_connections(o_graph, r_genes_all, q_genes_all, edge_to_score)
     # save data, get list of transcript that were not projected
     not_saved = save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_projections, out)
     if save_skipped:
@@ -284,6 +571,7 @@ def parse_args():
     app.add_argument("--paralogs", "-p", default=None, help="List of paralogs")
     app.add_argument("--loss_data", "-l", default=None, help="GLP classification")
     app.add_argument("--save_skipped", "-s", default=None, help="Save orphan transcripts")
+    app.add_argument("--orth_scores", "-o", default=None, help="Orthology scores")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -302,7 +590,8 @@ def main():
                        que_iso=args.que_isoforms,
                        paralogs_arg=args.paralogs,
                        loss_data=args.loss_data,
-                       save_skipped=args.save_skipped)
+                       save_skipped=args.save_skipped,
+                       orth_scores_arg=args.orth_scores)
 
 
 if __name__ == "__main__":

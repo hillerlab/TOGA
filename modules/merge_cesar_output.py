@@ -60,6 +60,7 @@ def parse_args():
     app.add_argument("skipped", help="Save skipped genes")
     app.add_argument("--output_trash", default=None, help="Save deleted exons")
     app.add_argument("--fragm_data", default=None, help="For each bed fragment save range of included exons")
+    app.add_argument("--exclude", default=None, help="File containing a list of transcripts to exclude")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -178,13 +179,16 @@ def split_ex_reg_in_chrom(exon_regions):
     return chrom_n_to_pieces
 
 
-def parse_cesar_bdb(arg_input, v=False):
+def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
     """Parse CESAR bdb file core function."""
     in_ = open(arg_input, "r")  # read cesar bdb file
     # two \n\n divide each unit of information
     content = [x for x in in_.read().split("\n\n") if x]
     in_.close()
     # GLP-related data is already filtered out by cesar_runner
+
+    # get set of excluded genes
+    exclude = set() if exclude_arg is None else exclude_arg
 
     # initiate collectors
     bed_lines = []  # save bed lines here
@@ -201,6 +205,10 @@ def parse_cesar_bdb(arg_input, v=False):
         # one elem - one CESAR call (one ref transcript and >=1 chains)
         # now loop gene-by-gene
         gene = elem.split("\n")[0][1:]
+        if gene in exclude:
+            skipped.append(f"{gene}\tfound in the exclude list")
+            continue
+
         eprint(f"Reading gene {gene}") if v else None
         cesar_out = "\n".join(elem.split("\n")[1:])
 
@@ -353,7 +361,6 @@ def parse_cesar_bdb(arg_input, v=False):
                 bed_track_to_exons = "\t".join(bed_track_to_exons_lst)
                 bed_track_and_exon_nums.append(bed_track_to_exons)
 
-
         # ordinary branch: one chain --> one projection
         for chain_id in chain_dir.keys():
             if chain_id == FRAGM_ID:
@@ -395,8 +402,8 @@ def parse_cesar_bdb(arg_input, v=False):
 
             # join in a bed line
             bed_list = map(str, [chrom, chrom_start, chrom_end, name,
-                                DEFAULT_SCORE, strand, thickStart, thick_end, BLACK,
-                                block_count, block_sizes_str, block_starts_str])
+                                 DEFAULT_SCORE, strand, thickStart, thick_end, BLACK,
+                                 block_count, block_sizes_str, block_starts_str])
             bed_line = "\t".join(bed_list)
             bed_lines.append(bed_line)
 
@@ -461,15 +468,29 @@ def parse_cesar_bdb(arg_input, v=False):
     return ret
 
 
+def get_excluded_genes(exc_arg):
+    """Load set of transcripts to be excluded."""
+    if exc_arg:
+        f = open(exc_arg, "r")
+        exclude = set(x.rstrip() for x in f)
+        f.close()
+        return exclude
+    else:
+        return set()
+
+
 def merge_cesar_output(input_dir, output_bed, output_fasta,
                        meta_data_arg, skipped_arg, prot_arg,
-                       codon_arg, output_trash, fragm_data=None):
+                       codon_arg, output_trash, fragm_data=None,
+                       exclude=None):
     """Merge multiple CESAR output files."""
     # check that input dir is correct
     die(f"Error! {input_dir} is not a dir!") \
         if not os.path.isdir(input_dir) else None
     # get list of bdb files (output of CESAR part)
     bdbs = [x for x in os.listdir(input_dir) if x.endswith(".txt")]
+    # get list of excluded transcripts
+    excluded_genes = get_excluded_genes(exclude)
 
     # initiate lists for different types of output:
     bed_summary = []
@@ -488,7 +509,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         # parse bdb files one by one
         bdb_path = os.path.join(input_dir, bdb_file)
         try:  # try to parse data
-            parsed_data = parse_cesar_bdb(bdb_path)
+            parsed_data = parse_cesar_bdb(bdb_path, exclude_arg=excluded_genes)
         except AssertionError:
             # if this happened: some assertion was violated
             # probably CESAR output data is corrupted
@@ -569,7 +590,8 @@ def main():
                        args.prot_fasta,
                        args.codon_fasta,
                        args.output_trash,
-                       fragm_data=args.fragm_data)
+                       fragm_data=args.fragm_data,
+                       exclude=args.exclude)
 
 
 if __name__ == "__main__":
