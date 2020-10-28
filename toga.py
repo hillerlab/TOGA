@@ -73,9 +73,14 @@ class Toga:
 
         chain_basename = os.path.basename(args.chain_input)
 
+        # define project name
+        if args.project_name:
+            self.project_name = args.project_name
+        elif args.project_dir:
+            self.project_name = os.path.basename(args.project_dir)
+        else:
+            self.project_name = self.__gen_project_name()
         # create project dir
-        self.project_name = self.__gen_project_name() if not args.project_name \
-            else args.project_name
         self.wd = os.path.abspath(args.project_dir) if args.project_dir else  \
             os.path.join(os.getcwd(), self.project_name)
         # for safety; need this to make paths later
