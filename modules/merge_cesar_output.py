@@ -501,13 +501,25 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
     codon_summary = []
     skipped = []
     fragm_genes_summary = []
-    all_ok = True
+    crashed_status = []
 
     task_size = len(bdbs)
     # extract data for all the files
     for num, bdb_file in enumerate(bdbs):
         # parse bdb files one by one
         bdb_path = os.path.join(input_dir, bdb_file)
+
+        # check whether this file exists
+        if not os.path.isfile(bdb_path):
+            stat = (bdb_path, "file doesn't exist!")
+            crashed_status.append(stat)
+            continue
+        # and check that this file has size > 0
+        elif os.stat(bdb_path).st_size == 0:
+            stat = (bdb_path, "file is empty!")
+            crashed_status.append(stat)
+            continue
+
         try:  # try to parse data
             parsed_data = parse_cesar_bdb(bdb_path, exclude_arg=excluded_genes)
         except AssertionError:
@@ -528,8 +540,9 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
 
         if len(bed_lines) == 0:
             # actually should not happen, but can
-            eprint(f"Warning! {bdb_file} is empty")
-            all_ok = False
+            eprint(f"Warning! Cannot extract bed from {bdb_file}")
+            stat = (bdb_path, "Could not extract bed track")
+            crashed_status.append(stat)
             continue  # it is empty
         
         # append data to lists
@@ -576,7 +589,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         f.write("".join(fragm_genes_summary))
         f.close()
 
-    return all_ok
+    return crashed_status
 
 
 def main():

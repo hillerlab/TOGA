@@ -158,6 +158,7 @@ class Toga:
         self.o2o_only = args.o2o_only
         self.keep_nf_logs = args.do_not_del_nf_logs
         self.cesar_ok_merged = None
+        self.cesar_crashed_log = os.path.join(self.wd, "cesar_crashed_jobs.txt")
         self.fragmented_genome = args.fragmented_genome
 
         self.chain_results_df = os.path.join(self.wd, "chain_results_df.tsv")
@@ -598,6 +599,9 @@ class Toga:
         if not self.cesar_ok_merged:
             print("PLEASE NOTE: SOME CESAR JOBS CRASHED")
             print("RESULTS ARE LIKELY INCOMPLETE")
+            print("Please look at:")
+            print(f"{self.rejected_log}\n")
+            print(f"{self.cesar_crashed_log}\n")
         print(f"Saved results to {self.wd}")
         self.__left_done_mark()
         self.die(f"Done! Estimated time: {dt.now() - self.t0}", rc=0)
@@ -611,6 +615,7 @@ class Toga:
         if not self.cesar_ok_merged:
             f.write("\nSome CESAR jobs crashed, please look at:\n")
             f.write(f"{self.rejected_log}\n")
+            f.write(f"{self.cesar_crashed_log}\n")
         f.close()
 
     def __make_indexed_chain(self):
@@ -977,17 +982,24 @@ class Toga:
                                     self.codon_fasta,
                                     self.trash_exons,
                                     fragm_data=self.bed_fragm_exons_data)
-        if all_ok:
-            # there are no empty output files
+        if len(all_ok) == 0:
+            # there are no empty output files -> parsed without errors
             print("CESAR results merged")
             self.cesar_ok_merged = True
         else:
             # there are some empty output files
             # MAYBE everything is fine
+            f = open(self.cesar_crashed_log, "w")
+            for err in all_ok:
+                _path = err[0]
+                _reason = err[1]
+                f.write(f"{_path}\t{_reason}\n")
+            f.close()
             # but need to notify user anyway
             print("WARNING!\nSOME CESAR JOBS LIKELY CRASHED\n!")
             print("RESULTS ARE LIKELY INCOMPLETE")
-            print("PLEASE SEE LOGS FOR DETAILS")
+            print(f"PLEASE SEE {self.cesar_crashed_log} FOR DETAILS")
+            print("THERE IS A CHANCE THAT EVERYTHING IS CORRECT")
             self.cesar_ok_merged = False
 
     def __transcript_quality(self):
