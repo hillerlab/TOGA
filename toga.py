@@ -77,7 +77,8 @@ class Toga:
         if args.project_name:
             self.project_name = args.project_name
         elif args.project_dir:
-            self.project_name = os.path.basename(args.project_dir)
+            _dirname = os.path.dirname(args.project_dir)
+            self.project_name = os.path.basename(_dirname)
         else:
             self.project_name = self.__gen_project_name()
         # create project dir
@@ -602,8 +603,8 @@ class Toga:
 
         self.__time_mark("Everything is done")
         if not self.cesar_ok_merged:
-            print("PLEASE NOTE: SOME CESAR JOBS CRASHED")
-            print("RESULTS ARE LIKELY INCOMPLETE")
+            print("PLEASE NOTE:")
+            print("CESAR RESULTS ARE LIKELY INCOMPLETE")
             print("Please look at:")
             print(f"{self.rejected_log}\n")
             print(f"{self.cesar_crashed_log}\n")
