@@ -10,6 +10,8 @@ __version__ = "1.0"
 __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
+MAX_ATTEMPTS = 3
+
 
 def parse_args():
     """Read args, check."""
@@ -30,13 +32,17 @@ def parse_args():
 
 def call_job(cmd):
     """Call job, continue loop if fails."""
-    try:  # try to call this job
-        cmd_out = subprocess.check_output(cmd, shell=True).decode("utf-8")
-        return cmd_out
-    except subprocess.CalledProcessError as err:
-        eprint(str(err))
-        eprint(f"\n{cmd} FAILED")
-        return 1  # send failure signal
+    attempts = 0
+    # try 3 times
+    while attempts < MAX_ATTEMPTS:
+        try:  # try to call this job
+            cmd_out = subprocess.check_output(cmd, shell=True).decode("utf-8")
+            return cmd_out
+        except subprocess.CalledProcessError as err:
+            eprint(str(err))
+            eprint(f"\n{cmd} FAILED")
+            attempts += 1
+    return 1  # send failure signal
 
 
 def main():
