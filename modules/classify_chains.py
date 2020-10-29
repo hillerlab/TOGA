@@ -7,6 +7,7 @@ We have a XGBoost pre-trained model that can classify them.
 import argparse
 import sys
 from collections import defaultdict
+import functools
 from numpy import log10
 import pandas as pd
 import joblib
@@ -29,15 +30,21 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 SE_MODEL = "models/se_model.dat"
 ME_MODEL = "models/me_model.dat"
 
+ORTH = "ORTH"
+PARA = "PARA"
+TRANS = "TRANS"
+P_PGENES = "P_PGENES"
+
 # we actually extract a redundant amount of features
 # lists of features required by single and multi exon models
 SE_MODEL_FEATURES = ['gl_exo', 'flank_cov', 'exon_perc', 'synt_log']
 ME_MODEL_FEATURES = ['gl_exo', 'loc_exo', 'flank_cov', 'synt_log', 'intr_perc']
+print = functools.partial(print, flush=True)
 
 
 def verbose(msg):
     """Eprint for verbose messages."""
-    eprint(msg + "\n")
+    print(msg + "\n")
 
 
 def parse_args():
@@ -71,45 +78,21 @@ def classify_chains(table, output, se_model_path, me_model_path,
     # get indexes of processed pseudogene chains
     # if a chain has synteny = 1, introns are deleted and exon_num > 1
     # -> then this is a proc pseudogene
-    p_pseudogenes = df[(df["synt"] == 1) &
-                       (df["cds_qlen"] > 0.95) &
-                       (df["ex_num"] > 1)].index
-    verbose(f"Found {len(p_pseudogenes)} processed pseudogenes")
 
-    # save proc_pseudogene chains for each gene that have them
-    gene_to_pp_genes = defaultdict(list)
-    for ind in p_pseudogenes:
-        p_line = df.iloc[ind]
-        gene = p_line["gene"]
-        chain = p_line["chain"]
-        gene_to_pp_genes[gene].append(chain)
-
-    df.drop(p_pseudogenes, inplace=True)  # drop processed pseudogenes
     # move trans chains to a different dataframe
     # trans chain -> a syntenic chain that passes throw the gene body
     #                but has no aligning bases in the CDS
-    trans_lines = df[df["exon_cover"] == 0]
-    trans_lines = trans_lines[trans_lines["synt"] > 1]
-    gene_trans = defaultdict(list)
+    trans_lines = df[(df["exon_cover"] == 0) & (df["synt"] > 1)]
     # remove from dataframe: (this includes trans chains)
     # 1) chains that don't cover CDS
-    df = df[df["exon_cover"] > 0]
     # 2) remove chains that have synteny == 0
-    df = df[df["synt"] > 0]
-
-    verbose("Extracting TRANS chains...")
-    for row in trans_lines.itertuples():
-        # save trans chains for each gene that has them
-        gene_trans[row.gene].append(row.chain)
-
+    df = df[(df["exon_cover"] > 0) & (df["synt"] > 0)]
     df_final = df.copy()  # filtered dataframe: what we will classify
     # compute some necessary features
     df_final["exon_perc"] = df_final["exon_cover"] / df_final["ex_fract"]
     df_final["chain_len_log"] = log10(df_final["chain_len"])
     df_final["synt_log"] = log10(df_final["synt"])
     df_final["intr_perc"] = df_final["intr_cover"] / df_final["intr_fract"]
-    # df_final.loc[df_final["ex_num"] == 1, "single_exon"] = 1
-    # df_final.loc[df_final["ex_num"] != 1, "single_exon"] = 0
     df_final = df_final.fillna(0.0)  # fill NA values with 0.0
 
     if len(df_final) > 0:
@@ -158,7 +141,16 @@ def classify_chains(table, output, se_model_path, me_model_path,
     trans_result = trans_lines.copy()
     df_se_result["pred"] = se_pred
     df_me_result["pred"] = me_pred
-    trans_result["pred"] = -1  # model prediction is a float from 0 to 1, -1 -> for trans chains
+    # model prediction is a float from 0 to 1, -1 -> for trans chains
+    trans_result["pred"] = -1
+    # identify processed pseudogenes, they satisfy the following criteria:
+    # 1) multi-exon (single-exon ones are out of score of the method)
+    # 2) synteny == 1
+    # 3) cds_to_qlen > 0.95
+    # set them score -2
+    df_me_result.loc[(df_me_result["synt"] == 1)
+                     & (df_me_result["exon_qlen"] > 0.95)
+                     & (df_me_result["pred"] < 0.5), "pred"] = -2
 
     # we need gene -> chain -> prediction from each row
     df_se_result = df_se_result.loc[:, ["gene", "chain", "pred"]]
@@ -177,7 +169,7 @@ def classify_chains(table, output, se_model_path, me_model_path,
     gene_class_chains = {}
     genes = set(overall_result["gene"])
     for gene in genes:
-        gene_class_chains[gene] = {"ORTH": [], "PARA": [], "TRANS": [], "P_PGENES": []}
+        gene_class_chains[gene] = {ORTH: [], PARA: [], TRANS: [], P_PGENES: []}
 
     for num, data in enumerate(overall_result.itertuples()):
         gene = data.gene
@@ -185,27 +177,27 @@ def classify_chains(table, output, se_model_path, me_model_path,
         pred = data.pred
 
         if pred == -1:  # spanning (trans) chain
-            gene_class_chains[gene]["TRANS"].append(chain)
+            gene_class_chains[gene][TRANS].append(chain)
+        elif pred == -2:  # processed pseudogene
+            gene_class_chains[gene][P_PGENES].append(chain)
         elif pred < annot_threshold:
-            gene_class_chains[gene]["PARA"].append(chain)
+            gene_class_chains[gene][PARA].append(chain)
         else:  # > annot_threshold
-            gene_class_chains[gene]["ORTH"].append(chain)
+            gene_class_chains[gene][ORTH].append(chain)
         # verbose
-        if gene_to_pp_genes[gene]:
-            gene_class_chains[gene]["P_PGENES"] = gene_to_pp_genes[gene]
         if num % 10000 == 0:
             print(num)
 
     # save orthologs output
     f = open(output, "w") if output != "stdout" else sys.stdout
-    f.write("GENE\tORTH\tPARA\tTRANS\tP_PGENES\n")
+    f.write(f"GENE\t{ORTH}\t{PARA}\t{TRANS}\t{P_PGENES}\n")
     i = 0
     for k, v in gene_class_chains.items():
         i += 1
-        orth = v["ORTH"]
-        para = v["PARA"]
-        trans = v["TRANS"]
-        pp = v["P_PGENES"]
+        orth = v[ORTH]
+        para = v[PARA]
+        trans = v[TRANS]
+        pp = v[P_PGENES]
         orth_f = ",".join(str(x) for x in orth) if orth else "0"
         para_f = ",".join(str(x) for x in para) if para else "0"
         trans_f = ",".join(str(x) for x in trans) if trans else "0"

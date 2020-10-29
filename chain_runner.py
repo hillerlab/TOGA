@@ -284,6 +284,7 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
     verbose(f"Chain block bases: {chain_glob_bases}")
     # compute for each gene finally
     chain_cds_bases = 0  # summarize global set here
+    chain_exon_bases = 0  # summ all exons at once
 
     for gene in work_data["genes"]:
         # pick the data from overlap select table
@@ -312,6 +313,7 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
         # global counters
         # CDS bases increase with blocks V cds in the gene
         chain_cds_bases += blocks_v_cds
+        chain_exon_bases += blocks_v_exons
         # increase number of UTR exons
         # chain_utr_exon_bases += blocks_v_utr_exons
 
@@ -336,7 +338,9 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
     # chain_glob_bases -= chain_utr_exon_bases  # ignore UTR exons!
     chain_cds_bases = local_exo_dict[COMBINED_BED_ID] if nested else chain_cds_bases
     result["global_exo"] = chain_cds_bases / chain_glob_bases if chain_glob_bases != 0 else 0
-    result["CDS_to_Qlen"] = chain_cds_bases / work_data["chain_QLen"] if work_data["chain_QLen"] != 0 else 0
+    # here we consider this transcript separately
+    # nested genes do not affect this feature
+    result["Exlen_to_Qlen"] = chain_exon_bases / work_data["chain_QLen"] if work_data["chain_QLen"] != 0 else 0
 
 
 def extract_cds_lines(all_bed_lines):
@@ -354,7 +358,7 @@ def make_output(work_data, result, t0):
     """Arrange the output."""
     # verbose("Making the output...")
     chain_fields = ["chain", work_data["chain_id"], result["chain_synteny"], result["chain_global_score"],
-                    result["global_exo"], result["CDS_to_Qlen"], result["local_exons"], result["gene_coverage"],
+                    result["global_exo"], result["Exlen_to_Qlen"], result["local_exons"], result["gene_coverage"],
                     result["gene_introns"], result["flanks_cov"], result["chain_len"]]
     chain_output = "\t".join([str(x) for x in chain_fields]) + "\n"
     genes_output = "genes\t{0}\n".format("\t".join(result["gene_overlaps"]))
@@ -399,7 +403,7 @@ def chain_feat_extractor(chain_id, genes, chain_file, bed_file, chain_dict,
               "chain_synteny": 0,
               "local_exons": "",
               "gene_overlaps": [],
-              "CDS_to_Qlen": 0
+              "Exlen_to_Qlen": 0
               }
     # check if all the files, dependencies etc are correct
     check_args(chain_id, genes, chain_file, chain_dict, bed_file, verbose_arg, work_data, result)

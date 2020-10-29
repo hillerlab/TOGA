@@ -258,7 +258,7 @@ def combine(bed_data, chain_data, genes_data, exon_cov, isoforms):
 def save(data, output):
     """Save the data into the file."""
     # make the header
-    header_fields = "gene gene_overs chain synt gl_score gl_exo chain_len cds_qlen loc_exo exon_cover " \
+    header_fields = "gene gene_overs chain synt gl_score gl_exo chain_len exon_qlen loc_exo exon_cover " \
                     "intr_cover gene_len ex_num ex_fract intr_fract flank_cov".split()
     header = "\t".join(header_fields) + "\n"
     # define the stream to write the data
