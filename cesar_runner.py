@@ -38,13 +38,13 @@ def call_job(cmd):
     while attempts < MAX_ATTEMPTS:
         try:  # try to call this job
             cmd_out = subprocess.check_output(cmd, shell=True).decode("utf-8")
-            return (cmd_out, 0)
+            return cmd_out, 0
         except subprocess.CalledProcessError as err_:
             err = err_
             eprint(str(err))
             eprint(f"\n{cmd} FAILED")
             attempts += 1
-    return (err, 1)  # send failure signal
+    return err, 1  # send failure signal
 
 
 def main():

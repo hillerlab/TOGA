@@ -1235,6 +1235,9 @@ def compute_score(codon_data):
 
 def split_indexes(indexes):
     """Split indexes list like 1 2 5 in 1 2 and 5."""
+    verbose(f"Analyze indexes:\n{indexes}")
+    if len(indexes) == 0:
+        return [], []
     left, right = [indexes[0], ], []
     left_now = True
     for i in range(1, len(indexes)):
