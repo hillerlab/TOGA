@@ -655,21 +655,21 @@ class Toga:
         """Wrap split_jobs.py script."""
         # define arguments
         # save split jobs
-        ch_cl_jobs = os.path.join(self.wd, "chain_classification_jobs")
+        self.ch_cl_jobs = os.path.join(self.wd, "chain_classification_jobs")
         # for raw results of this stage
         self.chain_class_results = os.path.join(self.wd, "chain_classification_results")
         self.chain_cl_jobs_combined = os.path.join(self.wd, "chain_class_jobs_combined")
         rejected_filename = "SPLIT_CHAIN_REJ.txt"
         rejected_path = os.path.join(self.rejected_dir,
                                      rejected_filename)
-        self.temp_files.append(ch_cl_jobs)
+        self.temp_files.append(self.ch_cl_jobs)
         self.temp_files.append(self.chain_class_results)
         self.temp_files.append(self.chain_cl_jobs_combined)
 
         split_jobs_cmd = f"{self.SPLIT_CHAIN_JOBS} {self.chain_file} " \
                          f"{self.ref_bed} {self.index_bed_file} " \
                          f"--jobs_num {self.chain_jobs} " \
-                         f"--jobs {ch_cl_jobs} " \
+                         f"--jobs {self.ch_cl_jobs} " \
                          f"--jobs_file {self.chain_cl_jobs_combined} " \
                          f"--results_dir {self.chain_class_results} " \
                          f"--rejected {rejected_path}"
@@ -1081,6 +1081,9 @@ class Toga:
         # save CESAR outputs
         cesar_results_merged = os.path.join(self.wd, "cesar_results.txt")
         self.__merge_dir(self.cesar_results, cesar_results_merged)
+        # remove chain classification data
+        shutil.rmtree(self.ch_cl_jobs) if os.path.isdir(self.ch_cl_jobs) else None
+        shutil.rmtree(self.chain_class_results) if os.path.isdir(self.chain_class_results) else None
 
 
 def parse_args():
