@@ -34,15 +34,17 @@ def call_job(cmd):
     """Call job, continue loop if fails."""
     attempts = 0
     # try 3 times
+    err = ""
     while attempts < MAX_ATTEMPTS:
         try:  # try to call this job
             cmd_out = subprocess.check_output(cmd, shell=True).decode("utf-8")
-            return cmd_out
-        except subprocess.CalledProcessError as err:
+            return (cmd_out, 0)
+        except subprocess.CalledProcessError as err_:
+            err = err_
             eprint(str(err))
             eprint(f"\n{cmd} FAILED")
             attempts += 1
-    return 1  # send failure signal
+    return (err, 1)  # send failure signal
 
 
 def main():
@@ -61,13 +63,13 @@ def main():
     for num, job in enumerate(jobs, 1):
         eprint(f"Calling:\n{job}")
         # catch job stdout
-        job_out = call_job(job)
-        if job_out == 1:
+        job_out, rc = call_job(job)
+        if rc == 1:
             # a job failed with code 1 -> send the signal upstream
             # abort execution, write what job exactly failed
             # there are rare cases where CESAR fails
             # these cases usually contain rubbish
-            rejected.append(f"{job}\tCESAR JOB FAILURE\n")
+            rejected.append(f"{job}\tCESAR JOB FAILURE\t{job_out}\n")
             continue
 
         # job looks like ./CESAR_wrapper.py

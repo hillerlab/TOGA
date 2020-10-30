@@ -1563,8 +1563,8 @@ def arrange_output(gene, exon_seqs, query_exon_sequences, p_ids, p_bl, all_query
         query_blosums = p_bl[chain]
         q_to_t_num = ch_q_to_t_num[chain]
         query_coords = all_query_coords[chain]
-        exons_gap_data = chain_exon_gap[chain] if chain_exon_gap else None
-        exon_class_data = chain_exon_class[chain] if chain_exon_class else None
+        exons_gap_data = chain_exon_gap[chain] if chain_exon_gap else {}
+        exon_class_data = chain_exon_class[chain] if chain_exon_class else {}
         exon_exp_reg = chain_exon_exp_reg[chain] if chain_exon_exp_reg else None
         exon_nums = query_seqs.keys()
         exons_missed = missed[chain] if missed else []
@@ -1573,11 +1573,11 @@ def arrange_output(gene, exon_seqs, query_exon_sequences, p_ids, p_bl, all_query
         # and exon-by-exon
         for exon_num in exon_nums:
             # collect data for gene loss detector!
-            reference_seq = reference_seqs[exon_num]
-            query_seq = query_seqs[exon_num]
-            query_pid = query_pids[exon_num]
-            query_blo = query_blosums[exon_num]
-            coord = query_coords[exon_num]
+            reference_seq = reference_seqs.get(exon_num, "N")
+            query_seq = query_seqs.get(exon_num, "N")
+            query_pid = query_pids.get(exon_num, 0.0)
+            query_blo = query_blosums.get(exon_num, 0.0)
+            coord = query_coords.get(exon_num, UNDEF_REGION)
 
             # extract marks for the exon
             if exon_num in exons_missed or not extra_fields:
@@ -1585,8 +1585,8 @@ def arrange_output(gene, exon_seqs, query_exon_sequences, p_ids, p_bl, all_query
                 exon_class = "N/A"
                 exp_reg, reg_data = ("N/A", "N/A"), "N/A"
             else:
-                is_gap = "GAP" if exons_gap_data[exon_num] else "OK"
-                exon_class = exon_class_data[exon_num]
+                is_gap = "GAP" if exons_gap_data.get(exon_num, None) else "OK"
+                exon_class = exon_class_data.get(exon_num, "N/A")
                 # exp_reg = exon_exp_reg[exon_num]
                 act_reg = [int(x) for x in coord.split(":")[1].split("-")]
                 # reg_data = "INC" if intersect_ranges(act_reg, exp_reg) > 0 else "EXCL"
