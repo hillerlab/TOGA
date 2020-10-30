@@ -38,6 +38,7 @@ STOPS = {"TAG", "TGA", "TAA"}
 LOCATION = os.path.dirname(os.path.abspath(__file__))
 VERBOSE = False
 UNDEF_REGION = "None:0-0"
+TMP_NAME_SIZE = 10
 
 acceptor_site = ("ag", )
 donor_site = ("gt", "gc", )
@@ -927,7 +928,7 @@ def make_in_filename(cesar_in):
     except FileNotFoundError:  # /dev/shm not found
         temp_dir = "/tmp/{0}".format(whoami)
         os.mkdir(temp_dir) if not os.path.isdir(temp_dir) else None
-    filename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6)) + ".fa"
+    filename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(TMP_NAME_SIZE)) + ".fa"
     cesar_in_path = os.path.join(temp_dir, filename)
     # mark that it is a temp file with True
     return cesar_in_path, True
