@@ -183,7 +183,7 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
     """Parse CESAR bdb file core function."""
     in_ = open(arg_input, "r")  # read cesar bdb file
     # two \n\n divide each unit of information
-    content = [x for x in in_.read().split("\n\n") if x]
+    content = [x for x in in_.read().split("#") if x]
     in_.close()
     # GLP-related data is already filtered out by cesar_runner
 
@@ -203,14 +203,15 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
 
     for elem in content:
         # one elem - one CESAR call (one ref transcript and >=1 chains)
+        elem_lines = [x for x in elem.split("\n") if x != ""]
         # now loop gene-by-gene
-        gene = elem.split("\n")[0][1:]
+        gene = elem_lines[0].replace("#", "")
         if gene in exclude:
             skipped.append(f"{gene}\tfound in the exclude list")
             continue
 
         eprint(f"Reading gene {gene}") if v else None
-        cesar_out = "\n".join(elem.split("\n")[1:])
+        cesar_out = "\n".join(elem_lines[1:])
 
         # basically this is a fasta file with headers
         # saturated with different information

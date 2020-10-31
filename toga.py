@@ -972,6 +972,11 @@ class Toga:
             for path in project_paths:
                 shutil.rmtree(path) if os.path.isdir(path) else None
 
+        if any(p.returncode != 0 for p in processes):
+            # some para/nextflow job died: critical issue
+            err = "Error! Some para/nextflow processes died!"
+            self.die(err, 1)
+
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
         print("Merging CESAR output to make fasta and bed files.")
