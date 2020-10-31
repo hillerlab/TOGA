@@ -2,7 +2,7 @@
 """Gene losses summary.
 
 Classify projections, transcripts and genes
-as lost, grey, missing etc.
+as lost, uncertain, missing etc.
 """
 import argparse
 import sys
@@ -51,7 +51,7 @@ CLASS_TO_COL = {N_: BLACK, PG: BROWN, PM: GREY, L: LIGHT_RED,
 
 
 REM_T_L = 0.35  # less than REM_T_L of CDS left -> it's lost
-REM_T_G = 0.49  # less than REM_T_G of CDS left -> it's grey
+REM_T_G = 0.49  # less than REM_T_G of CDS left -> it's UL
 PART_THR = 0.5  # border between missing and partially intact
 
 
@@ -190,7 +190,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                            p_to_pint_m_int, projection_to_mutations, p_to_i_codon_prop,
                            p_to_p_out_of_bord, p_80_int, p_80_pre,
                            trace=None, paral_=None):
-    """Classify projections as intact, lost, grey, etc."""
+    """Classify projections as intact, lost, uncertain, etc."""
     projection_class = {}  # our answer: projection -> class
     # deal with paral_ argument
     if paral_ is None:
@@ -316,14 +316,14 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
             print("GO TO BRANCH 1: No inact mut in m80%") if tracing_ else None
             # first branch -> no inact mutations in the middle 80% of CDS
             # possible: Intact, partially intact, missed
-            # grey if too small fraction is left
+            # uncertain if too small fraction is left
             # if there are any inact mutations -> it doesn't really matter
             if p_i_codons < REM_T_G:
-                # %intact codons is less than grey threshold: it's grey
+                # %intact codons is less than UL threshold: it's UL
                 # if it is also less that lost threshold: it was classified above
                 print(f"Prop of intact codons is {p_i_codons}") if tracing_ else None
                 print(f"Need > {REM_T_G} to be I/PI") if tracing_ else None
-                print(f"-> Class Grey") if tracing_ else None
+                print(f"-> Class Uncertain Loss") if tracing_ else None
                 projection_class[projection] = UL
                 continue
             if len(missing_exons) == 0:
@@ -361,7 +361,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
         else:  # second major branch
             print("GO TO BRANCH 2: there are inact mut in m80%") if tracing_ else None
             # second major branch: there ARE inact mutations in the middle 80% of CDS
-            # possible classes: grey or lost
+            # possible classes: uncertain loss or lost
             for m in other_muts:  # update exon status
                 exon_status[m[0]] = "L"
             print(f"Exon status is:\n{exon_status}") if tracing_ else None
@@ -388,8 +388,8 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                     projection_class[projection] = L
                 else:
                     # there are inact mutations in the middle 80% of CDS
-                    # not enough evidence to say it's lost: Grey
-                    print("Not enough evidence for L -> G") if tracing_ else None
+                    # not enough evidence to say it's lost: Uncertain
+                    print("Not enough evidence for L -> UL") if tracing_ else None
                     projection_class[projection] = UL
                 continue
             # multi-exon gene branch
@@ -419,18 +419,18 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                     print(f"Some of exons > 40% are Deleted -> Lost") if tracing_ else None
                     projection_class[projection] = L
                     continue
-                print(f"Not enough evidence for Lost -> Grey") if tracing_ else None
+                print(f"Not enough evidence for Lost -> Uncertain") if tracing_ else None
                 projection_class[projection] = UL
             else:
                 # if %intact > 60: cannot be intact
                 # but not enough evidence to call it lost
-                # class grey OR missing
+                # class uncertain loss OR missing
                 print(f"% intact M int > 60 branch") if tracing_ else None
                 if frame_oub > PART_THR:
                     print("-> class PM, too big fraction out of chain borders") if tracing_ else None
                     projection_class[projection] = PM
                 else:
-                    print(f"not enough evidence for L -> Grey") if tracing_ else None
+                    print(f"not enough evidence for L -> Uncertain") if tracing_ else None
                     projection_class[projection] = UL
                 continue
     return projection_class
@@ -571,11 +571,11 @@ def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
         # idea is the following: we get classes of all projections
         # associated with this transcript
         # then we get the "best" class and assign it to this transcript
-        # it a transcript has M, L and G projections, we will
-        # classify this transcript as Grey
+        # it a transcript has M, L and UL projections, we will
+        # classify this transcript as Uncertain Loss
         # classes are "enum" so we can just apply max() function
         p_classes = set(projection_class.get(p) for p in projections)
-        status = max(p_classes)  # just use Enum I > G > L > M > N
+        status = max(p_classes)  # just use Enum I > UL > L > M > N
         transcript_class[trans] = status
     all_transcripts = set(transcript_class.keys())
 

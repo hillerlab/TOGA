@@ -32,7 +32,7 @@ __email__ = "kirilenk@mpi-cbg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 INCLUDE_CLASSES = {"I", "PI", "UL"}
-SCORE_THR = 0.9
+
 ONE2ZERO = "one2zero"
 ONE2ONE = "one2one"
 ONE2MANY = "one2many"
