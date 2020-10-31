@@ -1055,9 +1055,11 @@ class Toga:
         for filename in files_list:
             path = os.path.join(dir_name, filename)
             with open(path, "r") as f:
-                content = [x for x in f.readlines() if x != "\n"]
-            lines = "".join(content)
-            buffer.write(lines)
+                # content = [x for x in f.readlines() if x != "\n"]
+                content = f.read()
+            # lines = "".join(content)
+            # buffer.write(lines)
+            buffer.write(content)
         buffer.close()
         shutil.rmtree(dir_name)
 
