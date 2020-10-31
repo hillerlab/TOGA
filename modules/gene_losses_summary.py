@@ -39,15 +39,15 @@ PG = 0  # ParaloG
 PM = 1  # Partial missing
 L = 2  # Lost
 M = 3  # Missing
-G = 4  # Grey
+UL = 4  # Uncertain loss
 PI = 5  # Partially intact
 I = 6  # Intact
 # N - skipped due to technical reasons
-NUM_TO_CLASS = {-1: "N", 0: "PG", 1: "PM", 2: "L", 3: "M", 4: "G", 5: "PI", 6: "I"}
+NUM_TO_CLASS = {-1: "N", 0: "PG", 1: "PM", 2: "L", 3: "M", 4: "UL", 5: "PI", 6: "I"}
 
 # link GLP class to color
 CLASS_TO_COL = {N_: BLACK, PG: BROWN, PM: GREY, L: LIGHT_RED,
-                M: GREY, G: SALMON, PI: LIGHT_BLUE, I: BLUE}
+                M: GREY, UL: SALMON, PI: LIGHT_BLUE, I: BLUE}
 
 
 REM_T_L = 0.35  # less than REM_T_L of CDS left -> it's lost
@@ -324,7 +324,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                 print(f"Prop of intact codons is {p_i_codons}") if tracing_ else None
                 print(f"Need > {REM_T_G} to be I/PI") if tracing_ else None
                 print(f"-> Class Grey") if tracing_ else None
-                projection_class[projection] = G
+                projection_class[projection] = UL
                 continue
             if len(missing_exons) == 0:
                 # everything is fine, no missing sequence at all, middle 80% intact
@@ -390,7 +390,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                     # there are inact mutations in the middle 80% of CDS
                     # not enough evidence to say it's lost: Grey
                     print("Not enough evidence for L -> G") if tracing_ else None
-                    projection_class[projection] = G
+                    projection_class[projection] = UL
                 continue
             # multi-exon gene branch
             num_exons_affected = len([k for k, v in exon_status.items() if v == "D" or v == "L"])
@@ -420,7 +420,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                     projection_class[projection] = L
                     continue
                 print(f"Not enough evidence for Lost -> Grey") if tracing_ else None
-                projection_class[projection] = G
+                projection_class[projection] = UL
             else:
                 # if %intact > 60: cannot be intact
                 # but not enough evidence to call it lost
@@ -431,7 +431,7 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                     projection_class[projection] = PM
                 else:
                     print(f"not enough evidence for L -> Grey") if tracing_ else None
-                    projection_class[projection] = G
+                    projection_class[projection] = UL
                 continue
     return projection_class
 
