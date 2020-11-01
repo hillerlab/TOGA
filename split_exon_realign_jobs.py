@@ -35,6 +35,7 @@ REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 1000000
 EXTRA_MEM = 100000  # extra memory "just in case"
 BIGMEM_JOBSNUM = 100  # TODO: make a parameter?
+REF_LEN_THRESHOLD = 0.05  # if query length < 5% CDS then skip it
 
 # connect shared lib; define input and output data types
 chain_coords_conv_lib_path = os.path.join(LOCATION,
@@ -254,10 +255,13 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
         # extract chain itself
         chain_body = chain_extract_id(bdb_chain_file, chain_id).encode()
         all_gene_ranges = []
+        genes_cds_length = []
         for gene in genes:
             # get genomic coordinates for each gene
             gene_data = bed_data.get(gene)
             grange = f"{gene_data[0]}:{gene_data[1]}-{gene_data[2]}"
+            cds_length = sum(gene_data[3])
+            genes_cds_length.append(cds_length)
             all_gene_ranges.append(grange)
             
         # we need to get corresponding regions in the query
@@ -287,6 +291,8 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
 
         for line in chain_coords_conv_out[1:]:
             # then parse the output
+            # line contains information about transcript range in the query
+            # and the corresponding locus in the reference
             line_info = line.rstrip().split()
             # line info is: region num, region in reference, region in query
             # one line per one gene, in the same order
@@ -300,7 +306,9 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
             tar_len = t_end - t_start
             len_delta = abs(tar_len - que_len)
             delta_gene_times = len_delta / tar_len
-            gene = genes[num]
+            gene = genes[num]  # shared lib returns data per gene in the same order
+            cds_length = genes_cds_length[num]
+            min_query_length = cds_length * REF_LEN_THRESHOLD
             field = chain_gene_field.get((chain_id, gene))
             # check that corresponding region in the query is not too long
             # for instance query locus is 50 times longer than the gene
@@ -310,6 +318,12 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
             long_loci_field = field in LONG_LOCI_FIELDS
             if (high_rel_len or high_abs_len) and long_loci_field:
                 skipped.append((gene, chain_id, "too long query locus"))
+                continue
+            # in contrast, if query locus is too short (<5% CDS length)
+            # then CESAR might not build HMM properly, we skip this
+            # hard to imagine in what case such an input will give us any meaningful result
+            if que_len < min_query_length:
+                skipped.append((gene, chain_id, "too short query locus"))
                 continue
             # for each chain-gene pair save query region length
             # need this for required memory estimation
