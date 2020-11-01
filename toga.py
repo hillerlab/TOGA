@@ -163,8 +163,10 @@ class Toga:
         self.no_fpi = args.no_fpi
         self.o2o_only = args.o2o_only
         self.keep_nf_logs = args.do_not_del_nf_logs
-        self.cesar_ok_merged = None
-        self.cesar_crashed_log = os.path.join(self.wd, "cesar_crashed_jobs.txt")
+        self.cesar_ok_merged = None  # Flag: indicates whether any cesar job BATCHES crashed
+        self.crashed_cesar_jobs = []  # List of individual cesar JOBS that crashed
+        self.cesar_crashed_batches_log = os.path.join(self.wd, "_cesar_crashed_job_batches.txt")
+        self.cesar_crashed_jobs_log = os.path.join(self.wd, "_cesar_crashed_jobs.txt")
         self.fragmented_genome = args.fragmented_genome
 
         self.chain_results_df = os.path.join(self.wd, "chain_results_df.tsv")
@@ -599,6 +601,7 @@ class Toga:
         # 11) merge logs containing information about skipped genes,transcripts, etc.
         print("#### STEP 11: Cleanup: merge parallel steps output files")
         self.__merge_split_files()
+        self.__check_crashed_cesar_jobs()
         # Everything is done
 
         self.__time_mark("Everything is done")
@@ -606,11 +609,39 @@ class Toga:
             print("PLEASE NOTE:")
             print("CESAR RESULTS ARE LIKELY INCOMPLETE")
             print("Please look at:")
-            print(f"{self.rejected_log}\n")
-            print(f"{self.cesar_crashed_log}\n")
+            print(f"{self.cesar_crashed_batches_log}\n")
         print(f"Saved results to {self.wd}")
         self.__left_done_mark()
         self.die(f"Done! Estimated time: {dt.now() - self.t0}", rc=0)
+
+    def __check_crashed_cesar_jobs(self):
+        """Check whether any CESAR jobs crashed.
+
+        Previously we checked entire batches of CESAR jobs.
+        Now we are seeking for individual jobs.
+        Most likely they crashed due to internal CESAR error.
+        """
+        # grep for crashed jobs in the rejected logs
+        if not os.path.isfile(self.rejected_log):
+            return  # no log: nothing to do
+        f = open(self.rejected_log, "r")
+        for line in f:
+            if "CESAR" not in line:
+                # not related to CESAR
+                continue
+            # extract cesar wrapper command from the log
+            cesar_cmd = line.split("\t")[0]
+            self.crashed_cesar_jobs.append(cesar_cmd)
+        f.close()
+        # save crashed jobs list if it's non-empty
+        if len(self.crashed_cesar_jobs) == 0:
+            return  # good, nothing crashed
+        print(f"{len(self.crashed_cesar_jobs)} CESAR wrapper commands failed")
+        f = open(self.cesar_crashed_jobs_log, "w")
+        for cmd in self.crashed_cesar_jobs:
+            f.write(f"{cmd}\n")
+        print(f"Failed CESAR wrapper commands were written to: {self.cesar_crashed_jobs_log}")
+        f.close()
 
     def __left_done_mark(self):
         """Write a file confirming that everything is done."""
@@ -619,9 +650,12 @@ class Toga:
         now_ = str(dt.now())
         f.write(f"Done at {now_}\n")
         if not self.cesar_ok_merged:
-            f.write("\nSome CESAR jobs crashed, please look at:\n")
-            f.write(f"{self.rejected_log}\n")
-            f.write(f"{self.cesar_crashed_log}\n")
+            f.write("\n:Some CESAR batches produced an empty result, please see:\n")
+            f.write(f"{self.cesar_crashed_batches_log}\n")
+        if len(self.crashed_cesar_jobs) > 0:
+            num_ = len(self.crashed_cesar_jobs)
+            f.write(f"Some individual CESAR jobs ({num_} jobs) crashed\n")
+            f.write(f"Please see:\n{self.cesar_crashed_jobs_log}\n")
         f.close()
 
     def __make_indexed_chain(self):
@@ -1000,17 +1034,17 @@ class Toga:
         else:
             # there are some empty output files
             # MAYBE everything is fine
-            f = open(self.cesar_crashed_log, "w")
+            f = open(self.cesar_crashed_batches_log, "w")
             for err in all_ok:
                 _path = err[0]
                 _reason = err[1]
                 f.write(f"{_path}\t{_reason}\n")
             f.close()
             # but need to notify user anyway
-            print("WARNING!\nSOME CESAR JOBS LIKELY CRASHED\n!")
+            print("WARNING!\nSOME CESAR JOB BATCHES LIKELY CRASHED\n!")
             print("RESULTS ARE LIKELY INCOMPLETE")
-            print(f"PLEASE SEE {self.cesar_crashed_log} FOR DETAILS")
-            print("THERE IS A CHANCE THAT EVERYTHING IS CORRECT")
+            print(f"PLEASE SEE {self.cesar_crashed_batches_log} FOR DETAILS")
+            print("THERE IS A MINOR CHANCE THAT EVERYTHING IS CORRECT")
             self.cesar_ok_merged = False
 
     def __transcript_quality(self):
@@ -1080,7 +1114,6 @@ class Toga:
     def __merge_split_files(self):
         """Merge intermediate/temp files."""
         # merge rejection logs
-
         self.__merge_dir(self.rejected_dir, self.rejected_log)
         # save inact mutations data
         inact_mut_file = os.path.join(self.wd, "inact_mut_data.txt")

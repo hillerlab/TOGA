@@ -1011,15 +1011,18 @@ def run_cesar(input_file, memory_raw, istemp, memlim, cesar_binary):
     if memlim and memory_raw > memlim:
         eprint(f"Warning! Memory limit is {memlim} but {memory_raw} requested for this run.")
     cesar_cmd = f"{cesar_binary} {input_file} -x {x_param}"
-    try:  # run CESAR with the memory limits
-        cesar_out = subprocess.check_output(cesar_cmd, shell=True).decode("utf-8")
-    except subprocess.CalledProcessError as grepexc:  # CESAR died
-        cesar_out = None
+    p = subprocess.Popen(cesar_cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    b_stdout, b_stderr = p.communicate()
+    rc = p.returncode
+    if rc != 0:
+        # CESAR job failed: die
+        stderr = b_stderr.decode("utf-8")
         os.remove(input_file) if istemp else None
-        eprint(str(grepexc) + "\n")
-        eprint("CESAR wrapper params were: {0}".format(" ".join(sys.argv)))
-        die(f"CESAR failed run for {cesar_cmd}", 1)
-    return cesar_out  # caught stdout
+        eprint("CESAR wrapper command crashed: {0}".format(" ".join(sys.argv)))
+        die(f"CESAR failed run for {cesar_cmd}: {stderr}", 1)
+        return None  # to suppress linter
+    cesar_out = b_stdout.decode("utf-8")
+    return cesar_out
 
 
 def save(output, dest, t0_, loss_report=None):
