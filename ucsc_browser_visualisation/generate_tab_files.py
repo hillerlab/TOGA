@@ -170,8 +170,8 @@ def get_projection_class(wd):
         lclass_raw = line_data[2]
         if lclass_raw == "I":
             lclass = "Intact"
-        elif lclass_raw == "G":
-            lclass = "Grey"
+        elif lclass_raw == "UL":
+            lclass = "Uncertain Loss"
         elif lclass_raw == "PI":
             lclass = "Partially intact"
         elif lclass_raw == "M":
