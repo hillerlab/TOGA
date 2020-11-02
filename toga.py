@@ -614,50 +614,6 @@ class Toga:
         self.__left_done_mark()
         self.die(f"Done! Estimated time: {dt.now() - self.t0}", rc=0)
 
-    def __check_crashed_cesar_jobs(self):
-        """Check whether any CESAR jobs crashed.
-
-        Previously we checked entire batches of CESAR jobs.
-        Now we are seeking for individual jobs.
-        Most likely they crashed due to internal CESAR error.
-        """
-        # grep for crashed jobs in the rejected logs
-        if not os.path.isfile(self.rejected_log):
-            return  # no log: nothing to do
-        f = open(self.rejected_log, "r")
-        for line in f:
-            if "CESAR" not in line:
-                # not related to CESAR
-                continue
-            # extract cesar wrapper command from the log
-            cesar_cmd = line.split("\t")[0]
-            self.crashed_cesar_jobs.append(cesar_cmd)
-        f.close()
-        # save crashed jobs list if it's non-empty
-        if len(self.crashed_cesar_jobs) == 0:
-            return  # good, nothing crashed
-        print(f"{len(self.crashed_cesar_jobs)} CESAR wrapper commands failed")
-        f = open(self.cesar_crashed_jobs_log, "w")
-        for cmd in self.crashed_cesar_jobs:
-            f.write(f"{cmd}\n")
-        print(f"Failed CESAR wrapper commands were written to: {self.cesar_crashed_jobs_log}")
-        f.close()
-
-    def __left_done_mark(self):
-        """Write a file confirming that everything is done."""
-        mark_file = os.path.join(self.wd, "done.status")
-        f = open(mark_file, "w")
-        now_ = str(dt.now())
-        f.write(f"Done at {now_}\n")
-        if not self.cesar_ok_merged:
-            f.write("\n:Some CESAR batches produced an empty result, please see:\n")
-            f.write(f"{self.cesar_crashed_batches_log}\n")
-        if len(self.crashed_cesar_jobs) > 0:
-            num_ = len(self.crashed_cesar_jobs)
-            f.write(f"Some individual CESAR jobs ({num_} jobs) crashed\n")
-            f.write(f"Please see:\n{self.cesar_crashed_jobs_log}\n")
-        f.close()
-
     def __make_indexed_chain(self):
         """Make chain index file."""
         # make *.bb file
@@ -877,6 +833,7 @@ class Toga:
         project_paths = []  # dirs with logs
         processes = []  # keep subprocess objects here
         timestamp = str(time.time()).split(".")[1]  # for project name
+        project_names = []
 
         # get a list of buckets
         if self.cesar_buckets == "0":
@@ -885,6 +842,7 @@ class Toga:
             buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
         print(f"Pushing {len(buckets)} joblists")
 
+        # generate buckets, create subprocess instances
         for b in buckets:
             # create config file
             # 0 means that that buckets were not split
@@ -919,6 +877,7 @@ class Toga:
 
             # create project directory for logs
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_{b}"
+            project_names.append(nf_project_name)
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
 
@@ -941,6 +900,7 @@ class Toga:
             processes.append(p)
             time.sleep(CESAR_PUSH_INTERVAL)
 
+        # push bigmem jobs
         if self.nextflow_bigmem_config and not self.para:
             # if provided: push bigmem jobs also
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
@@ -984,7 +944,7 @@ class Toga:
                 p = subprocess.Popen(cmd, shell=True)
                 processes.append(p)
 
-        # monitor jobs, iteration counter
+        # monitor jobs
         iter_num = 0
         while True:  # Run until all jobs are done (or crashed)
             all_done = True  # default val, re-define if something is not done
@@ -1010,6 +970,18 @@ class Toga:
             # some para/nextflow job died: critical issue
             err = "Error! Some para/nextflow processes died!"
             self.die(err, 1)
+        # print CPU runtime (if para), if not -> quit function
+        if not self.para:
+            return
+        for p_name in project_names:
+            cmd = f"para time {p_name}"
+            p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout_, stderr_ = p.communicate()
+            stdout = stdout_.decode("utf-8")
+            stderr = stderr_.decode("utf-8")
+            print(f"para time output for {p_name}:")
+            print(stdout)
+            print(stderr)
 
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
@@ -1101,6 +1073,50 @@ class Toga:
             buffer.write(content)
         buffer.close()
         shutil.rmtree(dir_name)
+
+    def __check_crashed_cesar_jobs(self):
+        """Check whether any CESAR jobs crashed.
+
+        Previously we checked entire batches of CESAR jobs.
+        Now we are seeking for individual jobs.
+        Most likely they crashed due to internal CESAR error.
+        """
+        # grep for crashed jobs in the rejected logs
+        if not os.path.isfile(self.rejected_log):
+            return  # no log: nothing to do
+        f = open(self.rejected_log, "r")
+        for line in f:
+            if "CESAR" not in line:
+                # not related to CESAR
+                continue
+            # extract cesar wrapper command from the log
+            cesar_cmd = line.split("\t")[0]
+            self.crashed_cesar_jobs.append(cesar_cmd)
+        f.close()
+        # save crashed jobs list if it's non-empty
+        if len(self.crashed_cesar_jobs) == 0:
+            return  # good, nothing crashed
+        print(f"{len(self.crashed_cesar_jobs)} CESAR wrapper commands failed")
+        f = open(self.cesar_crashed_jobs_log, "w")
+        for cmd in self.crashed_cesar_jobs:
+            f.write(f"{cmd}\n")
+        print(f"Failed CESAR wrapper commands were written to: {self.cesar_crashed_jobs_log}")
+        f.close()
+
+    def __left_done_mark(self):
+        """Write a file confirming that everything is done."""
+        mark_file = os.path.join(self.wd, "done.status")
+        f = open(mark_file, "w")
+        now_ = str(dt.now())
+        f.write(f"Done at {now_}\n")
+        if not self.cesar_ok_merged:
+            f.write("\n:Some CESAR batches produced an empty result, please see:\n")
+            f.write(f"{self.cesar_crashed_batches_log}\n")
+        if len(self.crashed_cesar_jobs) > 0:
+            num_ = len(self.crashed_cesar_jobs)
+            f.write(f"Some individual CESAR jobs ({num_} jobs) crashed\n")
+            f.write(f"Please see:\n{self.cesar_crashed_jobs_log}\n")
+        f.close()
 
     def __get_version(self):
         """Get git hash if possible."""
