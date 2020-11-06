@@ -1,4 +1,4 @@
-# Tool to infer Orthologs from Genome Alignments
+# TOGA
 
 ![TOGA logo](https://github.com/hillerlab/TOGA/blob/master/supply/logo.png)
 
