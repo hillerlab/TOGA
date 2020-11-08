@@ -505,6 +505,7 @@ def get_transcript(bed_file, trans):
 def get_mut_list(mut_file, trans):
     """Get a list of mutations."""
     if mut_file.endswith(".hdf5"):
+        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise hdf5
         # TODO: a smarter check for hdf5 file
         h = h5py.File(mut_file, "r")
         try:
