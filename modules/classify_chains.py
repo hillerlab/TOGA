@@ -123,7 +123,7 @@ def classify_chains(table, output, se_model_path, me_model_path,
         err_msg = f"Cannot find models {se_model_path} and {me_model_path}\n" \
                   f"Please call train_model.py to create them.\nAbort."
         raise FileNotFoundError(err_msg)
-    except xgb.core.XGBoostError:
+    except (xgb.core.XGBoostError, AttributeError):
         xgboost_version = xgb.__version__
         err_msg = f"Cannot load models {se_model_path} and {me_model_path} " \
                   f"Probably, models were trained with a different version of " \
