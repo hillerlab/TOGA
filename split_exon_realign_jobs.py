@@ -15,6 +15,7 @@ from modules.common import parts
 from modules.common import split_in_n_lists
 from modules.common import chain_extract_id
 from modules.common import eprint
+from modules.common import make_cds_track
 from modules.common import die
 
 __author__ = "Bogdan Kirilenko, 2020."
@@ -219,12 +220,13 @@ def read_bed(bed):
     bed_data = {}
     f = open(bed, "r")
     for line in f:
+        cds_track = make_cds_track(line).split("\t")
         bed_info = line[:-1].split("\t")
         chrom = bed_info[0]
         chrom_start = int(bed_info[1])
         chrom_end = int(bed_info[2])
         name = bed_info[3]
-        block_sizes = [int(x) for x in bed_info[10].split(',') if x != '']
+        block_sizes = [int(x) for x in cds_track[10].split(',') if x != '']
         bed_data[name] = (chrom, chrom_start, chrom_end, block_sizes)
     f.close()
     return bed_data
@@ -235,18 +237,18 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
     eprint("Precompute regions for each gene:chain pair...")
     chain_to_genes, skipped = defaultdict(list), []
     # revert the dict, from gene2chain to chain2genes
-    for gene, chains in batch.items():
-        if len(chains) == 0:
-            skipped.append((gene, ",".join(chains), "no orthologous chains"))
+    for gene, chains_not_sorted in batch.items():
+        if len(chains_not_sorted) == 0:
+            skipped.append((gene, "no orthologous chains"))
             continue
-        chains_ = sorted(chains, key=lambda x: int(x))
-        chains_ = chains_[:limit]
-        if len(chains) > limit:
+        chains = sorted(chains_not_sorted, key=lambda x: int(x))
+        chains = chains[:limit]
+        if len(chains_not_sorted) > limit:
             # skip genes that have > limit orthologous chains
-            skipped.append((gene, ",".join(chains_[limit:]),
+            skipped.append((gene, ",".join(chains[limit:]),
                             f"number of chains ({limit} chains) limit exceeded"))
-        for chain in chains_:
-            chain_to_genes[chain].append(gene)
+        for chain_id in chains:
+            chain_to_genes[chain_id].append(gene)
     # read regions themselves
     gene_chain_grange = defaultdict(dict)
     chains_num, iter_num = len(chain_to_genes.keys()), 0
@@ -512,7 +514,7 @@ def main():
         # check that there is something for this gene
         if not gene_chains_data:
             continue
-        elif len(gene_chains_data) == 0:
+        elif len(gene_chains_data.keys()) == 0:
             continue
         
         gene_fragments = gene_fragments_dict.get(gene, False)
@@ -520,6 +522,8 @@ def main():
             # this is a fragmented gene, need to change the procedure a bit
             gene_chains_data = {k: v for k, v in gene_chains_data.items() if k in gene_fragments}
         chains = gene_chains_data.keys()
+        if len(chains) == 0:
+            continue
         chains_arg = ",".join(chains)  # chain ids -> one of the cmd args
         
         # now compute query sequence-related parameters
