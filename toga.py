@@ -891,7 +891,7 @@ class Toga:
                 p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
             else:  # create cmd for para
                 memory_mb = b * 1000
-                cmd = f"para make {nf_project_name} {joblist_abspath} -q=\"day\""
+                cmd = f"para make {nf_project_name} {joblist_abspath} -q=\"shortmed\""
                 if memory_mb > 0:
                     cmd += f" --memoryMb={memory_mb}"
                 p = subprocess.Popen(cmd, shell=True)
