@@ -1483,6 +1483,10 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
             verbose("In empty Q exons")
             abs_coords[exon_num] = UNDEF_REGION
             continue
+        elif len(indexes) == 0:
+            verbose("Exon not mapped")
+            abs_coords[exon_num] = UNDEF_REGION
+            continue
         rel_start_not_corr, rel_len = indexes[0], len(indexes)
         borders_below_start = [x for x in q_limits if x <= rel_start_not_corr]
         num_borders_before = len(borders_below_start)
