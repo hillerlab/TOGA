@@ -982,6 +982,9 @@ class Toga:
             print(f"para time output for {p_name}:")
             print(stdout)
             print(stderr)
+            cmd_cleanup = f"para clean {p_name}"
+            p = subprocess.Popen(cmd_cleanup, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            _, _ = p.communicate()
 
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
