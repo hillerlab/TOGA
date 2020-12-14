@@ -150,7 +150,7 @@ def classify_chains(table, output, se_model_path, me_model_path,
     # set them score -2
     df_me_result.loc[(df_me_result["synt"] == 1)
                      & (df_me_result["exon_qlen"] > 0.95)
-                     & (df_me_result["pred"] < 0.5), "pred"] = -2
+                     & (df_me_result["pred"] < annot_threshold), "pred"] = -2
 
     # we need gene -> chain -> prediction from each row
     df_se_result = df_se_result.loc[:, ["gene", "chain", "pred"]]

@@ -168,6 +168,10 @@ class Toga:
         self.cesar_crashed_batches_log = os.path.join(self.wd, "_cesar_crashed_job_batches.txt")
         self.cesar_crashed_jobs_log = os.path.join(self.wd, "_cesar_crashed_jobs.txt")
         self.fragmented_genome = args.fragmented_genome
+        self.orth_score_threshold = args.orth_score_threshold
+        if self.orth_score_threshold < 0.0 or args.orth_score_threshold > 1.0:
+            self.die("orth_score_threshold parameter must be in range [0..1], got "
+                     f"{self.orth_score_threshold}; Abort")
 
         self.chain_results_df = os.path.join(self.wd, "chain_results_df.tsv")
         self.nucl_fasta = os.path.join(self.wd, "nucleotide.fasta")
@@ -718,7 +722,8 @@ class Toga:
         if not os.path.isfile(self.se_model) or not os.path.isfile(self.me_model):
             self.__call_proc(self.MODEL_TRAINER, "Models not found, training...")
         classify_chains(self.chain_results_df, self.orthologs, self.se_model,
-                        self.me_model, rejected=cl_rej_log, raw_out=self.pred_scores)
+                        self.me_model, rejected=cl_rej_log, raw_out=self.pred_scores,
+                        annot_threshold=self.orth_score_threshold)
         if self.stop_at_chain_class:
             self.die("User requested to halt after chain features extraction", rc=0)
 
@@ -1205,6 +1210,8 @@ def parse_args():
                      dest="no_chain_filter",
                      help="A flag. Do not filter the chain file (make sure you specified "
                           "a .chain but not .gz file in this case)")
+    app.add_argument("--orth_score_threshold", "--ost", default=0.5, type=float,
+                     help="Score threshold to distinguish orthologs from paralogs, default 0.5")
     # CESAR part related
     app.add_argument("--cesar_jobs_num", "--cjn", type=int, default=500,
                      help="Number of CESAR cluster jobs.")
