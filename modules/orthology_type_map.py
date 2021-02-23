@@ -42,22 +42,39 @@ MANY2MANY = "many2many"
 R_GENES = "r_genes"
 Q_GENES = "q_genes"
 C_CLASS = "c_class"
+Q_PREFIX = "#Q#"
+R_PREFIX = "#R#"
+PREFIX_LEN = 3
+assert len(Q_PREFIX) == len(R_PREFIX) == PREFIX_LEN
 
 
-def read_isoforms__otm(isoforms_file, transcripts):
+def trim_prefix(s):
+    """Trim gene name prefix."""
+    return s[PREFIX_LEN:]
+
+
+def read_isoforms__otm(isoforms_file, transcripts, is_ref=True):
     """Read isoforms data.
 
     Extended orthology type map version."""
     # gene_to_transcripts = defaultdict(list)
     # transcript_to_gene = {}
+    prefix = R_PREFIX if is_ref else Q_PREFIX
     if isoforms_file is None:
         # special branch: one gene - one transcript
-        transcript_to_gene = {x: x for x in transcripts}
+        transcript_to_gene = {x: f"{prefix}{x}" for x in transcripts}
         # gene to transcripts is dict key : list
-        gene_to_transcripts = {x: [x, ] for x in transcripts}
+        gene_to_transcripts = {f"{prefix}{x}": [x, ] for x in transcripts}
         return gene_to_transcripts, transcript_to_gene
-    gene_to_transcripts, transcript_to_gene, _ = read_isoforms_file(isoforms_file,
-                                                                    pre_def_trans_list=transcripts)
+    # _np stands for "no prefix"
+    gene_to_transcripts_np, transcript_to_gene_np, _ = read_isoforms_file(isoforms_file,
+                                                                          pre_def_trans_list=transcripts)
+    # add prefix to distinguish between query and reference genes
+    # this is possible that reference and query have the same gene names
+    # especially if input is the toga output
+    transcript_to_gene = {t: f"{prefix}{g}" for t, g in transcript_to_gene_np.items()}
+    gene_to_transcripts = {f"{prefix}{g}": ts for g, ts in gene_to_transcripts_np.items()}
+    
     return gene_to_transcripts, transcript_to_gene
 
 
@@ -468,17 +485,18 @@ def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_pro
         # one line per one isoforms line
         if conn_class == ONE2ZERO:
             # special case, nothing to show
-            for ref_gene in ref_genes:
+            for pf_ref_gene in ref_genes:
                 # line per transcript
-                ref_transcripts = r_gene_to_trans[ref_gene]
+                ref_transcripts = r_gene_to_trans[pf_ref_gene]
                 for ref_transcript in ref_transcripts:
+                    ref_gene = trim_prefix(pf_ref_gene)
                     f.write(f"{ref_gene}\t{ref_transcript}\tNone\tNone\t{ONE2ZERO}\n")
             # goto the next component
             continue
         # not one2zero
-        for ref_gene in ref_genes:
+        for pf_ref_gene in ref_genes:
             # there could be > 1 reference gene
-            ref_transcripts = r_gene_to_trans[ref_gene]
+            ref_transcripts = r_gene_to_trans[pf_ref_gene]
             for ref_transcript in ref_transcripts:
                 # also, there might be > 1 transcript per gene
                 projections = t_trans_to_projections[ref_transcript]
@@ -491,13 +509,15 @@ def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_pro
                     non_orthologous_isoforms.append(ref_transcript)
                 for proj in projections:
                     # and last, each transcript can be projected > once
-                    proj_q_gene = q_trans_to_gene[proj]
-                    if proj_q_gene not in que_genes:
+                    pf_proj_q_gene = q_trans_to_gene[proj]
+                    if pf_proj_q_gene not in que_genes:
                         # there are orthologous projections detected earlier but
                         # we removed them earlier
                         continue
                     proj_not_added = False  # if True -> consider this transcript skipped
-                    f.write(f"{ref_gene}\t{ref_transcript}\t{proj_q_gene}\t{proj}\t{conn_class}\n")
+                    ref_gene = trim_prefix(pf_ref_gene)
+                    que_gene = trim_prefix(pf_proj_q_gene)
+                    f.write(f"{ref_gene}\t{ref_transcript}\t{que_gene}\t{proj}\t{conn_class}\n")
                 if proj_not_added is True:
                     # see comments for (if not projections)
                     non_orthologous_isoforms.append(ref_transcript)
@@ -534,7 +554,7 @@ def orthology_type_map(ref_bed, que_bed, out, ref_iso=None, que_iso=None,
                                                trans_to_L_status)
     # read reference and query isoform files; orthology is a story about genes
     r_gene_to_trans, r_trans_to_gene = read_isoforms__otm(ref_iso, ref_transcripts)
-    q_gene_to_trans, q_trans_to_gene = read_isoforms__otm(que_iso, que_transcripts_all)
+    q_gene_to_trans, q_trans_to_gene = read_isoforms__otm(que_iso, que_transcripts_all, is_ref=False)
     r_genes_all = set(r_gene_to_trans.keys())
     q_genes_all = set(q_gene_to_trans.keys())
     # make transcript to projections dict:
