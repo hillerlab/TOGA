@@ -8,7 +8,7 @@ import argparse
 import sys
 from collections import defaultdict
 import functools
-from numpy import log10
+import numpy as np
 import pandas as pd
 import joblib
 import xgboost as xgb
@@ -90,8 +90,8 @@ def classify_chains(table, output, se_model_path, me_model_path,
     df_final = df.copy()  # filtered dataframe: what we will classify
     # compute some necessary features
     df_final["exon_perc"] = df_final["exon_cover"] / df_final["ex_fract"]
-    df_final["chain_len_log"] = log10(df_final["chain_len"])
-    df_final["synt_log"] = log10(df_final["synt"])
+    df_final["chain_len_log"] = np.log10(df_final["chain_len"])
+    df_final["synt_log"] = np.log10(df_final["synt"])
     df_final["intr_perc"] = df_final["intr_cover"] / df_final["intr_fract"]
     df_final = df_final.fillna(0.0)  # fill NA values with 0.0
 
@@ -131,8 +131,8 @@ def classify_chains(table, output, se_model_path, me_model_path,
                   f"Please make sure you called train_model.py with the same version."
         raise ValueError(err_msg)
     # and apply them
-    se_pred = se_model.predict_proba(X_se)[:, 1]
-    me_pred = me_model.predict_proba(X_me)[:, 1]
+    me_pred = me_model.predict_proba(X_me)[:, 1] if len(X_me) > 0 else np.array([])
+    se_pred = se_model.predict_proba(X_se)[:, 1] if len(X_se) > 0 else np.array([])
 
     # add predictions to the dataframe
     # prediction is basically a single-column
@@ -150,7 +150,8 @@ def classify_chains(table, output, se_model_path, me_model_path,
     # set them score -2
     df_me_result.loc[(df_me_result["synt"] == 1)
                      & (df_me_result["exon_qlen"] > 0.95)
-                     & (df_me_result["pred"] < annot_threshold), "pred"] = -2
+                     & (df_me_result["pred"] < annot_threshold)
+                     & (df_me_result["exon_perc"] > 0.65), "pred"] = -2
 
     # we need gene -> chain -> prediction from each row
     df_se_result = df_se_result.loc[:, ["gene", "chain", "pred"]]
@@ -170,8 +171,9 @@ def classify_chains(table, output, se_model_path, me_model_path,
     genes = set(overall_result["gene"])
     for gene in genes:
         gene_class_chains[gene] = {ORTH: [], PARA: [], TRANS: [], P_PGENES: []}
-
-    for num, data in enumerate(overall_result.itertuples()):
+    
+    verbose("Combining classification data...")
+    for data in overall_result.itertuples():
         gene = data.gene
         chain = data.chain
         pred = data.pred
@@ -185,8 +187,8 @@ def classify_chains(table, output, se_model_path, me_model_path,
         else:  # > annot_threshold
             gene_class_chains[gene][ORTH].append(chain)
         # verbose
-        if num % 10000 == 0:
-            print(num)
+        # if num % 10000 == 0:
+        #     print(num)
 
     # save orthologs output
     f = open(output, "w") if output != "stdout" else sys.stdout
