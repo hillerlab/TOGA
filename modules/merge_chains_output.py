@@ -10,6 +10,7 @@ import os
 import sys
 from datetime import datetime as dt
 from collections import defaultdict
+
 try:  # for robustness
     from modules.common import make_cds_track
     from modules.common import eprint
@@ -24,7 +25,7 @@ except ImportError:
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 t0 = dt.now()
@@ -38,21 +39,31 @@ def verbose(msg, end="\n"):
 def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
-    app.add_argument("results_dir", type=str,
-                     help="Directory containing the results.")
-    app.add_argument("bed_file", type=str,
-                     help="Bed file containing annotations for genes analyzed.")
-    app.add_argument("output", type=str,
-                     help="Save output here.")
-    app.add_argument("--isoforms", "-i", type=str, default=None,
-                     help="File with isoforms. Each line means "
-                     "different ids of a gene, like gene_id<tab>[,-separated list of transcripts].")
-    app.add_argument("--verbose", "-v", action="store_true",
-                     dest="verbose", help="Verbose messages.")
-    app.add_argument("--exon_cov_chains", "-e", action="store_true", dest="exon_cov_chains",
-                     help="If yes, computing the gene_overs parameter we consider only "
-                          "those chains that cover at least 1 base in exons. If no, "
-                          "consider all the chains overlapping and introns only any.")
+    app.add_argument("results_dir", type=str, help="Directory containing the results.")
+    app.add_argument(
+        "bed_file", type=str, help="Bed file containing annotations for genes analyzed."
+    )
+    app.add_argument("output", type=str, help="Save output here.")
+    app.add_argument(
+        "--isoforms",
+        "-i",
+        type=str,
+        default=None,
+        help="File with isoforms. Each line means "
+        "different ids of a gene, like gene_id<tab>[,-separated list of transcripts].",
+    )
+    app.add_argument(
+        "--verbose", "-v", action="store_true", dest="verbose", help="Verbose messages."
+    )
+    app.add_argument(
+        "--exon_cov_chains",
+        "-e",
+        action="store_true",
+        dest="exon_cov_chains",
+        help="If yes, computing the gene_overs parameter we consider only "
+        "those chains that cover at least 1 base in exons. If no, "
+        "consider all the chains overlapping and introns only any.",
+    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -71,17 +82,17 @@ def read_bed_data(bed_file):
         all_bed_info = line.rstrip().split("\t")
         cds_track = make_cds_track(line)  # we need CDS only
         cds_bed_info = cds_track.rstrip().split("\t")
-    
+
         if len(all_bed_info) != 12 or len(cds_bed_info) != 12:
             # if there are not 12 fields - no guarantee that we parse what we want
             die(f"Error! Bed12 file {bed_file} is corrupted!")
 
         # extract fields that we need
         chromStart = int(all_bed_info[1])  # gene start
-        chromEnd = int(all_bed_info[2])    # and end
+        chromEnd = int(all_bed_info[2])  # and end
         # blocks represent exons
-        all_blockSizes = [int(x) for x in all_bed_info[10].split(',') if x != '']
-        cds_blockSizes = [int(x) for x in cds_bed_info[10].split(',') if x != '']
+        all_blockSizes = [int(x) for x in all_bed_info[10].split(",") if x != ""]
+        cds_blockSizes = [int(x) for x in cds_bed_info[10].split(",") if x != ""]
         # data to save
         gene_len = abs(chromStart - chromEnd)
 
@@ -94,10 +105,12 @@ def read_bed_data(bed_file):
         gene_name = all_bed_info[3]
 
         # save the data
-        result[gene_name] = {"gene_len": gene_len,
-                             "exon_fraction": cds_fraction,
-                             "intron_fraction": intron_fraction,
-                             "exons_num": exons_num}
+        result[gene_name] = {
+            "gene_len": gene_len,
+            "exon_fraction": cds_fraction,
+            "intron_fraction": intron_fraction,
+            "exons_num": exons_num,
+        }
     f.close()
     verbose(f"Got data for {len(result.keys())} genes")
     return result
@@ -188,8 +201,10 @@ def load_results(results_dir):
     # actually, these values must be equal
     # just a sanity check
     if not genes_counter == chain_counter:
-        eprint(f"WARNING! genes_counter and chain_counter hold different "
-               f"values:\n{genes_counter} and {chain_counter} respectively")
+        eprint(
+            f"WARNING! genes_counter and chain_counter hold different "
+            f"values:\n{genes_counter} and {chain_counter} respectively"
+        )
         die("Some features extracting jobs died!")
     return chain_genes_data, chain_raw_data
 
@@ -200,7 +215,9 @@ def revert_dict(dct):
     for k, value in dct.items():
         for v in value:
             reverted[v].append(k)
-    verbose(f"chain_genes_data dict reverted, there are {len(reverted.keys())} keys now")
+    verbose(
+        f"chain_genes_data dict reverted, there are {len(reverted.keys())} keys now"
+    )
     return reverted
 
 
@@ -233,20 +250,33 @@ def combine(bed_data, chain_data, genes_data, exon_cov, isoforms):
             flank_cov = str(data["flank_cov"][gene])
             # get a number of chains that covert this gene
             # else: if you need the chains that overlap EXONS
-            gene_overs = len(genes_data[gene]) if not exon_cov else \
-                len([x for x in genes_data[gene] if x != "None"])
+            gene_overs = (
+                len(genes_data[gene])
+                if not exon_cov
+                else len([x for x in genes_data[gene] if x != "None"])
+            )
             # fill the line
             line_data = [  # gene and chain overlap information
-                         gene, gene_overs, chain, synteny,
-                         # global chain features
-                         data["global_score"], data["global_exo"],
-                         data["chain_len"], data["chain_Q_len"],
-                         # chain to gene local features
-                         local_exo, exon_coverage, intron_coverage,
-                         # gene features
-                         gene_feat["gene_len"], gene_feat["exons_num"],
-                         gene_feat["exon_fraction"], gene_feat["intron_fraction"],
-                         flank_cov]
+                gene,
+                gene_overs,
+                chain,
+                synteny,
+                # global chain features
+                data["global_score"],
+                data["global_exo"],
+                data["chain_len"],
+                data["chain_Q_len"],
+                # chain to gene local features
+                local_exo,
+                exon_coverage,
+                intron_coverage,
+                # gene features
+                gene_feat["gene_len"],
+                gene_feat["exons_num"],
+                gene_feat["exon_fraction"],
+                gene_feat["intron_fraction"],
+                flank_cov,
+            ]
 
             line = "\t".join([str(x) for x in line_data]) + "\n"
             combined[gene].append(line)
@@ -258,8 +288,10 @@ def combine(bed_data, chain_data, genes_data, exon_cov, isoforms):
 def save(data, output):
     """Save the data into the file."""
     # make the header
-    header_fields = "gene gene_overs chain synt gl_score gl_exo chain_len exon_qlen loc_exo exon_cover " \
-                    "intr_cover gene_len ex_num ex_fract intr_fract flank_cov".split()
+    header_fields = (
+        "gene gene_overs chain synt gl_score gl_exo chain_len exon_qlen loc_exo exon_cover "
+        "intr_cover gene_len ex_num ex_fract intr_fract flank_cov".split()
+    )
     header = "\t".join(header_fields) + "\n"
     # define the stream to write the data
     verbose("Writing output to {}".format(output))
@@ -270,8 +302,9 @@ def save(data, output):
     f.close()
 
 
-def merge_chains_output(bed_file, isoforms_file, results_dir,
-                        output, exon_cov_chains=False):
+def merge_chains_output(
+    bed_file, isoforms_file, results_dir, output, exon_cov_chains=False
+):
     """Chains output merger core function."""
     # read bed file, get gene features
     bed_data = read_bed_data(bed_file)
@@ -288,11 +321,9 @@ def merge_chains_output(bed_file, isoforms_file, results_dir,
     genes_data = revert_dict(chain_genes_data)
 
     # combine all the data into one gene-oriented dictionary
-    combined_data = combine(bed_data,
-                            chain_raw_data,
-                            genes_data,
-                            exon_cov_chains,
-                            isoforms)
+    combined_data = combine(
+        bed_data, chain_raw_data, genes_data, exon_cov_chains, isoforms
+    )
     # save this data
     save(combined_data, output)
     # finish the program
@@ -302,11 +333,13 @@ def merge_chains_output(bed_file, isoforms_file, results_dir,
 def main():
     """Entry point."""
     args = parse_args()
-    merge_chains_output(args.bed_file,
-                        args.isoforms,
-                        args.results_dir,
-                        args.output,
-                        args.exon_cov_chains)
+    merge_chains_output(
+        args.bed_file,
+        args.isoforms,
+        args.results_dir,
+        args.output,
+        args.exon_cov_chains,
+    )
 
 
 if __name__ == "__main__":

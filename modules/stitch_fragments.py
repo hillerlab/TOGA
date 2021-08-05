@@ -7,6 +7,7 @@ import argparse
 import sys
 from datetime import datetime as dt
 from collections import defaultdict
+
 try:
     from modules.common import make_cds_track
     from modules.common import flatten
@@ -24,6 +25,7 @@ MAX_OVERLAP = 60
 
 class Vertex:
     """Graph vertex."""
+
     def __init__(self, name, start, end, score):
         self.name = name
         self.start = start
@@ -38,6 +40,7 @@ class Vertex:
 
 class Graph:
     """Build a directed graph using adjacency list."""
+
     def __init__(self):
         self.vertices = {}
 
@@ -72,7 +75,7 @@ class Graph:
 
     def topological_sort(self):
         """Perform topological sort.
-        
+
         Use recursive function topological_sort_util().
         Mark all the vertices as not visited.
         """
@@ -97,10 +100,17 @@ def parse_args():
     """Parse CMD args."""
     app = argparse.ArgumentParser()
     app.add_argument("chain_file", help="Chain file")
-    app.add_argument("chain_scores_file", help="XGBoost output: chain orthology probabilities")
+    app.add_argument(
+        "chain_scores_file", help="XGBoost output: chain orthology probabilities"
+    )
     app.add_argument("bed_file", help="Bed file containing gene loci.")
-    app.add_argument("--only_fragmented", "--of", action="store_true", dest="only_fragmented",
-                     help="Output fragmented genes only.")
+    app.add_argument(
+        "--only_fragmented",
+        "--of",
+        action="store_true",
+        dest="only_fragmented",
+        help="Output fragmented genes only.",
+    )
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -160,8 +170,8 @@ def read_gene_loci(bed_file):
         if name.endswith("_CDS"):
             name = name[:-4]
         block_count = int(cds_line[9])
-        block_sizes = [int(x) for x in cds_line[10].split(',') if x != '']
-        block_starts = [int(x) for x in cds_line[11].split(',') if x != '']
+        block_sizes = [int(x) for x in cds_line[10].split(",") if x != ""]
+        block_starts = [int(x) for x in cds_line[11].split(",") if x != ""]
         block_ends = [block_starts[i] + block_sizes[i] for i in range(block_count)]
         block_abs_starts = [block_starts[i] + chrom_start for i in range(block_count)]
         block_abs_ends = [block_ends[i] + chrom_start for i in range(block_count)]
@@ -205,12 +215,16 @@ def build_chain_graph(chain_id_to_loc, intersecting_chains_wscores):
 
 def add_source_sink_graph(graph_name):
     """Add artificial Source and Sink vertices to the chain graph.
-    
+
     Assign them zero length and zero score.
     """
-    source_end = min([graph_name.vertices[vertex].start for vertex in graph_name.vertices])
+    source_end = min(
+        [graph_name.vertices[vertex].start for vertex in graph_name.vertices]
+    )
     source_start = source_end
-    sink_start = max([graph_name.vertices[vertex].end for vertex in graph_name.vertices])
+    sink_start = max(
+        [graph_name.vertices[vertex].end for vertex in graph_name.vertices]
+    )
     sink_end = sink_start
     graph_name.add_vertex(Vertex(SOURCE, source_start, source_end, 0))
     graph_name.add_vertex(Vertex(SINK, sink_start, sink_end, 0))
@@ -269,9 +283,9 @@ def check_exon_coverage(chains, chain_id_to_loc, exons_loci):
         # remove exons where end < chain_start
         # and exon start > chain_end
         chain_loc = chain_id_to_loc[chain_id]
-        intersect_exon_nums = [x[0] for x in exons_loci if
-                               x[2] > chain_loc[0] and
-                               x[1] < chain_loc[1]]
+        intersect_exon_nums = [
+            x[0] for x in exons_loci if x[2] > chain_loc[0] and x[1] < chain_loc[1]
+        ]
         bool__exon_cov = [False for _ in range(exon_num)]
         for i in intersect_exon_nums:
             bool__exon_cov[i] = True
@@ -302,9 +316,13 @@ def stitch_scaffolds(chain_file, chain_scores_file, bed_file, fragments_only=Fal
     # chain_id_to_loc dictionary
     # gene score dict: gene_id: [(chain, score), (chain, score), ...]
     # Iterate over dict values (lists of tuples), get the 1st elem of each tuple (chain_id)
-    orth_chains = set(flatten([v[0] for v in vals] for vals in gene_score_dict.values()))
+    orth_chains = set(
+        flatten([v[0] for v in vals] for vals in gene_score_dict.values())
+    )
     chain_id_to_loc__no_filt = read_chain_file(chain_file)
-    chain_id_to_loc = {k: v for k, v in chain_id_to_loc__no_filt.items() if k in orth_chains}
+    chain_id_to_loc = {
+        k: v for k, v in chain_id_to_loc__no_filt.items() if k in orth_chains
+    }
     genes_to_exon_coords = read_gene_loci(bed_file)
     gene_to_path = {}
     task_size = len(gene_score_dict.keys())
@@ -325,14 +343,20 @@ def stitch_scaffolds(chain_file, chain_scores_file, bed_file, fragments_only=Fal
             raise ValueError(f"Cannot find a bed track for {gene}")
         # extract some extra information about exon coverage
         intersecting_chains = [x[0] for x in intersecting_chains_wscores]
-        chain_id_to_exon_cov = check_exon_coverage(intersecting_chains, chain_id_to_loc, exon_coords)
+        chain_id_to_exon_cov = check_exon_coverage(
+            intersecting_chains, chain_id_to_loc, exon_coords
+        )
         # for k, v in chain_id_to_exon_cov.items():
         #    print(k, v)
-        chain_id_covers_all = {k: all(v for v in val) for k, val in chain_id_to_exon_cov.items()}
+        chain_id_covers_all = {
+            k: all(v for v in val) for k, val in chain_id_to_exon_cov.items()
+        }
         if any(chain_id_covers_all.values()):
             # if there is a chain that covers the gene entirely: skip this
             continue
-        average_exon_coverage = get_average_exon_cov(chain_id_to_exon_cov, len(exon_coords))
+        average_exon_coverage = get_average_exon_cov(
+            chain_id_to_exon_cov, len(exon_coords)
+        )
         if average_exon_coverage > EXON_COV_THRESHOLD:
             # skip if each exon is covered > EXON_COV_THRESHOLD times in average
             continue
@@ -345,10 +369,9 @@ def stitch_scaffolds(chain_file, chain_scores_file, bed_file, fragments_only=Fal
 
         # Find 'longest' (=highest scoring) path in the graph =
         # find shortest path in the graph with negative scoring vertices.
-        longest_path_chain_graph = find_shortest_path(chain_graph,
-                                                      SOURCE,
-                                                      SINK,
-                                                      sorted_vertices)
+        longest_path_chain_graph = find_shortest_path(
+            chain_graph, SOURCE, SINK, sorted_vertices
+        )
         _, _path = longest_path_chain_graph
         path = _path[1:]  # starts with [SOURCE, ... ]
         if fragments_only and len(path) < 2:
@@ -362,10 +385,12 @@ def stitch_scaffolds(chain_file, chain_scores_file, bed_file, fragments_only=Fal
 if __name__ == "__main__":
     t0 = dt.now()
     args = parse_args()
-    gene_to_path = stitch_scaffolds(args.chain_file,
-                                    args.chain_scores_file,
-                                    args.bed_file,
-                                    fragments_only=args.only_fragmented)
+    gene_to_path = stitch_scaffolds(
+        args.chain_file,
+        args.chain_scores_file,
+        args.bed_file,
+        fragments_only=args.only_fragmented,
+    )
     # save output
     for k, v in gene_to_path.items():
         v_str = ",".join(map(str, v))

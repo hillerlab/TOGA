@@ -5,6 +5,8 @@ import os
 import sys
 from collections import defaultdict
 
+TEMP = "temp"
+
 file_loc = os.path.dirname(__file__)
 supply_loc = os.path.join(file_loc, "..", "supply")
 sys.path.append(supply_loc)
@@ -39,7 +41,10 @@ def get_projections(query_annot):
     for line in f:
         projection_str = line.split("\t")[3]
         trans, chain = split_proj_name(projection_str)
-        proj_tup = (trans, chain, )
+        proj_tup = (
+            trans,
+            chain,
+        )
         proj_list.append(proj_tup)
     f.close()
     return proj_list
@@ -65,7 +70,7 @@ def main():
     """Entry point."""
     args = parse_args()
     query_annotation = os.path.join(args.wd, "query_annotation.bed")
-    reference_annotation = os.path.join(args.wd, "toga_filt_ref_annot.bed")
+    reference_annotation = os.path.join(args.wd, TEMP, "toga_filt_ref_annot.bed")
     mut_file = os.path.join(args.wd, "inact_mut_data.txt")
     proj_to_lines = make_inact_dict(mut_file)
     projections = get_projections(query_annotation)
@@ -75,8 +80,9 @@ def main():
     for num, (trans, chain) in enumerate(projections, 1):
         proj_key = f"{trans}.{chain}"
         inact_lines = proj_to_lines[proj_key]
-        svg_line = make_plot(reference_annotation, mut_file, trans,
-                             chain, None, None, None, inact_lines)
+        svg_line = make_plot(
+            reference_annotation, mut_file, trans, chain, None, None, None, inact_lines
+        )
         print(f"{num}/{projections_num}", end="\r")
         svg_fmt = svg_line.replace("\n", "").replace("\t", " ")
         f.write(f"{proj_key}\t{svg_fmt}\n")

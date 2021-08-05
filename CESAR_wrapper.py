@@ -14,6 +14,7 @@ from datetime import datetime as dt
 from re import finditer, IGNORECASE
 from collections import defaultdict
 import ctypes
+import random
 from operator import and_
 from functools import reduce
 from twobitreader import TwoBitFile
@@ -28,11 +29,21 @@ from modules.parse_cesar_output import parse_cesar_out
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
-complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G', 'N': 'N', 
-              'a': 't', 't': 'a', 'g': 'c', 'c': 'G', 'n': 'n'}
+complement = {
+    "A": "T",
+    "T": "A",
+    "G": "C",
+    "C": "G",
+    "N": "N",
+    "a": "t",
+    "t": "a",
+    "g": "c",
+    "c": "G",
+    "n": "n",
+}
 
 STOPS = {"TAG", "TGA", "TAA"}
 LOCATION = os.path.dirname(os.path.abspath(__file__))
@@ -40,29 +51,39 @@ VERBOSE = False
 UNDEF_REGION = "None:0-0"
 TMP_NAME_SIZE = 10
 
-acceptor_site = ("ag", )
-donor_site = ("gt", "gc", )
+
+ACCEPTOR_SITE = ("ag",)
+DONOR_SITE = (
+    "gt",
+    "gc",
+)
+EXP_REG_EXTRA_FLANK = 50
+EXON_SEQ_FLANK = 10
 
 # alias; works for Hillerlab-only
-two_bit_templ = "/projects/hillerlab/genome/gbdb-HL/{0}/{0}.2bit" 
+two_bit_templ = "/projects/hillerlab/genome/gbdb-HL/{0}/{0}.2bit"
 chain_alias_template = "/projects/hillerlab/genome/gbdb-HL/{0}/lastz/vs_{1}/axtChain/{0}.{1}.allfilled.chain.gz"
 
 # connect shared lib; define input and output data types
-chain_coords_conv_lib_path = os.path.join(LOCATION, "modules", "chain_coords_converter_slib.so")
+chain_coords_conv_lib_path = os.path.join(
+    LOCATION, "modules", "chain_coords_converter_slib.so"
+)
 ch_lib = ctypes.CDLL(chain_coords_conv_lib_path)
-ch_lib.chain_coords_converter.argtypes = [ctypes.c_char_p,
-                                          ctypes.c_int,
-                                          ctypes.c_int,
-                                          ctypes.POINTER(ctypes.c_char_p)]
+ch_lib.chain_coords_converter.argtypes = [
+    ctypes.c_char_p,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.POINTER(ctypes.c_char_p),
+]
 ch_lib.chain_coords_converter.restype = ctypes.POINTER(ctypes.c_char_p)
 
 # connect extract subchain lib
-extract_subchain_lib_path = os.path.join(LOCATION, "modules", "extract_subchain_slib.so")
+extract_subchain_lib_path = os.path.join(
+    LOCATION, "modules", "extract_subchain_slib.so"
+)
 DEFAULT_CESAR = os.path.join(LOCATION, "CESAR2.0", "cesar")
 ex_lib = ctypes.CDLL(extract_subchain_lib_path)
-ex_lib.extract_subchain.argtypes = [ctypes.c_char_p,
-                                    ctypes.c_char_p,
-                                    ctypes.c_char_p]
+ex_lib.extract_subchain.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
 ex_lib.extract_subchain.restype = ctypes.POINTER(ctypes.c_char_p)
 
 # blosum matrix address
@@ -74,23 +95,74 @@ AA_FLANK = 15
 SS_SIZE = 2
 
 # genetic code: also need this
-AA_CODE = {"TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L",
-           "TCT": "S", "TCC": "S", "TCA": "S", "TCG": "S",
-           "TAT": "Y", "TAC": "Y", "TAA": "*", "TAG": "*",
-           "TGT": "C", "TGC": "C", "TGA": "*", "TGG": "W",
-           "CTT": "L", "CTC": "L", "CTA": "L", "CTG": "L",
-           "CCT": "P", "CCC": "P", "CCA": "P", "CCG": "P",
-           "CAT": "H", "CAC": "H", "CAA": "Q", "CAG": "Q",
-           "CGT": "R", "CGC": "R", "CGA": "R", "CGG": "R",
-           "ATT": "I", "ATC": "I", "ATA": "I", "ATG": "M",
-           "ACT": "T", "ACC": "T", "ACA": "T", "ACG": "T",
-           "AAT": "N", "AAC": "N", "AAA": "K", "AAG": "K",
-           "AGT": "S", "AGC": "S", "AGA": "R", "AGG": "R",
-           "GTT": "V", "GTC": "V", "GTA": "V", "GTG": "V",
-           "GCT": "A", "GCC": "A", "GCA": "A", "GCG": "A",
-           "GAT": "D", "GAC": "D", "GAA": "E", "GAG": "E",
-           "GGT": "G", "GGC": "G", "GGA": "G", "GGG": "G",
-           "---": "-", "NNN": "X"}
+AA_CODE = {
+    "TTT": "F",
+    "TTC": "F",
+    "TTA": "L",
+    "TTG": "L",
+    "TCT": "S",
+    "TCC": "S",
+    "TCA": "S",
+    "TCG": "S",
+    "TAT": "Y",
+    "TAC": "Y",
+    "TAA": "*",
+    "TAG": "*",
+    "TGT": "C",
+    "TGC": "C",
+    "TGA": "*",
+    "TGG": "W",
+    "CTT": "L",
+    "CTC": "L",
+    "CTA": "L",
+    "CTG": "L",
+    "CCT": "P",
+    "CCC": "P",
+    "CCA": "P",
+    "CCG": "P",
+    "CAT": "H",
+    "CAC": "H",
+    "CAA": "Q",
+    "CAG": "Q",
+    "CGT": "R",
+    "CGC": "R",
+    "CGA": "R",
+    "CGG": "R",
+    "ATT": "I",
+    "ATC": "I",
+    "ATA": "I",
+    "ATG": "M",
+    "ACT": "T",
+    "ACC": "T",
+    "ACA": "T",
+    "ACG": "T",
+    "AAT": "N",
+    "AAC": "N",
+    "AAA": "K",
+    "AAG": "K",
+    "AGT": "S",
+    "AGC": "S",
+    "AGA": "R",
+    "AGG": "R",
+    "GTT": "V",
+    "GTC": "V",
+    "GTA": "V",
+    "GTG": "V",
+    "GCT": "A",
+    "GCC": "A",
+    "GCA": "A",
+    "GCG": "A",
+    "GAT": "D",
+    "GAC": "D",
+    "GAA": "E",
+    "GAG": "E",
+    "GGT": "G",
+    "GGC": "G",
+    "GGA": "G",
+    "GGG": "G",
+    "---": "-",
+    "NNN": "X",
+}
 
 XXX_CODON = "XXX"
 GAP_CODON = "---"
@@ -117,54 +189,188 @@ def parse_args():
     # parse args
     app = argparse.ArgumentParser(description="")
     app.add_argument("gene", type=str, help="working gene")  # mandatory
-    app.add_argument("chains", type=str, help="chain ids, write 'region' if you like to type a region directly")
-    app.add_argument("bdb_bed_file", type=str, help="BDB BED FILE, text bed12 also works but slower.")
-    app.add_argument("bdb_chain_file", type=str, help="BDB CHAIN FILE"
-                     "Or chain file, or even chain.gz file, but slower.")
+    app.add_argument(
+        "chains",
+        type=str,
+        help="chain ids, write 'region' if you like to type a region directly",
+    )
+    app.add_argument(
+        "bdb_bed_file", type=str, help="BDB BED FILE, text bed12 also works but slower."
+    )
+    app.add_argument(
+        "bdb_chain_file",
+        type=str,
+        help="BDB CHAIN FILE" "Or chain file, or even chain.gz file, but slower.",
+    )
     app.add_argument("tDB", type=str, help="target db, alias or 2bit file")
     app.add_argument("qDB", type=str, help="query db, alias or 2bit file")
-    app.add_argument("--ref", default="hg38", help="Use this is you like to use "
-                     "chain alias and your ref is not the hg38.")
-    app.add_argument("--cesar_binary", type=str, default=None,
-                     help="CESAR2.0 binary address.")
-    app.add_argument("--cesar_input_save_to", type=str, default=None,
-                     help="Where to save the cesar input file. /dev/shm/{whoami}/XXXXXX.fa is default.")
-    app.add_argument("--memlim", default="Auto", help="memory limit for CESAR, auto as default.")
-    app.add_argument("--mask_stops", "--ms", action="store_true", dest="mask_stops",
-                     help="In case if there are inframe stop codons replace them with NNN.")
-    app.add_argument("--estimate_memory", "-e", action="store_true", dest="estimate_memory",
-                     help="do not compute anything, just return what amount of memory is required for this run.")
-    app.add_argument("--shift", type=int, default=2, help="num of blocks in up/downstream regions, 2 is default")
-    app.add_argument("--raw_output", "--ro", default=None, help="Save raw CESAR output, "
-                     "You can use either stdout of a file for that.")
-    app.add_argument("--cesar_output", "--co", default=None,
-                     help="If CESAR output is already done, specify it here")
-    app.add_argument("--save_loci", default=None, help="Save gene: chain: locus dict to a file.")
-    app.add_argument("--output", default="stdout", help="Final output, stdout as default "
-                     "unreachable if params --raw_output or --estimate_memory are set.")
-    app.add_argument("--prot_out", "--po", default="stdout", help="Save protein sequence")
-    app.add_argument("--codon_out", "--cdo", default="stdout", help="Save codon alignment")
+    app.add_argument(
+        "--ref",
+        default="hg38",
+        help="Use this is you like to use " "chain alias and your ref is not the hg38.",
+    )
+    app.add_argument(
+        "--cesar_binary", type=str, default=None, help="CESAR2.0 binary address."
+    )
+    app.add_argument(
+        "--cesar_input_save_to",
+        type=str,
+        default=None,
+        help="Where to save the cesar input file. /dev/shm/{whoami}/XXXXXX.fa is default.",
+    )
+    app.add_argument(
+        "--memlim", default="Auto", help="memory limit for CESAR, auto as default."
+    )
+    app.add_argument(
+        "--mask_stops",
+        "--ms",
+        action="store_true",
+        dest="mask_stops",
+        help="In case if there are inframe stop codons replace them with NNN.",
+    )
+    app.add_argument(
+        "--estimate_memory",
+        "-e",
+        action="store_true",
+        dest="estimate_memory",
+        help="do not compute anything, just return what amount of memory is required for this run.",
+    )
+    app.add_argument(
+        "--shift",
+        type=int,
+        default=2,
+        help="num of blocks in up/downstream regions, 2 is default",
+    )
+    app.add_argument(
+        "--raw_output",
+        "--ro",
+        default=None,
+        help="Save raw CESAR output, " "You can use either stdout of a file for that.",
+    )
+    app.add_argument(
+        "--cesar_output",
+        "--co",
+        default=None,
+        help="If CESAR output is already done, specify it here",
+    )
+    app.add_argument(
+        "--save_loci", default=None, help="Save gene: chain: locus dict to a file."
+    )
+    app.add_argument(
+        "--output",
+        default="stdout",
+        help="Final output, stdout as default "
+        "unreachable if params --raw_output or --estimate_memory are set.",
+    )
+    app.add_argument(
+        "--prot_out", "--po", default="stdout", help="Save protein sequence"
+    )
+    app.add_argument(
+        "--codon_out", "--cdo", default="stdout", help="Save codon alignment"
+    )
     app.add_argument("--verbose", "-v", action="store_true", dest="verbose")
-    app.add_argument("--exon_flank", default=2, type=int, help="When intersecting exons and intersected blocks"
-                     "add flanks to extend exons range.")
-    app.add_argument("--gap_size", default=10, type=int, help="How many gaps in a row consider as an assembly gap.")
-    app.add_argument("--gene_flank", default=1000, type=int, help="Up and downstream in query genome.")
-    app.add_argument("--extra_flank", "--ef", default=0, type=int, help="Add bases up and down stream.")
-    app.add_argument("--query_len_limit", "--ql", default=0, type=int, help="Skip job if query is too long")
-    app.add_argument("--check_loss", "--cl", action="store_true", dest="check_loss",
-                     help="Check whether a gene found has inactivating mutations.")
-    app.add_argument("--print_inact_mut", "--pim", action="store_true", dest="print_inact_mut",
-                     help="Print gene loss data on the screen")
-    app.add_argument("--ic", action="store_true", dest="ic", help="Invert complement query sequences (DANGER)")
-    app.add_argument("--paral", action="store_true", dest="paral",
-                     help="Mark that this gene is called for paralogous chains")
+    app.add_argument(
+        "--exon_flank",
+        default=2,
+        type=int,
+        help="When intersecting exons and intersected blocks"
+        "add flanks to extend exons range.",
+    )
+    app.add_argument(
+        "--gap_size",
+        default=10,
+        type=int,
+        help="How many gaps in a row consider as an assembly gap.",
+    )
+    app.add_argument(
+        "--gene_flank",
+        default=1000,
+        type=int,
+        help="Up and downstream in query genome.",
+    )
+    app.add_argument(
+        "--extra_flank",
+        "--ef",
+        default=0,
+        type=int,
+        help="Add bases up and down stream.",
+    )
+    app.add_argument(
+        "--query_len_limit",
+        "--ql",
+        default=0,
+        type=int,
+        help="Skip job if query is too long",
+    )
+    app.add_argument(
+        "--check_loss",
+        "--cl",
+        action="store_true",
+        dest="check_loss",
+        help="Check whether a gene found has inactivating mutations.",
+    )
+    app.add_argument(
+        "--print_inact_mut",
+        "--pim",
+        action="store_true",
+        dest="print_inact_mut",
+        help="Print gene loss data on the screen",
+    )
+    app.add_argument(
+        "--ic",
+        action="store_true",
+        dest="ic",
+        help="Invert complement query sequences (DANGER)",
+    )
+    app.add_argument(
+        "--paral",
+        action="store_true",
+        dest="paral",
+        help="Mark that this gene is called for paralogous chains",
+    )
     app.add_argument("--u12", default=None, help="Add U12 exons data")
     app.add_argument("--uhq_flank", default=50, type=int, help="UHQ flank filter")
-    app.add_argument("--no_fpi", action="store_true", dest="no_fpi",
-                     help="Consider some frame-preserving mutations as inactivating. "
-                          "See documentation for details.")
-    app.add_argument("--fragments", "--fr", action="store_true", dest="fragments",
-                     help="Stitch scaffolds -> in case of a fragmented genome")
+    app.add_argument(
+        "--no_fpi",
+        action="store_true",
+        dest="no_fpi",
+        help="Consider some frame-preserving mutations as inactivating. "
+        "See documentation for details.",
+    )
+    app.add_argument(
+        "--fragments",
+        "--fr",
+        action="store_true",
+        dest="fragments",
+        help="Stitch scaffolds -> in case of a fragmented genome",
+    )
+    app.add_argument(
+        "--opt_cesar",
+        "--oc",
+        action="store_true",
+        dest="opt_cesar",
+        help="Using LASTZ-optimized CESAR",
+    )
+    app.add_argument(
+        "--opt_regions_save",
+        default=None,
+        help="Predefine temp file containing expected regions per exon",
+    )
+    app.add_argument(
+        "--exon_flanks_file",
+        default=None,
+        help="Temporary file containing exon flanks ",
+    )
+    app.add_argument(
+        "--predefined_regions",
+        "--pr",
+        default=None,
+        help="Predefined relative query coordinates "
+        "for CESAR optimisation. If set: call optimised CESAR without LASTZ",
+    )
+    app.add_argument(
+        "--opt_precompute", action="store_true", dest="opt_precompute", help="later"
+    )
 
     if len(sys.argv) == 1:
         app.print_help()
@@ -173,8 +379,12 @@ def parse_args():
     ret_args = app.parse_args()
 
     # check args
-    die(f"Error! --shift must be >=0, {ret_args.shift} given", 1) if ret_args.shift < 0 else None
-    die(f"Error! --exon_flank must be >=0 {ret_args.exon_flank} given", 1) if ret_args.exon_flank < 0 else None
+    die(
+        f"Error! --shift must be >=0, {ret_args.shift} given", 1
+    ) if ret_args.shift < 0 else None
+    die(
+        f"Error! --exon_flank must be >=0 {ret_args.exon_flank} given", 1
+    ) if ret_args.exon_flank < 0 else None
     die("Error! --gap_size must be >= 1!", 1) if ret_args.gap_size < 1 else None
     global VERBOSE
     VERBOSE = True if ret_args.verbose else False
@@ -200,17 +410,22 @@ def read_bed(gene, bed_file):
 
     # if not 12 fields -> then input is wrong
     die("Error! Bed-12 required!", 1) if len(bed_info) != 12 else None
-    bed_data = {"chrom": bed_info[0],
-                "chromStart": int(bed_info[1]),
-                "chromEnd": int(bed_info[2]),
-                "name": bed_info[3],
-                "strand": True if bed_info[5] == '+' else False
-                }
-    block_sizes = [int(x) for x in bed_info[10].split(',') if x != '']
-    block_starts = [int(x) + bed_data["chromStart"] for x in bed_info[11].split(',') if x != '']
+    bed_data = {
+        "chrom": bed_info[0],
+        "chromStart": int(bed_info[1]),
+        "chromEnd": int(bed_info[2]),
+        "name": bed_info[3],
+        "strand": True if bed_info[5] == "+" else False,
+    }
+    block_sizes = [int(x) for x in bed_info[10].split(",") if x != ""]
+    block_starts = [
+        int(x) + bed_data["chromStart"] for x in bed_info[11].split(",") if x != ""
+    ]
     block_ends = [x[0] + x[1] for x in zip(block_starts, block_sizes)]
     bed_data["blocks"] = list(zip(block_starts, block_ends))
-    bed_data["block_sizes"] = block_sizes[::-1] if not bed_data["strand"] else block_sizes
+    bed_data["block_sizes"] = (
+        block_sizes[::-1] if not bed_data["strand"] else block_sizes
+    )
     verbose("Bed data is:\n{0}".format(bed_data))
     return bed_data
 
@@ -226,9 +441,13 @@ def get_2bit_path(db_opt):
     """Check if alias and return a path to 2bit file."""
     if os.path.isfile(db_opt):  # not an alias
         return db_opt  # there is nothing to do
+    elif os.path.islink(db_opt):
+        return os.readlink(db_opt)
     aliased = two_bit_templ.format(db_opt)
     # check that it's a file
-    die(f"Error! Cannot find {aliased} file", 1) if not os.path.isfile(aliased) else None
+    die(f"Error! Cannot find {aliased} file", 1) if not os.path.isfile(
+        aliased
+    ) else None
     return aliased
 
 
@@ -239,8 +458,9 @@ def find_chain_file(ref_name, chain_arg):
         return chain_arg
     # not a chain path/ Hillerlab-specific place!
     chain_path = chain_alias_template.format(ref_name, chain_arg)
-    die(f"Error! File {chain_path} not found! Please set the chain path explicitly.", 1) \
-        if not os.path.isfile(chain_path) else None
+    die(
+        f"Error! File {chain_path} not found! Please set the chain path explicitly.", 1
+    ) if not os.path.isfile(chain_path) else None
     return chain_path
 
 
@@ -258,13 +478,20 @@ def translate(codons_lst):
 
 def get_exons(bed_data, t_db):
     """Extract exons sequences for reference."""
-    exons_raw = bed_data["blocks"][::-1] if not bed_data["strand"] else bed_data["blocks"]
+    exons_raw = (
+        bed_data["blocks"][::-1] if not bed_data["strand"] else bed_data["blocks"]
+    )
     exons_pos = {}  # contain exon_num : positions
     s_sites = []
+    exon_flanks = {}
     for num, exon in enumerate(exons_raw):
         # start, end if strand == + end, start otherwise
         # need to know start and end to extract from 2bit file
-        exons_pos[num] = (int(exon[0]), int(exon[1])) if bed_data["strand"] else (int(exon[1]), int(exon[0]))
+        exons_pos[num] = (
+            (int(exon[0]), int(exon[1]))
+            if bed_data["strand"]
+            else (int(exon[1]), int(exon[0]))
+        )
 
     max_exon_num = max(exons_pos.keys())
     _all_positions = sorted(flatten(exons_pos.values()))
@@ -286,10 +513,24 @@ def get_exons(bed_data, t_db):
         # for twoBitToFa start must be < end
         # determine search start and end
         # do not subtract/add SS_SIZE if gene border: no splice sites then
-        start = min(pos) - SS_SIZE if min(pos) not in gene_borders else min(pos)
-        end = max(pos) + SS_SIZE if max(pos) not in gene_borders else max(pos)
-        # start = min(pos) - SS_SIZE
-        # end = max(pos) + SS_SIZE
+        min_pos = min(pos)
+        max_pos = max(pos)
+        start = min_pos - SS_SIZE if min_pos not in gene_borders else min_pos
+        end = max_pos + SS_SIZE if max_pos not in gene_borders else max_pos
+        # get exon 10 bp flanks:
+        left_brd_ = min_pos - EXON_SEQ_FLANK if min_pos - EXON_SEQ_FLANK > 0 else 0
+        left_flank_coord = (left_brd_, min_pos)
+        right_flank_coord = (max_pos, max_pos + EXON_SEQ_FLANK)
+        left_flank = chrom_seq[left_flank_coord[0] : left_flank_coord[1]].upper()
+        right_flank = chrom_seq[right_flank_coord[0] : right_flank_coord[1]].upper()
+        # correct for strand:
+        left_flank = left_flank if bed_data["strand"] else revert(left_flank)
+        right_flank = right_flank if bed_data["strand"] else revert(right_flank)
+        if not bed_data["strand"]:
+            left_flank, right_flank = right_flank, left_flank
+        # placeholder in case we coudld not extract flanks
+        left_flank = left_flank if len(left_flank) > 0 else "X"
+        right_flank = right_flank if len(right_flank) > 0 else "X"
 
         exon_seq_raw = chrom_seq[start:end].upper()
         # revert if negative strand
@@ -297,7 +538,7 @@ def get_exons(bed_data, t_db):
         # trim splice sites
         if not is_first_exon and not is_last_exon:
             # both splice sites are here
-            exon_seq = exon_seq_w_ss[SS_SIZE: -SS_SIZE]
+            exon_seq = exon_seq_w_ss[SS_SIZE:-SS_SIZE]
             acc_ = exon_seq_w_ss[:SS_SIZE]
             don_ = exon_seq_w_ss[-SS_SIZE:]
         elif is_first_exon and is_last_exon:
@@ -305,7 +546,7 @@ def get_exons(bed_data, t_db):
             exon_seq = exon_seq_w_ss
             acc_, don_ = "NN", "NN"
         elif is_first_exon:
-            exon_seq = exon_seq_w_ss[: -SS_SIZE]
+            exon_seq = exon_seq_w_ss[:-SS_SIZE]
             acc_ = "NN"
             don_ = exon_seq_w_ss[-SS_SIZE:]
         elif is_last_exon:
@@ -317,13 +558,14 @@ def get_exons(bed_data, t_db):
         s_sites.append(acc_)
         s_sites.append(don_)
         exons_seq[num] = exon_seq
+        exon_flanks[num] = {"L": left_flank, "R": right_flank}
         verbose(f"Exon {num} in the range {pos}; sequence:\n{exon_seq}")
-    return exons_pos, exons_seq, s_sites
+    return exons_pos, exons_seq, s_sites, exon_flanks
 
 
 def check_ref_exons(exon_seqs, mask_stops):
     """Check if the reference sequence is correct.
-    
+
     Should start with ATG and end with a stop.
     Mask_stops controls handling of inframe stops.
     """
@@ -355,7 +597,7 @@ def check_ref_exons(exon_seqs, mask_stops):
     prev_index = 0
     for num, exon_seq in exon_seqs.items():
         exon_len = len(exon_seq)
-        stop_masked[num] = safe_seq[prev_index: prev_index + exon_len]
+        stop_masked[num] = safe_seq[prev_index : prev_index + exon_len]
         prev_index += exon_len
     return stop_masked, sec_codons
 
@@ -374,14 +616,18 @@ def prepare_exons_for_cesar(exon_seqs):
         right_pointer = (len(exon_seq) - left_pointer) % 3
         # apply left pointer
         if left_pointer != 3:  # it it were accumulated 3 bases it has no sense like 0
-            exon_seq_lfix = exon_seq[:left_pointer].lower() + exon_seq[left_pointer:].upper()
+            exon_seq_lfix = (
+                exon_seq[:left_pointer].lower() + exon_seq[left_pointer:].upper()
+            )
         else:  # don't touch if left_pointer == 0 or == 3
             exon_seq_lfix = exon_seq
         # re-define left pointer
         left_pointer = 3 - right_pointer
         # apply right-side pointer
         if right_pointer != 0:
-            exon_seq_rfix = exon_seq_lfix[:-right_pointer] + exon_seq_lfix[-right_pointer:].lower()
+            exon_seq_rfix = (
+                exon_seq_lfix[:-right_pointer] + exon_seq_lfix[-right_pointer:].lower()
+            )
         else:  # save as it was
             exon_seq_rfix = exon_seq_lfix
         # save prepared exon into special dict
@@ -399,21 +645,33 @@ def get_chain(chain_file, chain_id):
         return chain
     elif chain_file.endswith(".gz"):  # a gzipped chain file was given
         # gzip and redirect scteam to chain_filter_by_id binary
-        extract_by_id_cmd = f"gzip -dc {chain_file} | ./modules/chain_filter_by_id stdin {chain_id}"
+        extract_by_id_cmd = (
+            f"gzip -dc {chain_file} | ./modules/chain_filter_by_id stdin {chain_id}"
+        )
         try:  # check that output is OK
-            chain = subprocess.check_output(extract_by_id_cmd, shell=True).decode("utf-8")
+            chain = subprocess.check_output(extract_by_id_cmd, shell=True).decode(
+                "utf-8"
+            )
         except subprocess.CalledProcessError:
             # die if the command died
-            die("Error! Process {extract_by_id_cmd} died! Please check if input data is correct", 1)
+            die(
+                "Error! Process {extract_by_id_cmd} died! Please check if input data is correct",
+                1,
+            )
         return chain
 
     else:  # just a chain file, extract the chain we need
         # the same as above, but without gzip stage
         extract_by_id_cmd = f"./modules/chain_filter_by_id {chain_file} {chain_id}"
         try:  # also check if output is OK, die otherwise
-            chain = subprocess.check_output(extract_by_id_cmd, shell=True).decode("utf-8")
+            chain = subprocess.check_output(extract_by_id_cmd, shell=True).decode(
+                "utf-8"
+            )
         except subprocess.CalledProcessError:
-            die("Error! Process {extract_by_id_cmd} died! Please check if input data is correct", 1)
+            die(
+                "Error! Process {extract_by_id_cmd} died! Please check if input data is correct",
+                1,
+            )
         return chain
 
 
@@ -430,7 +688,7 @@ def range_corrector(g_range):
 
 def chain_cut(chain_str, gene_range, gene_flank, extra_flank=0):
     """Call chain_cut binary.
-    
+
     Project reference gene coordinates to query through a chain.
     Also add flanks if shift is > 0.
     """
@@ -448,10 +706,9 @@ def chain_cut(chain_str, gene_range, gene_flank, extra_flank=0):
     # need to do this tricks to pass strings array to C
     granges_arr[:-1] = granges_bytes
     granges_arr[granges_num] = None
-    raw_ch_conv_s2 = ch_lib.chain_coords_converter(c_chain,
-                                                   c_shift_2,
-                                                   c_granges_num,
-                                                   granges_arr)
+    raw_ch_conv_s2 = ch_lib.chain_coords_converter(
+        c_chain, c_shift_2, c_granges_num, granges_arr
+    )
     chain_coords_conv_out_s2 = []  # keep lines here
     # convert C output to python-readable type
     for i in range(granges_num + 1):
@@ -470,10 +727,9 @@ def chain_cut(chain_str, gene_range, gene_flank, extra_flank=0):
     granges_arr[:-1] = granges_bytes
     granges_arr[granges_num] = None
 
-    raw_ch_conv_s0 = ch_lib.chain_coords_converter(c_chain,
-                                                   c_shift_0,
-                                                   c_granges_num,
-                                                   granges_arr)
+    raw_ch_conv_s0 = ch_lib.chain_coords_converter(
+        c_chain, c_shift_0, c_granges_num, granges_arr
+    )
     chain_coords_conv_out_s0 = []  # keep lines here
 
     # convert C output to python-readable type
@@ -485,27 +741,48 @@ def chain_cut(chain_str, gene_range, gene_flank, extra_flank=0):
     # block-------------blockblock------------block
 
     # to avoid very huge query sequences program controls it's size
-    search_region_shift_str = range_corrector(chain_coords_conv_out_s2[1].split("\t")[1])
+    search_region_shift_str = range_corrector(
+        chain_coords_conv_out_s2[1].split("\t")[1]
+    )
     search_region_abs_str = range_corrector(chain_coords_conv_out_s0[1].split("\t")[1])
 
     chrom = search_region_shift_str.split(":")[0]
-    search_reg_shift = [int(x) for x in search_region_shift_str.split(":")[1].split("-")]
+    search_reg_shift = [
+        int(x) for x in search_region_shift_str.split(":")[1].split("-")
+    ]
     search_reg_abs = [int(x) for x in search_region_abs_str.split(":")[1].split("-")]
-    search_reg_flanked = [search_reg_abs[0] - gene_flank, search_reg_abs[1] + gene_flank]
+    search_reg_flanked = [
+        search_reg_abs[0] - gene_flank,
+        search_reg_abs[1] + gene_flank,
+    ]
 
     # define actual starts and ends
-    act_start = search_reg_shift[0] if search_reg_shift[0] > search_reg_flanked[0] else search_reg_flanked[0]
-    act_end = search_reg_shift[1] if search_reg_shift[1] < search_reg_flanked[1] else search_reg_flanked[1]
+    act_start = (
+        search_reg_shift[0]
+        if search_reg_shift[0] > search_reg_flanked[0]
+        else search_reg_flanked[0]
+    )
+    act_end = (
+        search_reg_shift[1]
+        if search_reg_shift[1] < search_reg_flanked[1]
+        else search_reg_flanked[1]
+    )
 
     if extra_flank > 0:  # add extra flanks if required
         act_start = act_start - extra_flank if act_start - extra_flank > 0 else 0
-        act_end = act_end + extra_flank if act_end + extra_flank < q_size else q_size - 1
+        act_end = (
+            act_end + extra_flank if act_end + extra_flank < q_size else q_size - 1
+        )
 
     act_search_range = f"{chrom}:{act_start}-{act_end}"
     # ext_search_range = f"{chrom}:{}-{}"
     del raw_ch_conv_s0  # not sure if this is necessary
     del raw_ch_conv_s2  # but just in case
-    return act_search_range, search_region_shift_str, (t_strand, t_size, q_strand, q_size)
+    return (
+        act_search_range,
+        search_region_shift_str,
+        (t_strand, t_size, q_strand, q_size),
+    )
 
 
 def extract_subchain(chain_str, search_locus):
@@ -534,7 +811,7 @@ def extract_subchain(chain_str, search_locus):
 
 def orient_blocks(subchain_blocks_raw, chain_data):
     """Create block num: coordinates dict.
-    
+
     Orient them in correct direction.
     Add interblock regions, like block 1_2 between blocks 1 and 2.
     """
@@ -547,8 +824,12 @@ def orient_blocks(subchain_blocks_raw, chain_data):
         t_end = i_block[1] if t_strand else t_size - i_block[0]
         q_start = i_block[2] if q_strand else q_size - i_block[3]
         q_end = i_block[3] if q_strand else q_size - i_block[2]
-        block_ranges[str(i)] = (min(t_start, t_end), max(t_start, t_end),
-                                min(q_start, q_end), max(q_start, q_end))
+        block_ranges[str(i)] = (
+            min(t_start, t_end),
+            max(t_start, t_end),
+            min(q_start, q_end),
+            max(q_start, q_end),
+        )
 
     # if there is only one block (weird but possible) --> no gaps between blocks
     if len(block_ranges) == 1:
@@ -588,7 +869,7 @@ def get_aa_ex_cov(exon_range, i_block_coords):
     if len(interblock_reg) == 0:
         # single block covers the exon + flanks: ideal case
         return flanked_exon_len, flanked_exon_len, flanked_exon_len
-    # select blocks, ignore 
+    # select blocks, ignore
     cov_blocks_not_trimmed = [x[1] for x in i_block_coords if "_" not in x[0]]
     t_cov_blocks_trimmed = []
     # trim blocks | convert this:
@@ -641,7 +922,9 @@ def get_aa_ex_cov(exon_range, i_block_coords):
     return flanked_exon_len, t_cov, q_cov
 
 
-def intersect_exons_blocks_gaps(exon_coordinates, subchain_blocks, gap_coordinates, flank, uhq_flank):
+def intersect_exons_blocks_gaps(
+    exon_coordinates, subchain_blocks, gap_coordinates, flank, uhq_flank
+):
     """Intersect exons, chain blocks and gaps.
 
     Create the following dictionaries:
@@ -650,9 +933,13 @@ def intersect_exons_blocks_gaps(exon_coordinates, subchain_blocks, gap_coordinat
     """
     # make a pseudoblock --> for the entire chain
     # all T - all chain blocks in reference coordinates
-    all_t = [b[0] for b in subchain_blocks.values()] + [b[1] for b in subchain_blocks.values()]
+    all_t = [b[0] for b in subchain_blocks.values()] + [
+        b[1] for b in subchain_blocks.values()
+    ]
     # all Q - all chain blocks in query coordinates
-    all_q = [b[2] for b in subchain_blocks.values()] + [b[3] for b in subchain_blocks.values()]
+    all_q = [b[2] for b in subchain_blocks.values()] + [
+        b[3] for b in subchain_blocks.values()
+    ]
     global_block = (min(all_t), max(all_t), min(all_q), max(all_q))
     # get a dict of exons with flanks
     exon_flank_coordinates = {}
@@ -670,7 +957,9 @@ def intersect_exons_blocks_gaps(exon_coordinates, subchain_blocks, gap_coordinat
         exon_flank_coordinates[exon_num] = (flanked_exon_start, flanked_exon_end)
         exon_aa_flank_coordinates[exon_num] = (aa_flanked_start, aa_flanked_end)
         # also check if a block outside the chain
-        glob_intersect = intersect_ranges(exon_coords, (global_block[0], global_block[1]))
+        glob_intersect = intersect_ranges(
+            exon_coords, (global_block[0], global_block[1])
+        )
         if glob_intersect != exon_size:
             # exon doesn't intersect chain -> put to marginal cases
             marginal_cases[exon_num] = True
@@ -686,9 +975,15 @@ def intersect_exons_blocks_gaps(exon_coordinates, subchain_blocks, gap_coordinat
         for exon_num, exon_coords in exon_coordinates.items():
             flanked_coords = exon_flank_coordinates.get(exon_num)
             aa_flank_coords = exon_aa_flank_coordinates.get(exon_num)
-            intersect_norm = intersect_ranges(exon_coords, (block_coords[0], block_coords[1]))
-            intersect_flanked = intersect_ranges(flanked_coords, (block_coords[0], block_coords[1]))
-            intersect_aa_class = intersect_ranges(aa_flank_coords, (block_coords[0], block_coords[1]))
+            intersect_norm = intersect_ranges(
+                exon_coords, (block_coords[0], block_coords[1])
+            )
+            intersect_flanked = intersect_ranges(
+                flanked_coords, (block_coords[0], block_coords[1])
+            )
+            intersect_aa_class = intersect_ranges(
+                aa_flank_coords, (block_coords[0], block_coords[1])
+            )
             if intersect_norm >= 0:
                 exon_num_blocks[exon_num].append(block_num)
             if intersect_flanked >= 0:
@@ -701,22 +996,33 @@ def intersect_exons_blocks_gaps(exon_coordinates, subchain_blocks, gap_coordinat
             if intersect <= 0:
                 continue
             block_gaps[block_num] = gap_num
-            verbose("Block num {} in coords t:{}-{} q:{}-{} intersects gap {}-{}".format(block_num,
-                                                                                         block_coords[0],
-                                                                                         block_coords[1],
-                                                                                         block_coords[2],
-                                                                                         block_coords[3],
-                                                                                         gap[0],
-                                                                                         gap[1]))
+            verbose(
+                "Block num {} in coords t:{}-{} q:{}-{} intersects gap {}-{}".format(
+                    block_num,
+                    block_coords[0],
+                    block_coords[1],
+                    block_coords[2],
+                    block_coords[3],
+                    gap[0],
+                    gap[1],
+                )
+            )
     # get missed exons to exclude
     missing_exons = [e for e in exon_coordinates.keys() if not exon_num_blocks.get(e)]
-    verbose("Exons:\n{}\nare not covered by chain".format(", ".join([str(e) for e in missing_exons]))) \
-        if len(missing_exons) > 0 else None
+    verbose(
+        "Exons:\n{}\nare not covered by chain".format(
+            ", ".join([str(e) for e in missing_exons])
+        )
+    ) if len(missing_exons) > 0 else None
     verbose(f"Flank size is: {flank}")
     for exon_num in sorted(exon_num_blocks.keys()):
         verbose(f"Exon {exon_num} intersects blocks {exon_num_blocks.get(exon_num)}")
-        verbose(f"Exon {exon_num} with flanks intersects blocks {fl_exon_num_blocks.get(exon_num)}")
-        verbose(f"Exon {exon_num} with AA flanks intersects blocks {aa_exon_num_blocks.get(exon_num)}")
+        verbose(
+            f"Exon {exon_num} with flanks intersects blocks {fl_exon_num_blocks.get(exon_num)}"
+        )
+        verbose(
+            f"Exon {exon_num} with AA flanks intersects blocks {aa_exon_num_blocks.get(exon_num)}"
+        )
         verbose("\n")
     aa_sat = {}
 
@@ -732,8 +1038,15 @@ def intersect_exons_blocks_gaps(exon_coordinates, subchain_blocks, gap_coordinat
         q_cov_ok = lo_ <= q_cov <= hi_
         cond_sat_ = t_cov_ok is True and q_cov_ok is True
         aa_sat[exon_num] = True if cond_sat_ else False
-    return exon_num_blocks, fl_exon_num_blocks, block_gaps,  missing_exons, exon_flank_coordinates, \
-        marginal_cases, aa_sat
+    return (
+        exon_num_blocks,
+        fl_exon_num_blocks,
+        block_gaps,
+        missing_exons,
+        exon_flank_coordinates,
+        marginal_cases,
+        aa_sat,
+    )
 
 
 def sort_blocks(blocks_num):
@@ -786,7 +1099,7 @@ def classify_predict_exons(exon_blocks, block_coordinates, margin_cases):
             # ---chainchain====chaincha=======
             # ==========chainchainchain-------
             this_exon_class = "A"
-        # >ENST00000464162 | 1 | 4482 | KK498653:40658904-40658593 | 59.81 | OK | A | 
+        # >ENST00000464162 | 1 | 4482 | KK498653:40658904-40658593 | 59.81 | OK | A |
         # exp:40655721-40655810 | EXCL
         elif start_block_id == end_block_id and "_" in start_block_id:
             # exon unaligned or completely removed, class C
@@ -807,7 +1120,13 @@ def classify_predict_exons(exon_blocks, block_coordinates, margin_cases):
     return exon_class, exon_exp_q_region
 
 
-def find_exons_gaps(fl_exon_coordinates, flanked_exon_blocks, block_coordinates, blocks_gaps, gap_coordinates):
+def find_exons_gaps(
+    fl_exon_coordinates,
+    flanked_exon_blocks,
+    block_coordinates,
+    blocks_gaps,
+    gap_coordinates,
+):
     """For each flanked exon define if it overlaps gaps."""
     exon_gap = {}
     block_to_index, index_to_block = sort_blocks(len(block_coordinates))
@@ -817,7 +1136,11 @@ def find_exons_gaps(fl_exon_coordinates, flanked_exon_blocks, block_coordinates,
             continue
         # find out if there are gaps intersected
         # asm_gaps = [blocks_gaps.get(b) for b in intersected_blocks]
-        asm_gaps = {b: blocks_gaps.get(b) for b in intersected_blocks if blocks_gaps.get(b) is not False}
+        asm_gaps = {
+            b: blocks_gaps.get(b)
+            for b in intersected_blocks
+            if blocks_gaps.get(b) is not False
+        }
         gap_numbers = list(set(asm_gaps.values()))
         if len(gap_numbers) == 0:  # exon doesn't intersect any asm gaps
             exon_gap[exon_num] = False
@@ -836,7 +1159,9 @@ def find_exons_gaps(fl_exon_coordinates, flanked_exon_blocks, block_coordinates,
             continue
         # risky zone; more sophisticated cases
         block_indexes = sorted([block_to_index.get(b) for b in intersected_blocks])
-        first_block, last_block = index_to_block.get(block_indexes[0]), index_to_block.get(block_indexes[-1])
+        first_block, last_block = index_to_block.get(
+            block_indexes[0]
+        ), index_to_block.get(block_indexes[-1])
         if "_" not in first_block and "_" not in last_block:
             # it is possible in only the one case
             #      exonexonexonexonexonexon
@@ -855,9 +1180,15 @@ def find_exons_gaps(fl_exon_coordinates, flanked_exon_blocks, block_coordinates,
         # blockblock============
         #             gapgap
         gap_coords_to_check = [gap_coordinates[i] for i in gap_numbers]
-        f_block_coords, l_block_coords = block_coordinates.get(first_block), block_coordinates.get(last_block)
-        f_block_delta = intersect_ranges(exon_coordinates, (f_block_coords[0], f_block_coords[1]))
-        l_block_delta = intersect_ranges(exon_coordinates, (l_block_coords[0], l_block_coords[1]))
+        f_block_coords, l_block_coords = block_coordinates.get(
+            first_block
+        ), block_coordinates.get(last_block)
+        f_block_delta = intersect_ranges(
+            exon_coordinates, (f_block_coords[0], f_block_coords[1])
+        )
+        l_block_delta = intersect_ranges(
+            exon_coordinates, (l_block_coords[0], l_block_coords[1])
+        )
         # we need the direction of blocks
         # 1 - 2 - 3 - 4 - 5 OR
         # 5 - 4 - 3 - 2 - 1 ?
@@ -873,7 +1204,7 @@ def find_exons_gaps(fl_exon_coordinates, flanked_exon_blocks, block_coordinates,
             f_block_q_start = min(f_block_coords[2], f_block_coords[3])
             l_block_q_ext = (l_block_q_end - l_block_delta, l_block_q_end)
             f_block_q_ext = (f_block_q_start, f_block_q_start + f_block_delta)
-    
+
         for gap_coord in gap_coords_to_check:
             f_intersect = intersect_ranges(gap_coord, l_block_q_ext)
             l_intersect = intersect_ranges(gap_coord, f_block_q_ext)
@@ -890,12 +1221,16 @@ def make_query_seq(chain_id, search_locus, q_db, chain_strand, bed_strand):
     Q_end = int(region.split("-")[1])
     chrom_seq = query_genome[qName]
     # find the locus
-    verbose(f"Looking for exons in range: {qName}:{Q_start}-{Q_end} for chain {chain_id}")
-    query_seq_no_dir = chrom_seq[Q_start: Q_end]
+    verbose(
+        f"Looking for exons in range: {qName}:{Q_start}-{Q_end} for chain {chain_id}"
+    )
+    query_seq_no_dir = chrom_seq[Q_start:Q_end]
     directed = chain_strand == bed_strand
     query_seq = query_seq_no_dir if directed else revert(query_seq_no_dir)
     verbose(f"Query length for {chain_id} in locus {search_locus}: {len(query_seq)}")
-    die(f"Error! No query sequence for chain {chain_id}!", 1) if len(query_seq) == 0 else None
+    die(f"Error! No query sequence for chain {chain_id}!", 1) if len(
+        query_seq
+    ) == 0 else None
     return query_seq, directed
 
 
@@ -928,10 +1263,52 @@ def make_in_filename(cesar_in):
     except FileNotFoundError:  # /dev/shm not found
         temp_dir = "/tmp/{0}".format(whoami)
         os.mkdir(temp_dir) if not os.path.isdir(temp_dir) else None
-    filename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(TMP_NAME_SIZE)) + ".fa"
+    filename = (
+        "".join(
+            random.choice(string.ascii_uppercase + string.digits)
+            for _ in range(TMP_NAME_SIZE)
+        )
+        + ".fa"
+    )
     cesar_in_path = os.path.join(temp_dir, filename)
     # mark that it is a temp file with True
     return cesar_in_path, True
+
+
+def make_reg_file(is_opt, incl_lines, predefined_file=None):
+    """Make temp file containing force-include regions."""
+    if is_opt is False:
+        # not optimized CESAR doesn't take this argument
+        return None
+    # create a file then
+    if predefined_file is None:
+        filename, _ = make_in_filename(False)
+    else:
+        filename = predefined_file
+    f = open(filename, "w")
+    f.write("\n".join(incl_lines))
+    f.write("\n")
+    f.close()
+    return filename
+
+
+def make_exon_flanks_file(is_opt, flanks_dict, predefined_file=None):
+    """Make temp file containing force-include regions."""
+    if is_opt is False:
+        # not optimized CESAR doesn't take this argument
+        return None
+    # create a file then
+    if predefined_file is None:
+        filename, _ = make_in_filename(False)
+    else:
+        filename = predefined_file
+    f = open(filename, "w")
+    for key, flanks in flanks_dict.items():
+        l_f = flanks.get("L", "X")
+        r_f = flanks.get("R", "X")
+        f.write(f"{key}\t{l_f}\t{r_f}\n")
+    f.close()
+    return filename
 
 
 def make_cesar_in(exons, queries, filename, u12_elems):
@@ -983,7 +1360,7 @@ def get_exon_indexes(exon_sizes):
 
 def memory_check(block_sizes, qlength_max, estimate_memory):
     """Return amount of memory required.
-    
+
     Estimate memory consumption exactly as CESAR2.0 doest it.
     """
     num_states, rlength, extra = 0, 0, 100000
@@ -991,11 +1368,14 @@ def memory_check(block_sizes, qlength_max, estimate_memory):
         num_codons = block_size // 3
         num_states += 6 + 6 * num_codons + 1 + 2 + 2 + 22 + 6
         rlength += block_size
-    MEM = (num_states * 4 * 8) + \
-          (num_states * qlength_max * 4) + \
-          (num_states * 304) + \
-          (2 * qlength_max + rlength) * 8 + \
-          (qlength_max + rlength) * 2 * 1 + extra
+    MEM = (
+        (num_states * 4 * 8)
+        + (num_states * qlength_max * 4)
+        + (num_states * 304)
+        + (2 * qlength_max + rlength) * 8
+        + (qlength_max + rlength) * 2 * 1
+        + extra
+    )
     # bytes to GB
     GB = MEM / 1000000000
     if estimate_memory:
@@ -1004,14 +1384,40 @@ def memory_check(block_sizes, qlength_max, estimate_memory):
     return GB
 
 
-def run_cesar(input_file, memory_raw, istemp, memlim, cesar_binary):
+def run_cesar(
+    input_file,
+    memory_raw,
+    istemp,
+    memlim,
+    cesar_binary,
+    force_incl_file,
+    flanks_file,
+    predef_regs,
+    opt_precompute,
+):
     """Run CESAR for the input file."""
     verbose(f"Running CESAR for {input_file}")
     x_param = math.ceil(memlim + 1) if memlim else math.ceil(memory_raw) + 1
     if memlim and memory_raw > memlim:
-        eprint(f"Warning! Memory limit is {memlim} but {memory_raw} requested for this run.")
+        eprint(
+            f"Warning! Memory limit is {memlim} but {memory_raw} requested for this run."
+        )
     cesar_cmd = f"{cesar_binary} {input_file} -x {x_param}"
-    p = subprocess.Popen(cesar_cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    if force_incl_file:
+        # 1) this is optimised cesar
+        # 2) we need to add an argument
+        cesar_cmd += f" --regions_file {force_incl_file}"
+    if flanks_file:
+        # also for optimised cesar only
+        cesar_cmd += f" --exon_flanks {flanks_file}"
+    if predef_regs:
+        # do not call lastz if there are predefined regions
+        cesar_cmd += " --no_lastz"
+    if opt_precompute:
+        cesar_cmd += " --memory_consumption"
+    p = subprocess.Popen(
+        cesar_cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE
+    )
     b_stdout, b_stderr = p.communicate()
     rc = p.returncode
     if rc != 0:
@@ -1042,10 +1448,13 @@ def compute_percent_id(seq_1, seq_2):
     verbose(seq_1)
     verbose(seq_2)
     assert len(seq_1) == len(seq_2)  # otherwise it is a bug
-    matches = sum([1 for i in range(len(seq_1))
-                  if seq_1[i] == seq_2[i]
-                  and seq_1[i] != "N"
-                  and seq_2[i] != "N"])
+    matches = sum(
+        [
+            1
+            for i in range(len(seq_1))
+            if seq_1[i] == seq_2[i] and seq_1[i] != "N" and seq_2[i] != "N"
+        ]
+    )
     length = len(seq_1.replace("N", ""))  # we ignore N's
     pid = matches * 100 / length if length != 0 else 0
     verbose(f"PID is {pid}\n")
@@ -1114,7 +1523,9 @@ def translate_codons(codons_list):
         ref_only_let_nul = ref_nuc_seq.replace("-", "")
         # anyways it's possible that we cannot translate the codon, reasons are various
         # maybe there's N somewhere in the codon, or it's frame-shifted
-        ref_only_let = AA_CODE.get(ref_only_let_nul, "X") if len(ref_only_let_nul) > 0 else "-"
+        ref_only_let = (
+            AA_CODE.get(ref_only_let_nul, "X") if len(ref_only_let_nul) > 0 else "-"
+        )
         # in case if N query codons correspond to a single reference codon
         # there is guarantee that ref_sequence has only one codon
         # for query -> it's unknown
@@ -1182,9 +1593,9 @@ def compute_score(codon_data):
 
         # for BLOSUM we need AA sequence
         # for AA sequence we need complete codons
-        codons_in_exon = [x for x in codon_data
-                          if x["q_exon_num"] == exon_num
-                          and x["split_"] == 0]
+        codons_in_exon = [
+            x for x in codon_data if x["q_exon_num"] == exon_num and x["split_"] == 0
+        ]
         codons_in_exon_w_splice = [x for x in codon_data if x["q_exon_num"] == exon_num]
 
         if len(codons_in_exon) == 0:
@@ -1241,7 +1652,9 @@ def split_indexes(indexes):
     verbose(f"Analyze indexes:\n{indexes}")
     if len(indexes) == 0:
         return [], []
-    left, right = [indexes[0], ], []
+    left, right = [
+        indexes[0],
+    ], []
     left_now = True
     for i in range(1, len(indexes)):
         prev = indexes[i - 1]
@@ -1285,14 +1698,14 @@ def extract_query_seq(codons_data):
 
             exon_to_ref_seq[exon_num - 1] += to_prev_let_r
             exon_to_ref_seq[exon_num] += to_curr_let_r
-    
+
             left_ind, right_ind = split_indexes(indexes)
             if len(left_ind) > 0 and len(right_ind) > 0:
                 exon_to_indexes[exon_num - 1].extend(left_ind)
                 exon_to_indexes[exon_num].extend(right_ind)
                 continue
             # if we are here, we couldn't split this codon correctly
-            if len(to_curr_let) > 0:
+            if len(to_curr_let.replace("-", "")) > 0:
                 exon_to_indexes[exon_num].extend(left_ind)
             else:
                 exon_to_indexes[exon_num - 1].extend(left_ind)
@@ -1393,7 +1806,15 @@ def extract_codon_data(codon_table):
 def process_cesar_out(cesar_raw_out, query_loci, inverts):
     """Extract data from raw cesar output."""
     raw_data = parts(cesar_raw_out.split("\n"), n=4)[:-1]
-    exon_queries, exon_refs, percIDs, blosums, query_coords, prot_seqs, codon_seqs = {}, {}, {}, {}, {}, {}, {}
+    exon_queries, exon_refs, percIDs, blosums, query_coords, prot_seqs, codon_seqs = (
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+    )
     exon_num_corr = {}  # query exon num -> target exon nums
     aa_sat_seq = {}  # exon num -> no dels
 
@@ -1410,7 +1831,12 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
         prot_seqs[chain_id] = prot_seqs_part
         codon_seqs_part = extract_codon_data(codons_data)
         codon_seqs[chain_id] = codon_seqs_part
-        exon_query_seqs, exon_ref_seqs, empty_q_exons, exon_query_inds = extract_query_seq(codons_data)
+        (
+            exon_query_seqs,
+            exon_ref_seqs,
+            empty_q_exons,
+            exon_query_inds,
+        ) = extract_query_seq(codons_data)
         exon_num_corr[chain_id] = get_exon_num_corr(codons_data)
         aa_sat_part = check_codons_for_aa_sat(codons_data)
         aa_sat_seq[chain_id] = aa_sat_part
@@ -1431,9 +1857,14 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
                 abs_coords[exon_num] = UNDEF_REGION
                 continue
             rel_start, rel_len = indexes[0], len(indexes)
-            exon_abs_start = abs_query_start + rel_start if directed else abs_query_end - rel_start
-            exon_abs_end = abs_query_start + rel_start + rel_len if directed else \
-                abs_query_end - rel_start - rel_len
+            exon_abs_start = (
+                abs_query_start + rel_start if directed else abs_query_end - rel_start
+            )
+            exon_abs_end = (
+                abs_query_start + rel_start + rel_len
+                if directed
+                else abs_query_end - rel_start - rel_len
+            )
             exon_grange = f"{q_chrom}:{exon_abs_start}-{exon_abs_end}"
             abs_coords[exon_num] = exon_grange
         # add to the global dicts
@@ -1442,26 +1873,43 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
         percIDs[chain_id] = part_pIDs
         blosums[chain_id] = part_blosums
         query_coords[chain_id] = abs_coords
-    ret = (exon_queries, exon_refs, percIDs, blosums, query_coords,
-           exon_num_corr, prot_seqs, codon_seqs, aa_sat_seq)
+    ret = (
+        exon_queries,
+        exon_refs,
+        percIDs,
+        blosums,
+        query_coords,
+        exon_num_corr,
+        prot_seqs,
+        codon_seqs,
+        aa_sat_seq,
+    )
     return ret
 
 
 def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts):
     """Process CESAR output for assembled from fragments gene."""
-    exon_queries, exon_refs, percIDs, blosums, query_coords, = {}, {}, {}, {}, {}
+    exon_queries, exon_refs, percIDs, blosums, query_coords, = (
+        {},
+        {},
+        {},
+        {},
+        {},
+    )
     prot_seqs, codon_seqs, exon_num_corr, aa_sat_seq = {}, {}, {}, {}
     cesar_raw_lines = cesar_raw_out.split("\n")
     target_seq_raw = cesar_raw_lines[1]
     query_seq_raw = cesar_raw_lines[3]
 
-    codons_data = parse_cesar_out(target_seq_raw, query_seq_raw, v=False)
+    codons_data = parse_cesar_out(target_seq_raw, query_seq_raw, v=VERBOSE)
     # extract protein sequences also here, just to do it in one place
     part_pIDs, part_blosums, prot_seqs_part = compute_score(codons_data)
     prot_seqs[FRAGMENT] = prot_seqs_part
     codon_seqs_part = extract_codon_data(codons_data)
     codon_seqs[FRAGMENT] = codon_seqs_part
-    exon_query_seqs, exon_ref_seqs, empty_q_exons, exon_query_inds = extract_query_seq(codons_data)
+    exon_query_seqs, exon_ref_seqs, empty_q_exons, exon_query_inds = extract_query_seq(
+        codons_data
+    )
     exon_num_corr[FRAGMENT] = get_exon_num_corr(codons_data)
     aa_sat_part = check_codons_for_aa_sat(codons_data)
     aa_sat_seq[FRAGMENT] = aa_sat_part
@@ -1471,7 +1919,9 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
     q_lens = [x[7] for x in fragm_data]
     verbose(f"QLens: {q_lens}")
     # print(q_lens)
-    q_limits = [0, ]
+    q_limits = [
+        0,
+    ]
     for q_len in q_lens:
         new_el = q_len + q_limits[-1]
         q_limits.append(new_el)
@@ -1507,9 +1957,14 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
         abs_query_start = int(region.split("-")[0])
         abs_query_end = int(region.split("-")[1])
 
-        exon_abs_start = abs_query_start + rel_start if directed else abs_query_end - rel_start
-        exon_abs_end = abs_query_start + rel_start + rel_len if directed else \
-            abs_query_end - rel_start - rel_len
+        exon_abs_start = (
+            abs_query_start + rel_start if directed else abs_query_end - rel_start
+        )
+        exon_abs_end = (
+            abs_query_start + rel_start + rel_len
+            if directed
+            else abs_query_end - rel_start - rel_len
+        )
         # check that everything in borders
         left_side_ok = exon_abs_start > 0 and exon_abs_end > 0
         right_size_ok = exon_abs_start <= q_size_ and exon_abs_end <= q_size_
@@ -1528,8 +1983,17 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
     blosums[FRAGMENT] = part_blosums
     query_coords[FRAGMENT] = abs_coords
     # return the same values as process_cesar_out does
-    ret = (exon_queries, exon_refs, percIDs, blosums, query_coords,
-           exon_num_corr, prot_seqs, codon_seqs, aa_sat_seq)
+    ret = (
+        exon_queries,
+        exon_refs,
+        percIDs,
+        blosums,
+        query_coords,
+        exon_num_corr,
+        prot_seqs,
+        codon_seqs,
+        aa_sat_seq,
+    )
     return ret
 
 
@@ -1554,12 +2018,25 @@ def check_region(exon_exp_reg, act_reg, t_nums):
         return "EXCL", q_region
 
 
-def arrange_output(gene, exon_seqs, query_exon_sequences, p_ids, p_bl, all_query_coords,
-                   chain_exon_gap=None, chain_exon_class=None, chain_exon_exp_reg=None,
-                   ch_q_to_t_num=None, missed=None, is_paral=False):
+def arrange_output(
+    gene,
+    exon_seqs,
+    query_exon_sequences,
+    p_ids,
+    p_bl,
+    all_query_coords,
+    chain_exon_gap=None,
+    chain_exon_class=None,
+    chain_exon_exp_reg=None,
+    ch_q_to_t_num=None,
+    missed=None,
+    is_paral=False,
+):
     """Arrange final fasta file with additional data."""
-    header_template = ">{0} | {1} | {2} | {3} | {4:.2f} | {5:.2f} | {6} | {7} "\
-                      "| exp:{8}-{9} | {10} | {11} | query_exon\n"
+    header_template = (
+        ">{0} | {1} | {2} | {3} | {4:.2f} | {5:.2f} | {6} | {7} "
+        "| exp:{8}-{9} | {10} | {11} | query_exon\n"
+    )
     chains = list(query_exon_sequences.keys())  # it is output for these chains
     extra_fields = True if chain_exon_gap else None
     output = ""
@@ -1606,12 +2083,25 @@ def arrange_output(gene, exon_seqs, query_exon_sequences, p_ids, p_bl, all_query
                     exon_to_inc[n_] = True if reg_data == "INC" else False
 
             # add reference seq for this exon
-            ref_datum = f">{gene} | {exon_num} | {chain} | reference_exon\n{reference_seq}\n"
+            ref_datum = (
+                f">{gene} | {exon_num} | {chain} | reference_exon\n{reference_seq}\n"
+            )
             output += ref_datum
             # and then merge all this stuff altogether
-            header = header_template.format(gene, exon_num, chain, coord, query_pid, query_blo,
-                                            is_gap, exon_class, exp_reg[0], exp_reg[1], reg_data,
-                                            is_paral)
+            header = header_template.format(
+                gene,
+                exon_num,
+                chain,
+                coord,
+                query_pid,
+                query_blo,
+                is_gap,
+                exon_class,
+                exp_reg[0],
+                exp_reg[1],
+                reg_data,
+                is_paral,
+            )
             output += header
             output += "{0}\n".format(query_seq)
             chain_to_excl[chain] = exon_to_inc
@@ -1633,7 +2123,9 @@ def aa_eq_len_check(ref_sequences, query_exon_sequences):
 def invert_complement(seq):
     """Make inverted-complement sequence."""
     reverse = seq[::-1]
-    reverse_complement = "".join([complement.get(c) if complement.get(c) else "N" for c in reverse])
+    reverse_complement = "".join(
+        [complement.get(c) if complement.get(c) else "N" for c in reverse]
+    )
     return reverse_complement
 
 
@@ -1718,7 +2210,7 @@ def analyse_ref_ss(s_sites):
     for num, intron in enumerate(intron_elems, 1):
         don_ = intron[0].lower()
         acc_ = intron[1].lower()
-        if acc_ in acceptor_site and don_ in donor_site:
+        if acc_ in ACCEPTOR_SITE and don_ in DONOR_SITE:
             # too usual and boring
             continue
         verbose(f"Intron num {num} has don: {don_} acc: {acc_}")
@@ -1761,21 +2253,90 @@ def intersect_lists(lists):
     return list(intersection)
 
 
+def get_relative_coordinates(exon_exp_region, search_locus, directed, max_len=5000):
+    """Get relative coordinates of expected regions.
+
+    Formatting for LASTZ-CESAR optimizer.
+    """
+    include_regions = list(exon_exp_region.values())
+    _, start_end_str = search_locus.split(":")
+    start_str, end_str = start_end_str.split("-")
+    start, end = int(start_str), int(end_str)
+    if directed:
+        # just subtract absolute start coord
+        include_regions_rel = [(x[0] - start, x[1] - start) for x in include_regions]
+    else:
+        # bit more complicated
+        include_regions_rel = [(end - x[0], end - x[1]) for x in include_regions]
+    include_regions_len_filt = [
+        x for x in include_regions_rel if abs(x[0] - x[1]) < max_len
+    ]
+    return include_regions_len_filt
+
+
+def fmt_incl_reg(chain_id, incl_regions):
+    """Format force-include regions for optimised cesar wrapper."""
+    ret = []
+    for (start, end) in incl_regions:
+        item = f"{chain_id} {start} {end}"
+        ret.append(item)
+    return ret
+
+
+def extend_rel_regions(extended_regions, query_len):
+    """Add flanks to expected regions."""
+    ext_regions = []
+    for reg in extended_regions:
+        ext_start = min(reg) - EXP_REG_EXTRA_FLANK
+        ext_end = max(reg) + EXP_REG_EXTRA_FLANK
+        # aboid overflow
+        ext_start = ext_start if ext_start > 0 else 0
+        ext_end = ext_end if ext_end < query_len else query_len - 1
+        new_reg = (ext_start, ext_end)
+        ext_regions.append(new_reg)
+    return ext_regions
+
+
+def read_predefined_regions(arg):
+    """Read predefined regions."""
+    ret = defaultdict(list)
+    if arg is None:
+        return ret
+    f = open(arg, "r")
+    for line in f:
+        line_data = line.rstrip().split("\t")
+        line_strip = line.rstrip()
+        chain_id = int(line_data[0])
+        ret[chain_id].append(line_strip)
+    f.close()
+    return ret
+
+
 def realign_exons(args):
     """Entry point."""
     memlim = float(args["memlim"]) if args["memlim"] != "Auto" else None
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
     # read gene-related data
-    bed_data = read_bed(args["gene"], args["bdb_bed_file"])  # extract gene data from bed file
+    bed_data = read_bed(
+        args["gene"], args["bdb_bed_file"]
+    )  # extract gene data from bed file
     # bed_exons_num = len(bed_data["blocks"])
     # parse gene bed-track: get exon coordinates, sequences and splice sites
-    exon_coordinates, exon_sequences, s_sites = get_exons(bed_data, args["tDB"])
+    exon_coordinates, exon_sequences, s_sites, exon_flanks = get_exons(
+        bed_data, args["tDB"]
+    )
     # read chain IDs list:
-    chains = [int(x) for x in args["chains"].split(",") if x != ""] \
-        if args["chains"] != "region" else []
+    chains = (
+        [int(x) for x in args["chains"].split(",") if x != ""]
+        if args["chains"] != "region"
+        else []
+    )
     # get path to the chain file (most likely just arg)
-    chain_file = find_chain_file(args["ref"], args["bdb_chain_file"]) \
-        if args["chains"] != "region" else args["bdb_chain_file"]
+    chain_file = (
+        find_chain_file(args["ref"], args["bdb_chain_file"])
+        if args["chains"] != "region"
+        else args["bdb_chain_file"]
+    )
 
     # check if there are stop codons in reference -> we either mask them or halt execution
     exon_sequences, sec_codons = check_ref_exons(exon_sequences, args["mask_stops"])
@@ -1784,16 +2345,22 @@ def realign_exons(args):
 
     # read chain-related data
     query_sequences, query_loci, inverts = {}, {}, {}
-    gene_range = "{0}:{1}-{2}".format(bed_data["chrom"], bed_data["chromStart"], bed_data["chromEnd"])
+    gene_range = "{0}:{1}-{2}".format(
+        bed_data["chrom"], bed_data["chromStart"], bed_data["chromEnd"]
+    )
     chain_exon_gap, chain_exon_class, chain_exon_exp_reg, chain_missed = {}, {}, {}, {}
     aa_block_sat_chain = {}  # one of dicts to mark exceptionally good exon predictions
     fragments_data = []  # required for fragmented genomes
     chains_in_input = True
+    force_include_regions_opt_v = (
+        []
+    )  # regions we force to include in the optimized version
     verbose("Reading query regions")
+    chain_to_predefined_regions = read_predefined_regions(args["predefined_regions"])
     # if chains and args["fragments"]:
     # the normal branch: call CESAR vs 1+ query sequences
     for chain_id in chains:  # in region more this part is skipped
-        verbose(f"\nLoading chain {chain_id}")   # only one place where I need chain data
+        verbose(f"\nLoading chain {chain_id}")  # only one place where I need chain data
         # extract chain and coordinates of locus; extract sequence from query genome
         chain_str = get_chain(chain_file, chain_id)
         verbose(f"Chain {chain_id} extracted")
@@ -1801,10 +2368,9 @@ def realign_exons(args):
         # most likely we need only the chain part that intersects the gene
         # and skip the rest:
         verbose("Cutting the chain...")
-        search_locus, subch_locus, chain_data = chain_cut(chain_str,
-                                                          gene_range,
-                                                          args["gene_flank"],
-                                                          args["extra_flank"])
+        search_locus, subch_locus, chain_data = chain_cut(
+            chain_str, gene_range, args["gene_flank"], args["extra_flank"]
+        )
         # chain data: t_strand, t_size, q_strand, q_size
         chain_qStrand = chain_data[2]
         chain_qSize = chain_data[3]
@@ -1813,14 +2379,16 @@ def realign_exons(args):
         # this call of make_query_seq is actually for extracting
         # query sequence for CESAR:
         verbose("Extracting query sequence...")
-        query_seq, directed = make_query_seq(chain_id, search_locus, args["qDB"],
-                                             chain_qStrand, bed_data["strand"])
+        query_seq, directed = make_query_seq(
+            chain_id, search_locus, args["qDB"], chain_qStrand, bed_data["strand"]
+        )
         verbose("Query sequence extracted")
         q_seq_len = len(query_seq)
         # this is extended query seq (larger locus) for assembly gaps search only!
         # We do not call CESAR for this _query_seq_ext sequence
-        _query_seq_ext, directed = make_query_seq(chain_id, subch_locus, args["qDB"],
-                                                  chain_qStrand, bed_data["strand"])
+        _query_seq_ext, directed = make_query_seq(
+            chain_id, subch_locus, args["qDB"], chain_qStrand, bed_data["strand"]
+        )
 
         if args["ic"]:  # invert complement required for some reason
             query_seq = invert_complement(query_seq)
@@ -1831,17 +2399,21 @@ def realign_exons(args):
             continue
 
         # extract gaps and block coordinates
-        gap_coordinates = find_gaps(_query_seq_ext, subch_locus, args["gap_size"], directed)
+        gap_coordinates = find_gaps(
+            _query_seq_ext, subch_locus, args["gap_size"], directed
+        )
         # blocks are [target_start, target_end, query_start, query_end]
         subchain_blocks_raw = extract_subchain(chain_str, subch_locus)
         # swap blocks in correct orientation and fill interblock ranges
         subchain_blocks = orient_blocks(subchain_blocks_raw, chain_data)
         # intersect exon: chain blocks and chain blocks: gaps, get exons not covered by chain
-        block_intersection_out = intersect_exons_blocks_gaps(exon_coordinates,
-                                                             subchain_blocks,
-                                                             gap_coordinates,
-                                                             args["exon_flank"],
-                                                             args["uhq_flank"])
+        block_intersection_out = intersect_exons_blocks_gaps(
+            exon_coordinates,
+            subchain_blocks,
+            gap_coordinates,
+            args["exon_flank"],
+            args["uhq_flank"],
+        )
         # parse block_intersection_out -> there are many different data:
         exon_blocks = block_intersection_out[0]
         # flanked_exon_blocks = block_intersection_out[1]
@@ -1853,10 +2425,28 @@ def realign_exons(args):
         verbose(f"AA sat: {aa_block_sat}")
 
         # classify exons, get expected regions
-        exon_class, exon_exp_region = classify_predict_exons(exon_blocks, subchain_blocks, margin_cases)
+        exon_class, exon_exp_region = classify_predict_exons(
+            exon_blocks, subchain_blocks, margin_cases
+        )
+        relative_regions_for_chain = get_relative_coordinates(
+            exon_exp_region, search_locus, directed
+        )
+        relative_regions_for_chain_extended = extend_rel_regions(
+            relative_regions_for_chain, len(query_seq)
+        )
+        relative_regions_formatted = fmt_incl_reg(
+            chain_id, relative_regions_for_chain_extended
+        )
+
+        force_include_regions_opt_v.extend(relative_regions_formatted)
+        # if there are predefined regions (by lastz for example)
+        extra_regions = chain_to_predefined_regions[chain_id]
+        force_include_regions_opt_v.extend(extra_regions)
+
         # check whether any exon intersects assembly gap in the corresponding region
-        exon_gap = find_exons_gaps(exon_coordinates, exon_blocks,
-                                   subchain_blocks, blocks_gaps, gap_coordinates)
+        exon_gap = find_exons_gaps(
+            exon_coordinates, exon_blocks, subchain_blocks, blocks_gaps, gap_coordinates
+        )
         # possibly there are multiple chains
         # save data for this particular chain:
         chain_exon_gap[chain_id] = exon_gap
@@ -1879,8 +2469,17 @@ def realign_exons(args):
 
         # chain_qSize -> query chromosome/scaffold length
         # q_seq_len -> query sequence (that comes to CESAR) length
-        fragment_data = (chain_id, q_chrom, q_strand, q_start,
-                         q_end, t_start, t_end, q_seq_len, chain_qSize)
+        fragment_data = (
+            chain_id,
+            q_chrom,
+            q_strand,
+            q_start,
+            q_end,
+            t_start,
+            t_end,
+            q_seq_len,
+            chain_qSize,
+        )
         fragments_data.append(fragment_data)
 
     if not chains:
@@ -1897,9 +2496,9 @@ def realign_exons(args):
             region_strand = False
             region_start, region_end = region_end, region_start
         search_locus = "{}:{}-{}".format(region_chrom, region_start, region_end)
-        query_seq, directed = make_query_seq("-1", search_locus,
-                                             args["qDB"], region_strand,
-                                             bed_data["strand"])
+        query_seq, directed = make_query_seq(
+            "-1", search_locus, args["qDB"], region_strand, bed_data["strand"]
+        )
         # mimic the chain parsing result:
         chain_exon_gap = None
         chain_exon_class[-1] = {}
@@ -1957,6 +2556,16 @@ def realign_exons(args):
     # arrange input for CESAR and save it
     # is_temp is True if /dev/shm is in use; flag to remove that
     cesar_in_filename, is_temp = make_in_filename(args["cesar_input_save_to"])
+    # create temp file for force-include regions, if required
+    force_include_reg_file = make_reg_file(
+        args["opt_cesar"],
+        force_include_regions_opt_v,
+        predefined_file=args["opt_regions_save"],
+    )
+    # for LASTZ-optimised CESAR we may also add +/-10 bp exon flanks
+    exon_flanks_file = make_exon_flanks_file(
+        args["opt_cesar"], exon_flanks, predefined_file=args["exon_flanks_file"]
+    )
     # check whether some reference splice sites are non-canonical
     # doesn't apply to single-exon genes
     ref_ss_data = analyse_ref_ss(s_sites) if len(exon_sequences) != 1 else None
@@ -1969,17 +2578,34 @@ def realign_exons(args):
     # run cesar itself
     cesar_bin = args.get("cesar_binary") if args.get("cesar_binary") else DEFAULT_CESAR
     if not args["cesar_output"]:
-        cesar_raw_out = run_cesar(cesar_in_filename, memory, is_temp, memlim, cesar_bin)
+        cesar_raw_out = run_cesar(
+            cesar_in_filename,
+            memory,
+            is_temp,
+            memlim,
+            cesar_bin,
+            force_include_reg_file,
+            exon_flanks_file,
+            args["predefined_regions"],
+            args["opt_precompute"],
+        )
+        if args["opt_precompute"]:
+            print(cesar_raw_out)
+            exit(0)
     else:  # very specific case, load already saved CESAR output
         with open(args["cesar_output"], "r") as f:
             cesar_raw_out = f.read()
+    # if force_include_reg_file:
+    #     os.remove(force_include_reg_file) if os.path.isfile(force_include_reg_file) else None
     os.remove(cesar_in_filename) if is_temp else None  # wipe temp if temp
     # save raw CESAR output and close if required
     save(cesar_raw_out, args["raw_output"], t0) if args["raw_output"] else None
     # process the output, extract different features per exon
     if args["fragments"]:
         # bit more complicated parsing of fragmented output
-        proc_out = process_cesar_out__fragments(cesar_raw_out, fragments_data, query_loci, inverts)
+        proc_out = process_cesar_out__fragments(
+            cesar_raw_out, fragments_data, query_loci, inverts
+        )
     else:  # not fragmented: use classic procedure
         proc_out = process_cesar_out(cesar_raw_out, query_loci, inverts)
     query_exon_sequences = proc_out[0]  # sequences of predicted exons in query
@@ -1992,30 +2618,51 @@ def realign_exons(args):
     codon_s = proc_out[7]
     aa_cesar_sat = proc_out[8]  # says whether an exon has outstanding quality
     aa_eq_len = aa_eq_len_check(exon_sequences, query_exon_sequences)
-    
+
     if chains:
         # if and only if there are chains, it's possible to extract
         # another check for exceptional exons
-        chain_exon_class = get_a_plus(chain_exon_class, aa_cesar_sat, aa_block_sat_chain, aa_eq_len)
+        chain_exon_class = get_a_plus(
+            chain_exon_class, aa_cesar_sat, aa_block_sat_chain, aa_eq_len
+        )
     # time to arrange all these data altogether
-    final_output, chain_ex_inc = arrange_output(args["gene"], ref_exon_sequences_ali, query_exon_sequences,
-                                                pIDs, pBl, query_coords, chain_exon_gap,
-                                                chain_exon_class, chain_exon_exp_reg, exon_num_corr,
-                                                chain_missed, args['paral'])
+    final_output, chain_ex_inc = arrange_output(
+        args["gene"],
+        ref_exon_sequences_ali,
+        query_exon_sequences,
+        pIDs,
+        pBl,
+        query_coords,
+        chain_exon_gap,
+        chain_exon_class,
+        chain_exon_exp_reg,
+        exon_num_corr,
+        chain_missed,
+        args["paral"],
+    )
     exon_to_len = {k + 1: len(v) for k, v in exon_sequences.items()}
     verbose(f"Exon lens are: {exon_to_len}")
     # this is for inact mutations check:
-    chain_to_exon_to_properties = (chain_exon_class, chain_exon_gap, pIDs,
-                                   pBl, chain_missed, chain_ex_inc, exon_to_len)
+    chain_to_exon_to_properties = (
+        chain_exon_class,
+        chain_exon_gap,
+        pIDs,
+        pBl,
+        chain_missed,
+        chain_ex_inc,
+        exon_to_len,
+    )
     verbose(f"Chain to exon to properties = {chain_to_exon_to_properties}")
     if args["check_loss"]:  # call inact mutations scanner,
-        loss_report = inact_mut_check(cesar_raw_out,
-                                      v=VERBOSE,
-                                      gene=args["gene"],
-                                      ex_prop=chain_to_exon_to_properties,
-                                      ref_ss=ref_ss_data,
-                                      sec_codons=sec_codons,
-                                      no_fpi=args["no_fpi"])
+        loss_report = inact_mut_check(
+            cesar_raw_out,
+            v=VERBOSE,
+            gene=args["gene"],
+            ex_prop=chain_to_exon_to_properties,
+            ref_ss=ref_ss_data,
+            sec_codons=sec_codons,
+            no_fpi=args["no_fpi"],
+        )
     else:  # do not call inact mut scanner
         loss_report = None
 

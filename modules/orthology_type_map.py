@@ -28,7 +28,7 @@ except ImportError:
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 INCLUDE_CLASSES = {"I", "PI", "UL"}
@@ -64,17 +64,25 @@ def read_isoforms__otm(isoforms_file, transcripts, is_ref=True):
         # special branch: one gene - one transcript
         transcript_to_gene = {x: f"{prefix}{x}" for x in transcripts}
         # gene to transcripts is dict key : list
-        gene_to_transcripts = {f"{prefix}{x}": [x, ] for x in transcripts}
+        gene_to_transcripts = {
+            f"{prefix}{x}": [
+                x,
+            ]
+            for x in transcripts
+        }
         return gene_to_transcripts, transcript_to_gene
     # _np stands for "no prefix"
-    gene_to_transcripts_np, transcript_to_gene_np, _ = read_isoforms_file(isoforms_file,
-                                                                          pre_def_trans_list=transcripts)
+    gene_to_transcripts_np, transcript_to_gene_np, _ = read_isoforms_file(
+        isoforms_file, pre_def_trans_list=transcripts
+    )
     # add prefix to distinguish between query and reference genes
     # this is possible that reference and query have the same gene names
     # especially if input is the toga output
     transcript_to_gene = {t: f"{prefix}{g}" for t, g in transcript_to_gene_np.items()}
-    gene_to_transcripts = {f"{prefix}{g}": ts for g, ts in gene_to_transcripts_np.items()}
-    
+    gene_to_transcripts = {
+        f"{prefix}{g}": ts for g, ts in gene_to_transcripts_np.items()
+    }
+
     return gene_to_transcripts, transcript_to_gene
 
 
@@ -172,7 +180,7 @@ def get_t_trans_to_projections(que_projections):
 
 def connect_genes(t_trans_to_gene, t_trans_to_q_proj, q_proj_to_q_gene, proj_to_score):
     """Create orthology relationships graph.
-    
+
     Nodes are reference and query genes.
     If nodes are connected -> they are orthologs.
     Also emit ref_gene -> que_gene -> scores dict.
@@ -223,9 +231,11 @@ def get_c_class(r_num, q_num):
     elif r_num > 1 and q_num > 1:
         return MANY2MANY
     else:  # something that must never happen
-        err_msg = f"Orthology type map: reached corrupt orthology component\n"\
-                  f"Got numbers of ref genes: {r_num}; query: {q_num}"\
-                  f"Abort."
+        err_msg = (
+            f"Orthology type map: reached corrupt orthology component\n"
+            f"Got numbers of ref genes: {r_num}; query: {q_num}"
+            f"Abort."
+        )
         raise RuntimeError(err_msg)
 
 
@@ -312,7 +322,9 @@ def sep_strong_conn(graph, strongly_connected):
         # nothing to check
         return False
     graph_nodes = set(graph.nodes())
-    s_conn_appear_here = {k: v for k, v in strongly_connected.items() if k in graph_nodes}
+    s_conn_appear_here = {
+        k: v for k, v in strongly_connected.items() if k in graph_nodes
+    }
     if len(s_conn_appear_here) == 0:
         # nothing to check: no strongly connected genes here
         return False
@@ -355,7 +367,9 @@ def split_graph(graph, r_genes, q_genes, edge_to_score):
     leaf_edges = set(ref_leaf_edges + que_leaf_edges)
     if len(leaf_edges) == 0:
         # if no leaves: too complicated case, don't try to resolve
-        return [graph, ]
+        return [
+            graph,
+        ]
     # 2: get nodes connected to leaf edges, and set difference
     leaf_conn_nodes = set(flatten(leaf_edges))
     not_leaf_conn_nodes = set(graph.nodes()).difference(leaf_conn_nodes)
@@ -374,7 +388,9 @@ def split_graph(graph, r_genes, q_genes, edge_to_score):
     # if so: we don't try to resolve this many2many
     # return original graph
     if graph_has_isolated_points(remainder):
-        return [graph, ]
+        return [
+            graph,
+        ]
     # add remainder only if it's not empty
     # otherwise it makes no sense
     if not graph_is_empty(remainder):
@@ -382,23 +398,30 @@ def split_graph(graph, r_genes, q_genes, edge_to_score):
     # check whether we separated strongly connected genes
     if any(sep_strong_conn(g, ref_not_separate) for g in trimmed_parts):
         # we separated genes that we didn't want to: return initial graph
-        return [graph, ]
+        return [
+            graph,
+        ]
     # 7: primitive "statistics"
     # Just check that scores of deleted edges are significantly lower than
     # scores of remaining edges
     original_edges = set(order_edges(graph.edges(), ref_nodes_set))
-    edges_left = set(order_edges(flatten(x.edges() for x in trimmed_parts), ref_nodes_set))
+    edges_left = set(
+        order_edges(flatten(x.edges() for x in trimmed_parts), ref_nodes_set)
+    )
     edges_removed = original_edges.difference(edges_left)
     edges_left_scores = [edge_to_score.get(e, 0.0) for e in edges_left]
     edges_rem_scores = [edge_to_score.get(e, 0.0) for e in edges_removed]
-    bool__removed_low_score_edges = check_low_score_edges_removed(edges_left_scores,
-                                                                  edges_rem_scores)
+    bool__removed_low_score_edges = check_low_score_edges_removed(
+        edges_left_scores, edges_rem_scores
+    )
     # 8: return graph parts or the original graph depending on edge scores
     if bool__removed_low_score_edges is True:
         return trimmed_parts
     else:
         # here we are not certain, better to return original graph
-        return [graph, ]
+        return [
+            graph,
+        ]
 
 
 def get_graph_conn(graph, over__ref_genes, over__que_genes):
@@ -419,7 +442,9 @@ def resolve_many2many(graph, r_genes, q_genes, edge_to_score):
     if is_b_complete:
         # nothing to do actually
         conn = {R_GENES: r_genes, Q_GENES: q_genes, C_CLASS: MANY2MANY}
-        return [conn, ]
+        return [
+            conn,
+        ]
     # not complete bipartite graph
     # first, select reference genes that have a single connection
     # edges = [(node, node), (node, node), ..] -> list of pairs
@@ -470,12 +495,16 @@ def extract_orth_connections(graph, r_genes_all, q_genes_all, edge_to_score):
     return orth_connections
 
 
-def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_projections, out):
+def save_data(
+    orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_projections, out
+):
     """Save orthology data."""
     f = open(out, "w") if out != "stdout" else sys.stdout
     # write the header
     f.write("t_gene\tt_transcript\tq_gene\tq_transcript\torthology_class\n")
-    non_orthologous_isoforms = []  # to save reference transcripts that don't have orthologs
+    non_orthologous_isoforms = (
+        []
+    )  # to save reference transcripts that don't have orthologs
 
     for conn in orth_connections:
         # connection: class + GENES
@@ -514,10 +543,14 @@ def save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_pro
                         # there are orthologous projections detected earlier but
                         # we removed them earlier
                         continue
-                    proj_not_added = False  # if True -> consider this transcript skipped
+                    proj_not_added = (
+                        False  # if True -> consider this transcript skipped
+                    )
                     ref_gene = trim_prefix(pf_ref_gene)
                     que_gene = trim_prefix(pf_proj_q_gene)
-                    f.write(f"{ref_gene}\t{ref_transcript}\t{que_gene}\t{proj}\t{conn_class}\n")
+                    f.write(
+                        f"{ref_gene}\t{ref_transcript}\t{que_gene}\t{proj}\t{conn_class}\n"
+                    )
                 if proj_not_added is True:
                     # see comments for (if not projections)
                     non_orthologous_isoforms.append(ref_transcript)
@@ -535,9 +568,17 @@ def get_edge_score(ref_que_conn_scores):
     return ret
 
 
-def orthology_type_map(ref_bed, que_bed, out, ref_iso=None, que_iso=None,
-                       paralogs_arg=None, loss_data=None, save_skipped=None,
-                       orth_scores_arg=None):
+def orthology_type_map(
+    ref_bed,
+    que_bed,
+    out,
+    ref_iso=None,
+    que_iso=None,
+    paralogs_arg=None,
+    loss_data=None,
+    save_skipped=None,
+    orth_scores_arg=None,
+):
     """Make orthology classification track."""
     q_trans_paralogs = read_paralogs(paralogs_arg)  # do not include paralogs
     q_trans_l_score = read_proj_scores(orth_scores_arg)
@@ -549,27 +590,32 @@ def orthology_type_map(ref_bed, que_bed, out, ref_iso=None, que_iso=None,
     else:  # we do add only I, PI and G projections
         trans_to_L_status = read_loss_data(loss_data)
     # remove I/PI/G or paralogous transcripts
-    que_transcripts = filter_query_transcripts(que_transcripts_all,
-                                               q_trans_paralogs,
-                                               trans_to_L_status)
+    que_transcripts = filter_query_transcripts(
+        que_transcripts_all, q_trans_paralogs, trans_to_L_status
+    )
     # read reference and query isoform files; orthology is a story about genes
     r_gene_to_trans, r_trans_to_gene = read_isoforms__otm(ref_iso, ref_transcripts)
-    q_gene_to_trans, q_trans_to_gene = read_isoforms__otm(que_iso, que_transcripts_all, is_ref=False)
+    q_gene_to_trans, q_trans_to_gene = read_isoforms__otm(
+        que_iso, que_transcripts_all, is_ref=False
+    )
     r_genes_all = set(r_gene_to_trans.keys())
     q_genes_all = set(q_gene_to_trans.keys())
     # make transcript to projections dict:
     t_trans_to_projections = get_t_trans_to_projections(que_transcripts)
     # create graph to connect orthologous transcripts
-    o_graph, ref_que_conn_scores = connect_genes(r_trans_to_gene,
-                                                 t_trans_to_projections,
-                                                 q_trans_to_gene,
-                                                 q_trans_l_score)
+    o_graph, ref_que_conn_scores = connect_genes(
+        r_trans_to_gene, t_trans_to_projections, q_trans_to_gene, q_trans_l_score
+    )
     edge_to_score = get_edge_score(ref_que_conn_scores)
     # if a group of reference and query genes are in the same connected component
     # then they are orthologs
-    orth_connections = extract_orth_connections(o_graph, r_genes_all, q_genes_all, edge_to_score)
+    orth_connections = extract_orth_connections(
+        o_graph, r_genes_all, q_genes_all, edge_to_score
+    )
     # save data, get list of transcript that were not projected
-    not_saved = save_data(orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_projections, out)
+    not_saved = save_data(
+        orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_projections, out
+    )
     if save_skipped:
         # save transcripts of orthologous genes that don't have any projection
         f = open(save_skipped, "w")
@@ -584,13 +630,25 @@ def parse_args():
     app.add_argument("target_bed", help="Annotation for the target genome.")
     app.add_argument("query_bed", help="Query annotation file.")
     app.add_argument("output", help="Output with orthology information")
-    app.add_argument("--ref_isoforms", "--ri", type=str, default=None,
-                     help="Isoforms data for reference (if exists)")
-    app.add_argument("--que_isoforms", "--qi", type=str, default=None,
-                     help="Isoforms data for query (if exists)")
+    app.add_argument(
+        "--ref_isoforms",
+        "--ri",
+        type=str,
+        default=None,
+        help="Isoforms data for reference (if exists)",
+    )
+    app.add_argument(
+        "--que_isoforms",
+        "--qi",
+        type=str,
+        default=None,
+        help="Isoforms data for query (if exists)",
+    )
     app.add_argument("--paralogs", "-p", default=None, help="List of paralogs")
     app.add_argument("--loss_data", "-l", default=None, help="GLP classification")
-    app.add_argument("--save_skipped", "-s", default=None, help="Save orphan transcripts")
+    app.add_argument(
+        "--save_skipped", "-s", default=None, help="Save orphan transcripts"
+    )
     app.add_argument("--orth_scores", "-o", default=None, help="Orthology scores")
     # print help if there are no args
     if len(sys.argv) < 2:
@@ -603,15 +661,17 @@ def parse_args():
 def main():
     """CLI entry point."""
     args = parse_args()
-    orthology_type_map(args.target_bed,
-                       args.query_bed,
-                       args.output,
-                       ref_iso=args.ref_isoforms,
-                       que_iso=args.que_isoforms,
-                       paralogs_arg=args.paralogs,
-                       loss_data=args.loss_data,
-                       save_skipped=args.save_skipped,
-                       orth_scores_arg=args.orth_scores)
+    orthology_type_map(
+        args.target_bed,
+        args.query_bed,
+        args.output,
+        ref_iso=args.ref_isoforms,
+        que_iso=args.que_isoforms,
+        paralogs_arg=args.paralogs,
+        loss_data=args.loss_data,
+        save_skipped=args.save_skipped,
+        orth_scores_arg=args.orth_scores,
+    )
 
 
 if __name__ == "__main__":

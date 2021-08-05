@@ -13,6 +13,7 @@ import sys
 import argparse
 import os
 from collections import defaultdict
+
 try:
     from modules.parse_cesar_output import classify_exon
     from modules.common import eprint
@@ -26,7 +27,7 @@ except ImportError:
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 
@@ -44,8 +45,10 @@ FRAGM_ID_TEXT = "FRAGMENT"
 CHROM_NONE = "None"
 
 # header for exons meta data file
-META_HEADER = "\t".join("gene exon_num chain_id act_region exp_region"
-                        " in_exp pid blosum gap class paralog q_mark".split())
+META_HEADER = "\t".join(
+    "gene exon_num chain_id act_region exp_region"
+    " in_exp pid blosum gap class paralog q_mark".split()
+)
 
 
 def parse_args():
@@ -59,8 +62,16 @@ def parse_args():
     app.add_argument("codon_fasta", help="Save codon alignment fasta to...")
     app.add_argument("skipped", help="Save skipped genes")
     app.add_argument("--output_trash", default=None, help="Save deleted exons")
-    app.add_argument("--fragm_data", default=None, help="For each bed fragment save range of included exons")
-    app.add_argument("--exclude", default=None, help="File containing a list of transcripts to exclude")
+    app.add_argument(
+        "--fragm_data",
+        default=None,
+        help="For each bed fragment save range of included exons",
+    )
+    app.add_argument(
+        "--exclude",
+        default=None,
+        help="File containing a list of transcripts to exclude",
+    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -159,22 +170,26 @@ def split_ex_reg_in_chrom(exon_regions):
         if len(pieces) == 1:
             chrom_n_to_pieces[curr_key] = pieces
             continue
-        
+
         direct_pieces = sorted([x for x in pieces if x[1] < x[2]], key=lambda x: x[0])
-        revert_pieces = sorted([x for x in pieces if x[1] > x[2]],
-                               key=lambda x: x[0],
-                               reverse=True)
+        revert_pieces = sorted(
+            [x for x in pieces if x[1] > x[2]], key=lambda x: x[0], reverse=True
+        )
         both_dirs = direct_pieces and revert_pieces
 
         if direct_pieces:
-            dir_dct, curr_key = split_ex_reg_in_chrom__direction(direct_pieces, curr_key)
+            dir_dct, curr_key = split_ex_reg_in_chrom__direction(
+                direct_pieces, curr_key
+            )
             chrom_n_to_pieces.update(dir_dct)
         if revert_pieces:
             if both_dirs:  # need to add another sequence
                 chrom_n = curr_key[1]
                 chrom_n += 1
                 curr_key = (chrom, chrom_n)
-            rev_dct, curr_key = split_ex_reg_in_chrom__direction(revert_pieces, curr_key)
+            rev_dct, curr_key = split_ex_reg_in_chrom__direction(
+                revert_pieces, curr_key
+            )
             chrom_n_to_pieces.update(rev_dct)
     return chrom_n_to_pieces
 
@@ -234,7 +249,9 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
             # FIELD_1 | FIELD_2 | FIELD_3\n
             header_fields = [s.replace(" ", "") for s in header.split("|")]
             exon_num = int(header_fields[1])  # 0-based!
-            exon_seq = sequences[header].replace("-", "")  # header is also a key for seq dict
+            exon_seq = sequences[header].replace(
+                "-", ""
+            )  # header is also a key for seq dict
             t_exon_seqs[gene][exon_num] = exon_seq
 
         # save protein data
@@ -290,10 +307,22 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
                 ranges_chain[chain_id][exon_num] = exon_region
                 pred_seq_chain[gene][chain_id][exon_num] = sequences[header]
             # collect exon meta-data -> write to file later
-            meta_data = "\t".join([gene, header_fields[1], header_fields[2],
-                                   header_fields[3], exp_region_str,
-                                   in_exp, header_fields[4], header_fields[5], is_gap,
-                                   exon_class, str(para_annot), q_mark])
+            meta_data = "\t".join(
+                [
+                    gene,
+                    header_fields[1],
+                    header_fields[2],
+                    header_fields[3],
+                    exp_region_str,
+                    in_exp,
+                    header_fields[4],
+                    header_fields[5],
+                    is_gap,
+                    exon_class,
+                    str(para_annot),
+                    q_mark,
+                ]
+            )
             all_meta_data.append(meta_data)
 
         # check if there are any exons
@@ -325,12 +354,17 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
                 # get strand on this particular scaffold of course
                 direct = pieces[0][1] < pieces[0][2]
                 exon_nums_not_sort = [p[0] for p in pieces]
-                exon_nums = sorted(exon_nums_not_sort) if direct \
+                exon_nums = (
+                    sorted(exon_nums_not_sort)
+                    if direct
                     else sorted(exon_nums_not_sort, reverse=True)
+                )
                 # chrom_start = exon_regions[exon_nums[0]]["start"] if direct else exon_regions[exon_nums[0]]["end"]
                 # chrom_end = exon_regions[exon_nums[-1]]["end"] if direct else exon_regions[exon_nums[-1]]["start"]
                 regions_here = [exon_regions[i] for i in exon_nums]
-                all_points = [r["start"] for r in regions_here] + [r["end"] for r in regions_here]
+                all_points = [r["start"] for r in regions_here] + [
+                    r["end"] for r in regions_here
+                ]
                 chrom_start = min(all_points)
                 chrom_end = max(all_points)
                 # we do not predict UTRs: thickStart/End = chrom_start/End
@@ -343,22 +377,42 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
                 for exon_num in exon_nums:
                     ex_range = exon_regions[exon_num]
                     block_sizes.append(abs(ex_range["end"] - ex_range["start"]))
-                    blockStart = ex_range["start"] - chrom_start if direct else ex_range["end"] - chrom_start
+                    blockStart = (
+                        ex_range["start"] - chrom_start
+                        if direct
+                        else ex_range["end"] - chrom_start
+                    )
                     block_starts.append(blockStart)
                 # need this as strings to save it in a text file
                 block_starts_str = ",".join(map(str, block_starts)) + ","
                 block_sizes_str = ",".join(map(str, block_sizes)) + ","
                 # join in a bed line
-                bed_list = map(str, [chrom, chrom_start, chrom_end, name,
-                                     DEFAULT_SCORE, strand, thickStart, thick_end, BLACK,
-                                     block_count, block_sizes_str, block_starts_str])
+                bed_list = map(
+                    str,
+                    [
+                        chrom,
+                        chrom_start,
+                        chrom_end,
+                        name,
+                        DEFAULT_SCORE,
+                        strand,
+                        thickStart,
+                        thick_end,
+                        BLACK,
+                        block_count,
+                        block_sizes_str,
+                        block_starts_str,
+                    ],
+                )
                 bed_line = "\t".join(bed_list)
                 bed_lines.append(bed_line)
                 exon_nums_one_based_all = [x + 1 for x in exon_nums]
                 exon_num_first = min(exon_nums_one_based_all)
                 exon_num_last = max(exon_nums_one_based_all)
                 exons_range = f"{exon_num_first}-{exon_num_last}"
-                bed_track_to_exons_lst = map(str, [chrom, chrom_start, chrom_end, name, exons_range])
+                bed_track_to_exons_lst = map(
+                    str, [chrom, chrom_start, chrom_end, name, exons_range]
+                )
                 bed_track_to_exons = "\t".join(bed_track_to_exons_lst)
                 bed_track_and_exon_nums.append(bed_track_to_exons)
 
@@ -370,19 +424,31 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
             # go projection-by-projection: fixed gene, loop over chains
             block_starts = []
             block_sizes = []
-            ranges = ranges_chain[chain_id]
+            ranges = {
+                k: v
+                for k, v in ranges_chain[chain_id].items()
+                if v["chrom"] != CHROM_NONE
+            }
             name = f"{gene}.{chain_id}"  # projection name for bed file
 
             if len(ranges) == 0:  # this projection is completely missing
                 skipped.append(f"{name}\tall exons are deleted.")
                 continue
             direct = chain_dir[chain_id]
-            exon_nums = sorted(ranges.keys()) if direct else sorted(ranges.keys(), reverse=True)
+            exon_nums = (
+                sorted(ranges.keys()) if direct else sorted(ranges.keys(), reverse=True)
+            )
 
             # get basic coordinates
             chrom = ranges[exon_nums[0]]["chrom"]
-            chrom_start = ranges[exon_nums[0]]["start"] if direct else ranges[exon_nums[0]]["end"]
-            chrom_end = ranges[exon_nums[-1]]["end"] if direct else ranges[exon_nums[-1]]["start"]
+            chrom_start = (
+                ranges[exon_nums[0]]["start"] if direct else ranges[exon_nums[0]]["end"]
+            )
+            chrom_end = (
+                ranges[exon_nums[-1]]["end"]
+                if direct
+                else ranges[exon_nums[-1]]["start"]
+            )
 
             # we do not predict UTRs: thickStart/End = chrom_start/End
             thickStart = chrom_start
@@ -394,7 +460,11 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
             for exon_num in exon_nums:
                 ex_range = ranges[exon_num]
                 block_sizes.append(abs(ex_range["end"] - ex_range["start"]))
-                blockStart = ex_range["start"] - chrom_start if direct else ex_range["end"] - chrom_start
+                blockStart = (
+                    ex_range["start"] - chrom_start
+                    if direct
+                    else ex_range["end"] - chrom_start
+                )
                 block_starts.append(blockStart)
 
             # need this as strings to save it in a text file
@@ -402,9 +472,23 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
             block_sizes_str = ",".join(map(str, block_sizes)) + ","
 
             # join in a bed line
-            bed_list = map(str, [chrom, chrom_start, chrom_end, name,
-                                 DEFAULT_SCORE, strand, thickStart, thick_end, BLACK,
-                                 block_count, block_sizes_str, block_starts_str])
+            bed_list = map(
+                str,
+                [
+                    chrom,
+                    chrom_start,
+                    chrom_end,
+                    name,
+                    DEFAULT_SCORE,
+                    strand,
+                    thickStart,
+                    thick_end,
+                    BLACK,
+                    block_count,
+                    block_sizes_str,
+                    block_starts_str,
+                ],
+            )
             bed_line = "\t".join(bed_list)
             bed_lines.append(bed_line)
 
@@ -464,8 +548,16 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
     codon_fasta = "".join(codon_data)
     fasta_lines = "".join(fasta_lines_lst)
     fragm_bed_exons_str = "\n".join(bed_track_and_exon_nums) + "\n"
-    ret = (bed_lines, trash_exons, fasta_lines, meta_str,
-           prot_fasta, codon_fasta, skipped_str, fragm_bed_exons_str)
+    ret = (
+        bed_lines,
+        trash_exons,
+        fasta_lines,
+        meta_str,
+        prot_fasta,
+        codon_fasta,
+        skipped_str,
+        fragm_bed_exons_str,
+    )
     return ret
 
 
@@ -480,14 +572,21 @@ def get_excluded_genes(exc_arg):
         return set()
 
 
-def merge_cesar_output(input_dir, output_bed, output_fasta,
-                       meta_data_arg, skipped_arg, prot_arg,
-                       codon_arg, output_trash, fragm_data=None,
-                       exclude=None):
+def merge_cesar_output(
+    input_dir,
+    output_bed,
+    output_fasta,
+    meta_data_arg,
+    skipped_arg,
+    prot_arg,
+    codon_arg,
+    output_trash,
+    fragm_data=None,
+    exclude=None,
+):
     """Merge multiple CESAR output files."""
     # check that input dir is correct
-    die(f"Error! {input_dir} is not a dir!") \
-        if not os.path.isdir(input_dir) else None
+    die(f"Error! {input_dir} is not a dir!") if not os.path.isdir(input_dir) else None
     # get list of bdb files (output of CESAR part)
     bdbs = [x for x in os.listdir(input_dir) if x.endswith(".txt")]
     # get list of excluded transcripts
@@ -517,8 +616,9 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
             continue
         # and check that this file has size > 0
         elif os.stat(bdb_path).st_size == 0:
-            stat = (bdb_path, "file is empty!")
-            crashed_status.append(stat)
+            # stat = (bdb_path, "file is empty!")
+            # crashed_status.append(stat)
+            # ok, no output: if something crashed, we will find out
             continue
 
         try:  # try to parse data
@@ -526,7 +626,7 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         except AssertionError:
             # if this happened: some assertion was violated
             # probably CESAR output data is corrupted
-            parsed_data = (None, )
+            parsed_data = (None,)
             sys.exit(f"Error! Failed reading file {bdb_file}")
 
         # unpack parsed data tuple:
@@ -539,13 +639,13 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
         skip = parsed_data[6]
         fragm_bed_exons = parsed_data[7]
 
-        if len(bed_lines) == 0:
-            # actually should not happen, but can
-            eprint(f"Warning! Cannot extract bed from {bdb_file}")
-            stat = (bdb_path, "Could not extract bed track")
-            crashed_status.append(stat)
-            continue  # it is empty
-        
+        # if len(bed_lines) == 0:
+        #     # actually should not happen, but can
+        #     eprint(f"Warning! Cannot extract bed from {bdb_file}")
+        #     stat = (bdb_path, "Could not extract bed track")
+        #     crashed_status.append(stat)
+        #     continue  # it is empty
+
         # append data to lists
         bed_summary.append("\n".join(bed_lines) + "\n")
         fasta_summary.append(fasta_lines)
@@ -596,16 +696,18 @@ def merge_cesar_output(input_dir, output_bed, output_fasta,
 def main():
     """Entry point."""
     args = parse_args()
-    merge_cesar_output(args.input_dir,
-                       args.output_bed,
-                       args.output_fasta,
-                       args.meta_data,
-                       args.skipped,
-                       args.prot_fasta,
-                       args.codon_fasta,
-                       args.output_trash,
-                       fragm_data=args.fragm_data,
-                       exclude=args.exclude)
+    merge_cesar_output(
+        args.input_dir,
+        args.output_bed,
+        args.output_fasta,
+        args.meta_data,
+        args.skipped,
+        args.prot_fasta,
+        args.codon_fasta,
+        args.output_trash,
+        fragm_data=args.fragm_data,
+        exclude=args.exclude,
+    )
 
 
 if __name__ == "__main__":

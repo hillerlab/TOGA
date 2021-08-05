@@ -8,7 +8,7 @@ import networkx as nx
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 SLIB_NAME = "chain_bst_lib.so"
@@ -17,7 +17,7 @@ ISOFORMS_FILE_COLS = 2
 
 def parts(lst, n=3):
     """Split an iterable into parts with size n."""
-    return [lst[i:i + n] for i in iter(range(0, len(lst), n))]
+    return [lst[i : i + n] for i in iter(range(0, len(lst), n))]
 
 
 def eprint(msg, end="\n"):
@@ -38,7 +38,9 @@ def bed_extract_id(index_file, gene_ids):
     if type(gene_ids) != str:
         keys = [str(gene_id) for gene_id in gene_ids]
     else:
-        keys = [str(gene_ids), ]
+        keys = [
+            str(gene_ids),
+        ]
     bed_lines = []
     for key in keys:
         try:  # catch key error
@@ -65,7 +67,9 @@ def bed_extract_id_text(bed_file, gene_ids_param):
     if type(gene_ids_param) != str:  # so it's list
         gene_ids = set(gene_ids_param)
     else:
-        gene_ids = {gene_ids_param, }
+        gene_ids = {
+            gene_ids_param,
+        }
     # gene_ids is a set for consistency; even if a single gene id provided
     output = []
     f = open(bed_file, "r")
@@ -99,8 +103,8 @@ def make_cds_track(line):
     # chrom start and end define the entire transcript location
     # this includes both UTRs and CDS
     # thick start and end limit the CDS only
-    block_sizes = [int(x) for x in line_data[10].split(',') if x != '']
-    block_starts = [int(x) for x in line_data[11].split(',') if x != '']
+    block_sizes = [int(x) for x in line_data[10].split(",") if x != ""]
+    block_starts = [int(x) for x in line_data[11].split(",") if x != ""]
     block_ends = [block_starts[i] + block_sizes[i] for i in range(block_count)]
     # block starts are given in the relative coordinates -> need to convert them
     # into absolute coordinates using chrom start
@@ -119,7 +123,7 @@ def make_cds_track(line):
             continue
         elif blockStart >= thick_end:
             continue
-        
+
         # if we are here: this is not an entirely UTR exon
         # it might intersect the CDS border or to be in the CDS entirely
         # remove UTRs: block start must be >= CDS_start (thick_start)
@@ -135,14 +139,25 @@ def make_cds_track(line):
     # block_count could change due to entirely UTR exons
     block_new_count = len(block_new_starts)
     # this is also a subject to change
-    blockNewSizes = [block_new_ends[i] - block_new_starts[i]
-                     for i in range(block_new_count)]
+    blockNewSizes = [
+        block_new_ends[i] - block_new_starts[i] for i in range(block_new_count)
+    ]
 
     # save the updated bed line with trimmed UTRs
-    new_track = [chrom, thick_start, thick_end, name, bed_score,
-                 strand, thick_start, thick_end, item_rgb, block_new_count,
-                 ",".join([str(x) for x in blockNewSizes]) + ",",
-                 ",".join([str(x) for x in block_new_starts]) + ","]
+    new_track = [
+        chrom,
+        thick_start,
+        thick_end,
+        name,
+        bed_score,
+        strand,
+        thick_start,
+        thick_end,
+        item_rgb,
+        block_new_count,
+        ",".join([str(x) for x in blockNewSizes]) + ",",
+        ",".join([str(x) for x in block_new_starts]) + ",",
+    ]
     new_line = "\t".join([str(x) for x in new_track])
     return new_line
 
@@ -159,10 +174,12 @@ def chain_extract_id(index_file, chain_id, chain_file=None):
     script_location = os.path.dirname(__file__)
     slib_location = os.path.join(script_location, SLIB_NAME)
     sh_lib = ctypes.CDLL(slib_location)
-    sh_lib.get_s_byte.argtypes = [ctypes.c_char_p,
-                                  ctypes.c_uint64,
-                                  ctypes.POINTER(ctypes.c_uint64),
-                                  ctypes.POINTER(ctypes.c_uint64)]
+    sh_lib.get_s_byte.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_uint64,
+        ctypes.POINTER(ctypes.c_uint64),
+        ctypes.POINTER(ctypes.c_uint64),
+    ]
     sh_lib.get_s_byte.restype = ctypes.c_uint64
 
     # call library: find chain start byte and offset
@@ -171,11 +188,10 @@ def chain_extract_id(index_file, chain_id, chain_file=None):
     c_sb = ctypes.c_uint64(0)  # write results in c_sb and c_of
     c_of = ctypes.c_uint64(0)  # provide them byref -> like pointers
 
-    _ = sh_lib.get_s_byte(c_index_path,
-                          c_chain_id,
-                          ctypes.byref(c_sb),
-                          ctypes.byref(c_of))
-    
+    _ = sh_lib.get_s_byte(
+        c_index_path, c_chain_id, ctypes.byref(c_sb), ctypes.byref(c_of)
+    )
+
     if c_sb.value == c_of.value == 0:
         # if they are 0: nothing found then, raise Error
         sys.stderr.write(f"Error, chain {chain_id} ")
@@ -203,12 +219,17 @@ def split_in_n_lists(lst, n):
     lst_len = len(lst)
     if n >= lst_len:
         # pigeonhole principle in work
-        return [[x, ] for x in lst]
+        return [
+            [
+                x,
+            ]
+            for x in lst
+        ]
     ret = []  # list of lists
     sublist_len = lst_len / float(n)
     last = 0.0
     while last < len(lst):
-        sublist = lst[int(last): int(last + sublist_len)]
+        sublist = lst[int(last) : int(last + sublist_len)]
         ret.append(sublist)
         last += sublist_len
     return ret
@@ -216,7 +237,7 @@ def split_in_n_lists(lst, n):
 
 def split_proj_name(proj_name):
     """Split projection name.
-    
+
     Projections named as follows: ${transcript_ID}.{$chain_id}.
     This function splits projection back into transcript and chain ids.
     We cannot just use split("."), because there might be dots
@@ -248,13 +269,12 @@ def load_chain_dict(chain_index_file):
 
 def get_graph_components(graph):
     """Split graph in connected components."""
-    nx_v = float(nx.__version__)
-    if nx_v < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
+    nx_v = nx.__version__
+    # could crash if x.y.z
+    v_split = nx_v.split(".")
+    f_s_nums = float(f"{v_split[0]}.{v_split[1]}")
+    if f_s_nums < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
         graph_components = list(nx.connected_component_subgraphs(graph))
-        msg = f"Warning! You use networkx v{nx_v}\nSplitting components with " \
-              f"nx.connected_component_subgraphs(), which is deprecated.\n" \
-              f"Please upgrade networkx to suppress this warning\n"
-        sys.stderr.write(msg)
     else:
         graph_components = [graph.subgraph(c) for c in nx.connected_components(graph)]
     return graph_components
@@ -286,8 +306,10 @@ def read_isoforms_file(isoforms_file, pre_def_trans_list=None):
     for l_num, line in enumerate(f):
         line_data = line.rstrip().split("\t")
         if len(line_data) != ISOFORMS_FILE_COLS:
-            err_msg = f"Isoforms file {isoforms_file} line num {l_num} corrupted: " \
-                      f"Expected {ISOFORMS_FILE_COLS} lines, got {len(line_data)}\n"
+            err_msg = (
+                f"Isoforms file {isoforms_file} line num {l_num} corrupted: "
+                f"Expected {ISOFORMS_FILE_COLS} lines, got {len(line_data)}\n"
+            )
             die(err_msg)
         gene = line_data[0]
         transcript = line_data[1]

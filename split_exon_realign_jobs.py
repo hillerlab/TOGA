@@ -10,7 +10,9 @@ import sys
 import math
 from collections import defaultdict
 from datetime import datetime as dt
+from re import finditer, IGNORECASE
 import ctypes
+from twobitreader import TwoBitFile
 from modules.common import parts
 from modules.common import split_in_n_lists
 from modules.common import chain_extract_id
@@ -20,17 +22,24 @@ from modules.common import die
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 # 0 gene; 1 chains; 2 bed_file; 3 bdb_chain_file; 4 tDB; 5 qDB; 6 memlim gig;
 LOCATION = os.path.dirname(__file__)
 WRAPPER_ABSPATH = os.path.abspath(os.path.join(LOCATION, "CESAR_wrapper.py"))
-WRAPPER_TEMPLATE = WRAPPER_ABSPATH \
-                   + " {0} {1} {2} {3} {4} {5} --memlim {6} --cesar_binary {7}" \
-                   + " --uhq_flank {8}"
-CESAR_RUNNER = os.path.abspath(os.path.join(LOCATION, "cesar_runner.py"))  # script that will run jobs
-LONG_LOCI_FIELDS = {"GGLOB", "TRANS"}  # chain classes that could lead to very long query loci
+WRAPPER_TEMPLATE = (
+    WRAPPER_ABSPATH
+    + " {0} {1} {2} {3} {4} {5} --cesar_binary {6}"
+    + " --uhq_flank {7} --memlim {8}"
+)
+CESAR_RUNNER = os.path.abspath(
+    os.path.join(LOCATION, "cesar_runner.py")
+)  # script that will run jobs
+LONG_LOCI_FIELDS = {
+    "GGLOB",
+    "TRANS",
+}  # chain classes that could lead to very long query loci
 BIGMEM_LIM = 1000  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 1000000
@@ -38,16 +47,30 @@ EXTRA_MEM = 100000  # extra memory "just in case"
 BIGMEM_JOBSNUM = 100  # TODO: make a parameter?
 REF_LEN_THRESHOLD = 0.05  # if query length < 5% CDS then skip it
 
+ASM_GAP_SIZE = 10
+ASM_GAP_PATTERN = r"N{" + str(ASM_GAP_SIZE) + ",}"
+
+M = "M"
+L = "L"
+
+ORTHOLOG = "ORTH"
+PARALOG = "PARA"
+TRANS = "TRANS"
+PROJECTION = "PROJECTION"
+TRANSCRIPT = "TRANSCRIPT"
+
 # connect shared lib; define input and output data types
-chain_coords_conv_lib_path = os.path.join(LOCATION,
-                                          "modules",
-                                          "chain_coords_converter_slib.so")
+chain_coords_conv_lib_path = os.path.join(
+    LOCATION, "modules", "chain_coords_converter_slib.so"
+)
 
 ch_lib = ctypes.CDLL(chain_coords_conv_lib_path)
-ch_lib.chain_coords_converter.argtypes = [ctypes.c_char_p,
-                                          ctypes.c_int,
-                                          ctypes.c_int,
-                                          ctypes.POINTER(ctypes.c_char_p)]
+ch_lib.chain_coords_converter.argtypes = [
+    ctypes.c_char_p,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.POINTER(ctypes.c_char_p),
+]
 ch_lib.chain_coords_converter.restype = ctypes.POINTER(ctypes.c_char_p)
 
 
@@ -61,51 +84,120 @@ def parse_args():
     app.add_argument("tDB", type=str, help="target 2 bit")
     app.add_argument("qDB", type=str, help="query 2 bit")
 
-    app.add_argument("--cesar_binary", type=str, default="cesar",
-                     help="CESAR2.0 binary address, cesar as default.")
-    app.add_argument("--jobs_num", type=int, default=300,
-                     help="Total number of cluster jobs, 300 is recommended."
-                     " Resulting number may slightly vary in case of buckets "
-                     "param usage due to round issues.")
-    app.add_argument("--buckets", default="0", help=""
-                     "If you need to split the cluster jobs in different classes"
-                     " according the memory consumption use this parameter. To do "
-                     " that write comma-separated list of memory levels. For "
-                     "example, --buckets 10,30 means that there are two classes of "
-                     "jobs - consuming 10 and 30 gb. All jobs consuming more than 30gb "
-                     "are ignored. Job names will be 'cesar_job_[job_number]_[memory_class]' "
-                     "like cesar_job_9999_30 - meaning all tasks in this file require "
-                     "no more that 30Gb. --buckets 0 means no separation.")
-    app.add_argument("--fields", default=None,
-                     help="Use those chains that are placed in these fields "
-                          " in orthologs file. Comma-separated list. For example "
-                          "PERF,GLOK - for perfect and good local chains.")
-    app.add_argument("--mask_stops", "--ms", action="store_true", dest="mask_stops",
-                     help="Mask stop codons in target sequences. CESAR cannot process them."
-                     "Using this parameter please make sure you know what you are doing.")
-    app.add_argument("--chains_limit", type=int, default=15,
-                     help="Skip genes with amount of orthologs more than the limit.")
-    app.add_argument("--skipped_genes", default=None,
-                     help="If a gene was skipped due to memory of number "
-                          " of chain limit, save it into a file.")
-    app.add_argument("--mem_limit", type=float, default=50,
-                     help="Skip genes requiring more than X GB to call CESAR")
+    app.add_argument(
+        "--cesar_binary",
+        type=str,
+        default="cesar",
+        help="CESAR2.0 binary address, cesar as default.",
+    )
+    app.add_argument(
+        "--jobs_num",
+        type=int,
+        default=300,
+        help="Total number of cluster jobs, 300 is recommended."
+        " Resulting number may slightly vary in case of buckets "
+        "param usage due to round issues.",
+    )
+    app.add_argument(
+        "--buckets",
+        default="0",
+        help=""
+        "If you need to split the cluster jobs in different classes"
+        " according the memory consumption use this parameter. To do "
+        " that write comma-separated list of memory levels. For "
+        "example, --buckets 10,30 means that there are two classes of "
+        "jobs - consuming 10 and 30 gb. All jobs consuming more than 30gb "
+        "are ignored. Job names will be 'cesar_job_[job_number]_[memory_class]' "
+        "like cesar_job_9999_30 - meaning all tasks in this file require "
+        "no more that 30Gb. --buckets 0 means no separation.",
+    )
+    app.add_argument(
+        "--fields",
+        default=None,
+        help="Use those chains that are placed in these fields "
+        " in orthologs file. Comma-separated list. For example "
+        "PERF,GLOK - for perfect and good local chains.",
+    )
+    app.add_argument(
+        "--mask_stops",
+        "--ms",
+        action="store_true",
+        dest="mask_stops",
+        help="Mask stop codons in target sequences. CESAR cannot process them."
+        "Using this parameter please make sure you know what you are doing.",
+    )
+    app.add_argument(
+        "--chains_limit",
+        type=int,
+        default=15,
+        help="Skip genes with amount of orthologs more than the limit.",
+    )
+    app.add_argument(
+        "--skipped_genes",
+        default=None,
+        help="If a gene was skipped due to memory of number "
+        " of chain limit, save it into a file.",
+    )
+    app.add_argument(
+        "--mem_limit",
+        type=float,
+        default=50,
+        help="Skip genes requiring more than X GB to call CESAR",
+    )
     app.add_argument("--jobs_dir", default="cesar_jobs", help="Save jobs in.")
-    app.add_argument("--combined", default="cesar_combined", help="Combined cluster jobs.")
+    app.add_argument(
+        "--combined", default="cesar_combined", help="Combined cluster jobs."
+    )
     app.add_argument("--bigmem", default="cesar_bigmem", help="CESAR bigmem joblist")
     app.add_argument("--results", default="cesar_results", help="Save results to.")
-    app.add_argument("--check_loss", default=None, help="Call internal gene loss pipeline")
+    app.add_argument(
+        "--check_loss", default=None, help="Call internal gene loss pipeline"
+    )
     app.add_argument("--u12", default=None, help="Add U12 introns data")
-    app.add_argument("--rejected_log", default=None, help="Save rejection data in this dir")
-    app.add_argument("--paralogs_log", default=os.path.join(os.path.dirname(__file__), "paralogs.log"), 
-                     help="Write a list of genes for which only paralogous chains were detected.")
+    app.add_argument(
+        "--rejected_log", default=None, help="Save rejection data in this dir"
+    )
+    app.add_argument(
+        "--paralogs_log",
+        default=os.path.join(os.path.dirname(__file__), "paralogs.log"),
+        help="Write a list of genes for which only paralogous chains were detected.",
+    )
     app.add_argument("--uhq_flank", default=50, type=int, help="UHQ flank size")
-    app.add_argument("--o2o_only", "--o2o", action="store_true", dest="o2o_only",
-                     help="Process only the genes that have a single orthologous chain")
-    app.add_argument("--no_fpi", action="store_true", dest="no_fpi",
-                     help="Consider some frame-preserving mutations as inactivating. "
-                          "See documentation for details.")
-    app.add_argument("--fragments_data", help="Gene: fragments file for fragmented genomes.")
+    app.add_argument(
+        "--o2o_only",
+        "--o2o",
+        action="store_true",
+        dest="o2o_only",
+        help="Process only the genes that have a single orthologous chain",
+    )
+    app.add_argument(
+        "--no_fpi",
+        action="store_true",
+        dest="no_fpi",
+        help="Consider some frame-preserving mutations as inactivating. "
+        "See documentation for details.",
+    )
+    app.add_argument(
+        "--fragments_data", help="Gene: fragments file for fragmented genomes."
+    )
+    app.add_argument(
+        "--opt_cesar",
+        action="store_true",
+        dest="opt_cesar",
+        help="Using lastz-optimized version of CESAR",
+    )
+    app.add_argument(
+        "--precomp_memory_data",
+        default=None,
+        help="Memory consumption was already precomputed",
+    )
+    app.add_argument(
+        "--predefined_glp_class_path",
+        default=None,
+        help="Save preliminary projection classification for: "
+        "(i) Projections with too short query region (L or M) and "
+        "(ii) Projections with very long query region (M)",
+    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -148,10 +240,11 @@ def define_buckets(lim, buckets):
 def read_orthologs(orthologs_file, fields_raw, only_o2o=False):
     """Read orthologs file."""
     # convert fields param string to list
-    fields = [x.upper() for x in fields_raw.split(",") if x != ""]
+    # fields = [x.upper() for x in fields_raw.split(",") if x != ""]
     genes_chains = {}
     chain_gene_field = {}
     skipped = []  # genes skipped at this stage
+    _no_chains_intersecting = []
     f = open(orthologs_file, "r")  # open the file
     f.__next__()  # skip header
     # first column: transcript identifier
@@ -163,58 +256,55 @@ def read_orthologs(orthologs_file, fields_raw, only_o2o=False):
         gene = line_info[0]
         selected, chains = [], {}
 
-        chains["ORTH"] = [x for x in line_info[1].split(",") if x != "0"]
-        chains["PARA"] = [x for x in line_info[2].split(",") if x != "0"]
-        chains["TRANS"] = [x for x in line_info[3].split(",") if x != "0"]
+        chains[ORTHOLOG] = [x for x in line_info[1].split(",") if x != "0"]
+        chains[PARALOG] = [x for x in line_info[2].split(",") if x != "0"]
+        chains[TRANS] = [x for x in line_info[3].split(",") if x != "0"]
         # Processed pseudogenes column ignored -> they are processed separately
-        all_chains = chains["ORTH"] + chains["PARA"] + chains["TRANS"]
+        all_chains = chains[ORTHOLOG] + chains[PARALOG] + chains[TRANS]
 
         if len(all_chains) == 0:
             # no way in running CESAR on this gene
             # because there are no chains we could use
             skipped.append((gene, "0", "No chains intersecting the gene"))
+            _no_chains_intersecting.append(gene)
             continue
 
         # user can ask to process only the genes that have a single orthologous chain
         # here we check that this is the case
-        not_one2one = len(chains["ORTH"]) == 0 or len(chains["ORTH"]) > 1
+        not_one2one = len(chains[ORTHOLOG]) == 0 or len(chains[ORTHOLOG]) > 1
         if only_o2o and not_one2one:  # we requested only a single orthologous chain
             skipped.append((gene, "0", "Only one2one requested, this gene didn't pass"))
             continue
 
-        # get those are chosen in FIELDS
-        for field in fields:
-            # field is most likely "ORTH" or "TRANS"
-            field_chains = chains.get(field)
-            if not field_chains:
-                continue
-            selected.extend(field_chains)
-            for chain in field_chains:
-                key = (chain, gene)
-                chain_gene_field[key] = field
+        # use orthologous chains by default,
+        # if no orthologous chains -> use spanning chains (TRANS)
+        # no spanning chains -> use paralogous
+        if len(chains[ORTHOLOG]) > 0:
+            selected_field = ORTHOLOG
+        elif len(chains[TRANS]) > 0:
+            selected_field = TRANS
+        else:
+            selected_field = PARALOG
 
-        # if a gene has no orthologous chains, then use paralogous
-        # if no paralogous -> log this gene
-        if not selected:
-            # no orthologous chains
-            # we try to use paralogous chains
-            # of course, log this data
-            selected = all_chains.copy()
-            keys = [(chain, gene) for chain in selected]
-            for key in keys:
-                chain_gene_field[key] = "PARALOG"
+        selected = chains[selected_field].copy()
+        # mark used field
+        for chain in selected:
+            key = (chain, gene)
+            chain_gene_field[key] = selected_field
+
         # write to the dict, gene to chains we will use
         genes_chains[gene] = selected
 
     f.close()
-    die("Error! No gene:chains pairs selected! Probably --fields parameter is wrong!") \
-        if len(genes_chains) == 0 else None
-    return genes_chains, chain_gene_field, skipped
+    die(
+        "Error! No gene:chains pairs selected! Probably --fields parameter is wrong!"
+    ) if len(genes_chains) == 0 else None
+    return genes_chains, chain_gene_field, skipped, _no_chains_intersecting
 
 
 def read_bed(bed):
     """Read bed 12 file.
-    
+
     For each transcript extract genetic coordinates and exon sizes.
     """
     bed_data = {}
@@ -226,16 +316,45 @@ def read_bed(bed):
         chrom_start = int(bed_info[1])
         chrom_end = int(bed_info[2])
         name = bed_info[3]
-        block_sizes = [int(x) for x in cds_track[10].split(',') if x != '']
+        block_sizes = [int(x) for x in cds_track[10].split(",") if x != ""]
         bed_data[name] = (chrom, chrom_start, chrom_end, block_sizes)
     f.close()
     return bed_data
 
 
-def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit):
+def define_short_q_proj_stat(q_chrom, q_start, q_end, q_2bit):
+    """If the query sequence is shorter than 50% CDS,
+
+    we need to check whether projection is really deleted (Lost)
+    or is just missing due to assembly gaps.
+    """
+    query_genome_sequence = TwoBitFile(q_2bit)
+    query_chrom = query_genome_sequence[q_chrom]
+    query_seq = query_chrom[q_start:q_end].upper()
+    # N are two-sided?
+    # simply copy pasted solution from CESAR wrapper.py
+    # can be further optimised
+    gap_ranges = 0
+    for match in finditer(ASM_GAP_PATTERN, query_seq, IGNORECASE):
+        span_start, span_end = match.span()
+        # gap_ranges.append((seq_start + span_start, seq_start + span_end))
+        gap_ranges += 1
+    if gap_ranges == 0:
+        # no assembly gaps: really deleted -> Lost
+        return L
+    else:
+        # there are assembly gaps -> Missing
+        return M
+
+
+def precompute_regions(
+    batch, bed_data, bdb_chain_file, chain_gene_field, limit, q_2bit
+):
     """Precompute region for each chain: bed pair."""
     eprint("Precompute regions for each gene:chain pair...")
     chain_to_genes, skipped = defaultdict(list), []
+    predef_glp = {}  # predefined GLP classification
+
     # revert the dict, from gene2chain to chain2genes
     for gene, chains_not_sorted in batch.items():
         if len(chains_not_sorted) == 0:
@@ -243,10 +362,23 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
             continue
         chains = sorted(chains_not_sorted, key=lambda x: int(x))
         chains = chains[:limit]
+
         if len(chains_not_sorted) > limit:
             # skip genes that have > limit orthologous chains
-            skipped.append((gene, ",".join(chains[limit:]),
-                            f"number of chains ({limit} chains) limit exceeded"))
+            chains_skipped = chains[limit:]
+            skipped.append(
+                (
+                    gene,
+                    ",".join(chains_skipped),
+                    f"number of chains ({limit} chains) limit exceeded",
+                )
+            )
+            # add each projection individually
+            # further append to GLP classification
+            for c_ in chains_skipped:
+                proj_id = f"{gene}.{c_}"
+                predef_glp[proj_id] = f"{PROJECTION}\t{M}"
+
         for chain_id in chains:
             chain_to_genes[chain_id].append(gene)
     # read regions themselves
@@ -265,7 +397,7 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
             cds_length = sum(gene_data[3])
             genes_cds_length.append(cds_length)
             all_gene_ranges.append(grange)
-            
+
         # we need to get corresponding regions in the query
         # for now we have chain blocks coordinates and gene
         # regions in the reference genome
@@ -282,10 +414,9 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
         granges_arr[granges_num] = None
 
         # then call the function
-        raw_ch_conv_out = ch_lib.chain_coords_converter(c_chain,
-                                                        c_shift,
-                                                        c_granges_num,
-                                                        granges_arr)
+        raw_ch_conv_out = ch_lib.chain_coords_converter(
+            c_chain, c_shift, c_granges_num, granges_arr
+        )
         chain_coords_conv_out = []  # keep lines here
         # convert C output to python-readable type
         for i in range(granges_num + 1):
@@ -300,6 +431,7 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
             # one line per one gene, in the same order
             num = int(line_info[0])
             # regions format is chrom:start-end
+            q_chrom = line_info[1].split(":")[0]
             q_grange = line_info[1].split(":")[1].split("-")
             q_start, q_end = int(q_grange[0]), int(q_grange[1])
             que_len = q_end - q_start
@@ -309,6 +441,7 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
             len_delta = abs(tar_len - que_len)
             delta_gene_times = len_delta / tar_len
             gene = genes[num]  # shared lib returns data per gene in the same order
+            proj_id = f"{gene}.{chain_id}"
             cds_length = genes_cds_length[num]
             min_query_length = cds_length * REF_LEN_THRESHOLD
             field = chain_gene_field.get((chain_id, gene))
@@ -320,12 +453,21 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
             long_loci_field = field in LONG_LOCI_FIELDS
             if (high_rel_len or high_abs_len) and long_loci_field:
                 skipped.append((gene, chain_id, "too long query locus"))
+                # print(f"TOO LONG: {proj_id}")
+                predef_glp[proj_id] = f"{PROJECTION}\t{M}"
                 continue
             # in contrast, if query locus is too short (<5% CDS length)
             # then CESAR might not build HMM properly, we skip this
             # hard to imagine in what case such an input will give us any meaningful result
             if que_len < min_query_length:
-                skipped.append((gene, chain_id, "too short query locus"))
+                # in this case we need to check whether the gene is truly deleted
+                # in the corresponding locus or is missing
+                # to separate these cases, TOGA checks whether the region contains
+                # assembly gaps
+                # skipped.append((gene, chain_id, "too short query locus"))
+                proj_stat = define_short_q_proj_stat(q_chrom, q_start, q_end, q_2bit)
+                predef_glp[proj_id] = f"{PROJECTION}\t{proj_stat}"
+                # print(f"Too short query: {proj_id}: {que_len}: {proj_stat}")
                 continue
             # for each chain-gene pair save query region length
             # need this for required memory estimation
@@ -334,7 +476,7 @@ def precompute_regions(batch, bed_data, bdb_chain_file, chain_gene_field, limit)
         del raw_ch_conv_out  # not sure if necessary but...
         iter_num += 1  # verbosity
         eprint(f"Chain {iter_num} / {chains_num}", end="\r")
-    return gene_chain_grange, skipped
+    return gene_chain_grange, skipped, predef_glp
 
 
 def fill_buckets(buckets, all_jobs):
@@ -350,7 +492,9 @@ def fill_buckets(buckets, all_jobs):
         # if buckets are 5 and 10 then:
         # memlim[5] -> jobs that require <= 5Gb
         # memlim[10] -> jobs that require > 5Gb AND <= 10Gb
-        buckets[memlim] = [job for job, job_mem in all_jobs.items() if prev_lim < job_mem <= memlim]
+        buckets[memlim] = [
+            job for job, job_mem in all_jobs.items() if prev_lim < job_mem <= memlim
+        ]
         prev_lim = memlim
     # remove empty
     filter_buckets = {k: v for k, v in buckets.items() if len(v) > 0}
@@ -404,8 +548,9 @@ def save_bigmem_jobs(bigmem_joblist, jobs_dir):
     return bigmem_paths
 
 
-def save_combined_joblist(to_combine, combined_file, results_dir,
-                          inact_mut_dat, rejected_log, name=""):
+def save_combined_joblist(
+    to_combine, combined_file, results_dir, inact_mut_dat, rejected_log, name=""
+):
     """Save joblist of joblists (combined joblist)."""
     f = open(combined_file, "w")
     for num, comb in enumerate(to_combine, 1):
@@ -413,8 +558,7 @@ def save_combined_joblist(to_combine, combined_file, results_dir,
         results_path = os.path.abspath(os.path.join(results_dir, basename + ".txt"))
         combined_command = f"{CESAR_RUNNER} {comb} {results_path}"
         if inact_mut_dat:
-            loss_data_path = os.path.join(inact_mut_dat,
-                                          f"{basename}.inact_mut.txt")
+            loss_data_path = os.path.join(inact_mut_dat, f"{basename}.inact_mut.txt")
             combined_command += f" --check_loss {loss_data_path}"
         if rejected_log:
             log_path = os.path.join(rejected_log, f"{basename}.txt")
@@ -439,6 +583,24 @@ def read_fragments_data(in_file):
     return ret
 
 
+def read_precomp_mem(precomp_file):
+    """Read precomputed memory if exists."""
+    ret = {}
+    if precomp_file is None:
+        return ret
+    f = open(precomp_file, "r")
+    for line in f:
+        if line == "\n":
+            continue
+        line_data = line.rstrip().split("\t")
+        gene = line_data[0]
+        mem_raw = float(line_data[1])
+        mem = math.ceil(mem_raw) + 1.25
+        ret[gene] = mem
+    f.close()
+    return ret
+
+
 def main():
     """Entry point."""
     t0 = dt.now()
@@ -453,11 +615,17 @@ def main():
     # need it to make subsequent commands
     u12_data = read_u12_data(args.u12)
 
+    # if memory is precomputed: use it
+    precomp_mem = read_precomp_mem(args.precomp_memory_data)
     # get lists of orthologous chains per each gene
     # skipped_1 - no chains found -> log them
-    batch, chain_gene_field, skipped_1 = read_orthologs(args.orthologs_file,
-                                                        fields,
-                                                        only_o2o=args.o2o_only)
+    predefined_glp_class = {}  # for projections which are M and L without CESAR
+    # m_ -> to be added to Missing bucket
+    batch, chain_gene_field, skipped_1, m_ = read_orthologs(
+        args.orthologs_file, fields, only_o2o=args.o2o_only
+    )
+    for gene in m_:  # classify transcripts with no intersecting chains as missing
+        predefined_glp_class[gene] = f"{TRANSCRIPT}\t{M}"
     # split cesar jobs in different buckets (if user requested so)
     # like put all jobs that require < 5Gig in the bucket 1
     # jobs requiring 5 to 15 Gb to bucket 2 and so on
@@ -467,8 +635,9 @@ def main():
     # load reference bed file data; coordinates and exon sizes
     bed_data = read_bed(args.bed_file)
     # check if cesar binary exists
-    die(f"Error! Cannot find cesar executable at {args.cesar_binary}!") if \
-        not os.path.isfile(args.cesar_binary) else None
+    die(
+        f"Error! Cannot find cesar executable at {args.cesar_binary}!"
+    ) if not os.path.isfile(args.cesar_binary) else None
 
     # if this is a fragmmented genome: we need to change CESAR commands for
     # split genes
@@ -479,12 +648,16 @@ def main():
     # pre-compute chain : gene : region data
     # collect the second list of skipped genes
     # skipped_2 -> too long corresponding regions in query
-    regions, skipped_2 = precompute_regions(batch,
-                                            bed_data,
-                                            args.bdb_chain_file,
-                                            chain_gene_field,
-                                            args.chains_limit)
-    
+    regions, skipped_2, predef_glp = precompute_regions(
+        batch,
+        bed_data,
+        args.bdb_chain_file,
+        chain_gene_field,
+        args.chains_limit,
+        args.qDB,
+    )
+    predefined_glp_class.update(predef_glp)
+
     # start making the jobs
     all_jobs = {}
     skipped_3 = []
@@ -494,67 +667,86 @@ def main():
         u12_this_gene = u12_data.get(gene)
         block_sizes = bed_data[gene][3]
 
-        # proceed to memory estimation
-        # the same procedure as inside CESAR2.0 code
-        num_states, r_length = 0, 0
-
-        # required memory depends on numerous params
-        # first, we need reference transcript-related parameters
-        # query-related parameters will be later
-        for block_size in block_sizes:
-            # num_states += 6 + 6 * reference->num_codons + 1 + 2 + 2 + 22 + 6;
-            #  /* 22 and 6 for acc and donor states */
-            num_codons = block_size // 3
-            num_states += 6 + 6 * num_codons + 1 + 2 + 2 + 22 + 6
-            # r_length += 11 + 6 * fasta.references[i]->length
-            # + donors[i]->length + acceptors[i]->length;
-            r_length += block_size
-
         gene_chains_data = regions.get(gene)
         # check that there is something for this gene
         if not gene_chains_data:
             continue
         elif len(gene_chains_data.keys()) == 0:
             continue
-        
+
         gene_fragments = gene_fragments_dict.get(gene, False)
         if gene_fragments:
             # this is a fragmented gene, need to change the procedure a bit
-            gene_chains_data = {k: v for k, v in gene_chains_data.items() if k in gene_fragments}
+            gene_chains_data = {
+                k: v for k, v in gene_chains_data.items() if k in gene_fragments
+            }
         chains = gene_chains_data.keys()
         if len(chains) == 0:
             continue
         chains_arg = ",".join(chains)  # chain ids -> one of the cmd args
-        
-        # now compute query sequence-related parameters
-        query_lens = [v for v in gene_chains_data.values()]
-        if gene_fragments:  # in case of fragmented genome: we stitch queries together
-            # so query length = sum of all queries
-            q_length_max = sum(query_lens)
-        else:  # not fragmented genome: processins queries separately
-            # thus we need only the max length
-            q_length_max = max(query_lens)
-        # and now compute the amount of required memory
-        memory = (num_states * 4 * 8) + \
-                 (num_states * q_length_max * 4) + \
-                 (num_states * 304) + \
-                 (2 * q_length_max + r_length) * 8 + \
-                 (q_length_max + r_length) * 2 * 1 + EXTRA_MEM
-        gig = math.ceil(memory / 1000000000) + 0.25
+
+        # if memory is precomputed then use it
+        precomp_gig = precomp_mem.get(gene, None)
+        if precomp_gig is None:
+            # proceed to memory estimation
+            # the same procedure as inside CESAR2.0 code
+            num_states, r_length = 0, 0
+
+            # required memory depends on numerous params
+            # first, we need reference transcript-related parameters
+            # query-related parameters will be later
+            for block_size in block_sizes:
+                # num_states += 6 + 6 * reference->num_codons + 1 + 2 + 2 + 22 + 6;
+                #  /* 22 and 6 for acc and donor states */
+                num_codons = block_size // 3
+                num_states += 6 + 6 * num_codons + 1 + 2 + 2 + 22 + 6
+                # r_length += 11 + 6 * fasta.references[i]->length
+                # + donors[i]->length + acceptors[i]->length;
+                r_length += block_size
+
+            # now compute query sequence-related parameters
+            query_lens = [v for v in gene_chains_data.values()]
+            if (
+                gene_fragments
+            ):  # in case of fragmented genome: we stitch queries together
+                # so query length = sum of all queries
+                q_length_max = sum(query_lens)
+            else:  # not fragmented genome: processins queries separately
+                # thus we need only the max length
+                q_length_max = max(query_lens)
+            # and now compute the amount of required memory
+            memory = (
+                (num_states * 4 * 8)
+                + (num_states * q_length_max * 4)
+                + (num_states * 304)
+                + (2 * q_length_max + r_length) * 8
+                + (q_length_max + r_length) * 2 * 1
+                + EXTRA_MEM
+            )
+            gig = math.ceil(memory / 1000000000) + 0.25
+        else:
+            # memory was precomputed
+            gig = precomp_gig
+
+        # gig = compute_amount_of_memory(block_sizes, q_length_max, args.opt_cesar)
         # # 0 gene; 1 chains; 2 bed_file; 3 bdb chain_file; 4 tDB; 5 qDB; 6 output; 7 cesar_bin
-        job = WRAPPER_TEMPLATE.format(gene, chains_arg,
-                                      os.path.abspath(args.bdb_bed_file),
-                                      os.path.abspath(args.bdb_chain_file),
-                                      os.path.abspath(args.tDB),
-                                      os.path.abspath(args.qDB),
-                                      gig,
-                                      os.path.abspath(args.cesar_binary),
-                                      args.uhq_flank)
+        job = WRAPPER_TEMPLATE.format(
+            gene,
+            chains_arg,
+            os.path.abspath(args.bdb_bed_file),
+            os.path.abspath(args.bdb_chain_file),
+            os.path.abspath(args.tDB),
+            os.path.abspath(args.qDB),
+            os.path.abspath(args.cesar_binary),
+            args.uhq_flank,
+            gig,
+        )
         # add some flags if required
         job = job + " --mask_stops" if args.mask_stops else job
         job = job + " --check_loss" if args.check_loss else job
         job = job + " --no_fpi" if args.no_fpi else job
         job = job + " --fragments" if gene_fragments else job
+        job = job + " --opt_cesar" if args.opt_cesar else job
 
         # add U12 introns data if this gene has them:
         job = job + f" --u12 {os.path.abspath(args.u12)}" if u12_this_gene else job
@@ -564,12 +756,18 @@ def main():
         if gig <= mem_limit:  # ordinary job
             all_jobs[job] = gig
         elif gig <= BIGMEM_LIM:
-            skipped_3.append((gene, ",".join(chains),
-                              f"requires {gig}) -> bigmem job"))
+            skipped_3.append((gene, ",".join(chains), f"requires {gig}) -> bigmem job"))
+            predef_glp[gene] = f"{TRANSCRIPT}\tM"
             bigmem_jobs.append(job)
         else:
-            skipped_3.append((gene, ",".join(chains),
-                              f"big mem limit ({BIGMEM_LIM} gig) exceeded (needs {gig})"))    
+            skipped_3.append(
+                (
+                    gene,
+                    ",".join(chains),
+                    f"big mem limit ({BIGMEM_LIM} gig) exceeded (needs {gig})",
+                )
+            )
+            predef_glp[gene] = f"{TRANSCRIPT}\tM"
 
     eprint(f"\nThere are {len(all_jobs.keys())} jobs in total.")
     eprint("Splitting the jobs.")
@@ -577,8 +775,11 @@ def main():
     filled_buckets = fill_buckets(buckets, all_jobs)
     prop_sum = sum([k * len(v) for k, v in filled_buckets.items()])
     # estimate proportion of a bucket in the runtime
-    buckets_prop = {k: (k * len(v)) / prop_sum for k, v in filled_buckets.items()} \
-        if 0 not in filled_buckets.keys() else {0: 1.0}
+    buckets_prop = (
+        {k: (k * len(v)) / prop_sum for k, v in filled_buckets.items()}
+        if 0 not in filled_buckets.keys()
+        else {0: 1.0}
+    )
     eprint("Bucket proportions are:")
     eprint("\n".join([f"{k} -> {v}" for k, v in buckets_prop.items()]))
     eprint(f"Also there are {len(bigmem_jobs)} bigmem jobs")
@@ -588,17 +789,26 @@ def main():
     to_combine = save_jobs(filled_buckets, bucket_jobs_num, args.jobs_dir)
     # save combined jobs, combined is a file containing paths to separate jobs
     os.mkdir(args.results) if not os.path.isdir(args.results) else None
-    os.mkdir(args.check_loss) if args.check_loss \
-        and not os.path.isdir(args.check_loss) else None
+    os.mkdir(args.check_loss) if args.check_loss and not os.path.isdir(
+        args.check_loss
+    ) else None
 
     # save joblist of joblists
-    save_combined_joblist(to_combine, args.combined, args.results, args.check_loss, args.rejected_log)
+    save_combined_joblist(
+        to_combine, args.combined, args.results, args.check_loss, args.rejected_log
+    )
 
     # save bigmem jobs, a bit different logic
     bigmem_paths = save_bigmem_jobs(bigmem_jobs, args.jobs_dir)
     if bigmem_paths:
-        save_combined_joblist(bigmem_paths, args.bigmem, args.results,
-                              args.check_loss, args.rejected_log, name="bigmem")
+        save_combined_joblist(
+            bigmem_paths,
+            args.bigmem,
+            args.results,
+            args.check_loss,
+            args.rejected_log,
+            name="bigmem",
+        )
 
     # save skipped genes if required
     if args.skipped_genes:
@@ -609,10 +819,17 @@ def main():
         f.write("\n".join(["\t".join(x) for x in skipped]) + "\n")
         f.close()
 
+    if args.predefined_glp_class_path:
+        # if we know GLP class for some of the projections: save it
+        f = open(args.predefined_glp_class_path, "w")
+        for k, v in predefined_glp_class.items():
+            f.write(f"{k}\t{v}\n")
+        f.close()
+
     # save IDs of paralogous projections
     f = open(args.paralogs_log, "w")
     for k, v in chain_gene_field.items():
-        if v != "PARALOG":
+        if v != "PARA":
             continue
         gene_ = f"{k[1]}.{k[0]}\n"
         f.write(gene_)

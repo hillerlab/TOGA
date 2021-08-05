@@ -25,8 +25,11 @@ BLACK = "10,10,10"
 # mutations-related constants
 STOPS = {"TAG", "TAA", "TGA"}
 D_M = {"D", "M"}
-LEFT_SPLICE_CORR = ("ag", )  # acceptor
-RIGHT_SPLICE_CORR = ("gt", "gc", )  # donor
+LEFT_SPLICE_CORR = ("ag",)  # acceptor
+RIGHT_SPLICE_CORR = (
+    "gt",
+    "gc",
+)  # donor
 LEFT_SSID = 0
 RIGHT_SSID = 1
 ACCEPTOR = 0

@@ -29,7 +29,7 @@ except ImportError:
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 # GLP classes
@@ -37,22 +37,40 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 N_ = -1  # No data at all
 PG = 0  # ParaloG
 PM = 1  # Partial missing
-L = 2  # Lost
-M = 3  # Missing
+# L = 2  # Lost
+# M = 3  # Missing
+# Updated order:
+M = 2
+L = 3
 UL = 4  # Uncertain loss
 PI = 5  # Partially intact
 I = 6  # Intact
 # N - skipped due to technical reasons
-NUM_TO_CLASS = {-1: "N", 0: "PG", 1: "PM", 2: "L", 3: "M", 4: "UL", 5: "PI", 6: "I"}
+# NUM_TO_CLASS = {-1: "N", 0: "PG", 1: "PM", 2: "L", 3: "M", 4: "UL", 5: "PI", 6: "I"}
+# updated order
+NUM_TO_CLASS = {-1: "N", 0: "PG", 1: "PM", 2: "M", 3: "L", 4: "UL", 5: "PI", 6: "I"}
+CLASS_TO_NUM = {v: k for k, v in NUM_TO_CLASS.items()}
+
 
 # link GLP class to color
-CLASS_TO_COL = {N_: BLACK, PG: BROWN, PM: GREY, L: LIGHT_RED,
-                M: GREY, UL: SALMON, PI: LIGHT_BLUE, I: BLUE}
+CLASS_TO_COL = {
+    N_: BLACK,
+    PG: BROWN,
+    PM: GREY,
+    L: LIGHT_RED,
+    M: GREY,
+    UL: SALMON,
+    PI: LIGHT_BLUE,
+    I: BLUE,
+}
 
 
 REM_T_L = 0.35  # less than REM_T_L of CDS left -> it's lost
 REM_T_G = 0.49  # less than REM_T_G of CDS left -> it's UL
 PART_THR = 0.5  # border between missing and partially intact
+
+PROJECTION = "PROJECTION"
+TRANSCRIPT = "TRANSCRIPT"
 
 
 def parse_args():
@@ -64,8 +82,14 @@ def parse_args():
     app.add_argument("bed_out", help="Bed file output...")
     app.add_argument("summary", help="Save summary to...")
     app.add_argument("--isoforms", "-i", help="Provide isoforms data to classify genes")
-    app.add_argument("--trace", "-t", default=None, help="Trace a particular isoform fate")
-    app.add_argument("--paral_projections", default=None, help="File containing paralogous projections")
+    app.add_argument(
+        "--trace", "-t", default=None, help="Trace a particular isoform fate"
+    )
+    app.add_argument(
+        "--paral_projections",
+        default=None,
+        help="File containing paralogous projections",
+    )
     app.add_argument("--exclude", default=None, help="List of transcripts to exclude")
     if len(sys.argv) < 3:
         app.print_help()
@@ -76,7 +100,7 @@ def parse_args():
 
 def read_loss_data(loss_dir):
     """Read inact mutations data for each projection.
-    
+
     Projection is a predicted transcript in the query.
     TOGA gets a projection when projects a transcript via a chain.
     We parse two sorts of information associated with each transcript.:
@@ -154,13 +178,15 @@ def read_loss_data(loss_dir):
             projection_to_mutations[projection_id].append(mut_)
         f.close()
     # to avoid returning a bunch of variables I packed them into a tuple
-    output = (projection_to_mutations,
-              projection_to_p_intact_M_ignore,
-              projection_to_p_intact_M_intact,
-              projection_to_i_codon_prop,
-              proj_to_prop_oub,
-              proj_to_80_p_intact,
-              proj_to_80_p_present)
+    output = (
+        projection_to_mutations,
+        projection_to_p_intact_M_ignore,
+        projection_to_p_intact_M_intact,
+        projection_to_i_codon_prop,
+        proj_to_prop_oub,
+        proj_to_80_p_intact,
+        proj_to_80_p_present,
+    )
     return output
 
 
@@ -186,10 +212,19 @@ def get_l_exon_num(exon_num):
         return twenty_perc
 
 
-def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
-                           p_to_pint_m_int, projection_to_mutations, p_to_i_codon_prop,
-                           p_to_p_out_of_bord, p_80_int, p_80_pre,
-                           trace=None, paral_=None):
+def get_projection_classes(
+    all_projections,
+    trans_exon_sizes,
+    p_to_pint_m_ign,
+    p_to_pint_m_int,
+    projection_to_mutations,
+    p_to_i_codon_prop,
+    p_to_p_out_of_bord,
+    p_80_int,
+    p_80_pre,
+    trace=None,
+    paral_=None,
+):
     """Classify projections as intact, lost, uncertain, etc."""
     projection_class = {}  # our answer: projection -> class
     # deal with paral_ argument
@@ -223,14 +258,18 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
         exon_sizes = trans_exon_sizes.get(transcript)
         if exon_sizes is None:
             # sanity check, this must never happen
-            print(f"Cannot find transcript {transcript}; probably an error") if tracing_ else None
+            print(
+                f"Cannot find transcript {transcript}; probably an error"
+            ) if tracing_ else None
             projection_class[projection] = N_
             continue
 
         # parse inactivating mutations
         all_mutations = projection_to_mutations.get(projection, [])
         # get only inactivating mutations, which are not compensations and not masked
-        mutations = [m for m in all_mutations if m[4] is False or m[2] == MISS_EXON]  # m[4]: bool MASKED
+        mutations = [
+            m for m in all_mutations if m[4] is False or m[2] == MISS_EXON
+        ]  # m[4]: bool MASKED
         mutations = [m for m in mutations if m[2] != COMPENSATION]
 
         if tracing_:
@@ -278,15 +317,25 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
 
         print(f"Exon statuses initial\n{exon_status}") if tracing_ else None
         # deal with smaller mutations (such as frameshifts, stop codons, and so on)
-        other_muts = [m for m in mutations if m[2] != MISS_EXON and m[2] != DEL_EXON and m[2] != COMPENSATION]
+        other_muts = [
+            m
+            for m in mutations
+            if m[2] != MISS_EXON and m[2] != DEL_EXON and m[2] != COMPENSATION
+        ]
         # don't need events happened in the deleted/missing exons
-        other_muts = [m for m in other_muts if m[0] not in deleted_exons and m[0] not in missing_exons]
+        other_muts = [
+            m
+            for m in other_muts
+            if m[0] not in deleted_exons and m[0] not in missing_exons
+        ]
         # also compute % of missing sequence
         missed_seq_len = sum(exon_sizes[k] for k, v in exon_status.items() if v == "M")
         missing_prop = missed_seq_len / overall_seq_len
         if tracing_:
             print(f"% Missing: {missing_prop}")
-            print(f"Missing seq len: {missed_seq_len}; overall seq len: {overall_seq_len}")
+            print(
+                f"Missing seq len: {missed_seq_len}; overall seq len: {overall_seq_len}"
+            )
         # compute number of exons that we require to have inact mutations to call the gene Lost:
         affected_thr = get_l_exon_num(exon_num)
 
@@ -295,7 +344,9 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
             print("All exons are Missing: transcript is missing") if tracing_ else None
             print(f"Out of borders prop is {frame_oub}") if tracing_ else None
             if frame_oub > PART_THR:
-                print("-> class PM, too big fraction ouf of chain borders") if tracing_ else None
+                print(
+                    "-> class PM, too big fraction ouf of chain borders"
+                ) if tracing_ else None
                 projection_class[projection] = PM
             else:
                 projection_class[projection] = M
@@ -328,7 +379,9 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                 continue
             if len(missing_exons) == 0:
                 # everything is fine, no missing sequence at all, middle 80% intact
-                print("No missing exons, no inact mut in m80%: class I") if tracing_ else None
+                print(
+                    "No missing exons, no inact mut in m80%: class I"
+                ) if tracing_ else None
                 projection_class[projection] = I
                 continue
 
@@ -352,7 +405,9 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                     print("Missing prop > 50%: PM or M branch") if tracing_ else None
                     # > 50% of CDS missed, just call it missed
                     if frame_oub > PART_THR:
-                        print("-> class PM, too big fraction out of chain borders") if tracing_ else None
+                        print(
+                            "-> class PM, too big fraction out of chain borders"
+                        ) if tracing_ else None
                         projection_class[projection] = PM
                     else:
                         projection_class[projection] = M
@@ -378,7 +433,9 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                     print("Single exon missing: class M") if tracing_ else None
                     # the only exon is missed -> M (redundant branch highly likely)
                     if frame_oub > PART_THR:
-                        print("-> class PM, too big fraction out of chain borders") if tracing_ else None
+                        print(
+                            "-> class PM, too big fraction out of chain borders"
+                        ) if tracing_ else None
                         projection_class[projection] = PM
                     else:
                         projection_class[projection] = M
@@ -393,33 +450,43 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                     projection_class[projection] = UL
                 continue
             # multi-exon gene branch
-            num_exons_affected = len([k for k, v in exon_status.items() if v == "D" or v == "L"])
+            num_exons_affected = len(
+                [k for k, v in exon_status.items() if v == "D" or v == "L"]
+            )
             # the first question: is %intact < 60%?
             if p_intact_M_int < 0.6:
                 print(f"% intact M int < 60 branch") if tracing_ else None
                 # well, %intact < 60, maybe a loss!
                 if tracing_:
-                    print(f"Affected exons: {num_exons_affected}; required: {affected_thr}")
+                    print(
+                        f"Affected exons: {num_exons_affected}; required: {affected_thr}"
+                    )
                 if num_exons_affected >= affected_thr:
                     # check number of affected exons (with inactivating mutations)
                     print(f"Enough affected exons -> L") if tracing_ else None
                     projection_class[projection] = L
                     continue
-                
+
                 # also check whether there is an exon covering > 40% CDS that has TWO inact mutations
                 muts_occur = Counter(m[0] for m in other_muts)
                 muts_in_40_exons = [muts_occur[x] for x in exon_40_p_nums]
                 if any(x >= 2 for x in muts_in_40_exons):
                     # if there is an exon that takes >40% of CDS and has >= 2 inact muts: it's lost
-                    print(f"There are exons > 40% with 2+ mutations -> L") if tracing_ else None
+                    print(
+                        f"There are exons > 40% with 2+ mutations -> L"
+                    ) if tracing_ else None
                     projection_class[projection] = L
                     continue
                 if any(exon_status[x] == "D" for x in exon_40_p_nums):
                     # also: if any of significant exons is deleted
-                    print(f"Some of exons > 40% are Deleted -> Lost") if tracing_ else None
+                    print(
+                        f"Some of exons > 40% are Deleted -> Lost"
+                    ) if tracing_ else None
                     projection_class[projection] = L
                     continue
-                print(f"Not enough evidence for Lost -> Uncertain") if tracing_ else None
+                print(
+                    f"Not enough evidence for Lost -> Uncertain"
+                ) if tracing_ else None
                 projection_class[projection] = UL
             else:
                 # if %intact > 60: cannot be intact
@@ -427,10 +494,14 @@ def get_projection_classes(all_projections, trans_exon_sizes, p_to_pint_m_ign,
                 # class uncertain loss OR missing
                 print(f"% intact M int > 60 branch") if tracing_ else None
                 if frame_oub > PART_THR:
-                    print("-> class PM, too big fraction out of chain borders") if tracing_ else None
+                    print(
+                        "-> class PM, too big fraction out of chain borders"
+                    ) if tracing_ else None
                     projection_class[projection] = PM
                 else:
-                    print(f"not enough evidence for L -> Uncertain") if tracing_ else None
+                    print(
+                        f"not enough evidence for L -> Uncertain"
+                    ) if tracing_ else None
                     projection_class[projection] = UL
                 continue
     return projection_class
@@ -476,7 +547,14 @@ def color_bed_file(bed_in, bed_out, proj_to_class):
     in_ = open(bed_in, "r")
     out_ = open(bed_out, "w")
     for line in in_:
+        if line == "\n":
+            # for some reason sometimes we get empty lines, get rid of them
+            continue
         line_data = line.rstrip().split("\t")
+        if line_data[0] == "None":
+            # force skip None chrom bed tracks
+            # for some reason, they can reach this point
+            continue
         # take projection ID from the line and then it's class
         projection_id = line_data[3]
         projection_class = proj_to_class.get(projection_id, N_)
@@ -514,9 +592,35 @@ def read_excluded(exc_arg):
     return ret
 
 
-def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
-                        bed_out, summary_arg, trace_arg=None,
-                        iforms_file=None, paral=None, exclude_arg=None):
+def read_predefined_glp_data(predef_class):
+    """Read predefined classfications."""
+    trans_class = {}
+    proj_class = {}
+    if predef_class is None:
+        return proj_class, trans_class
+    for item in predef_class:
+        entry_class = item[0]
+        entry = item[1]
+        entry_status = item[2]
+        if entry_class == TRANSCRIPT:
+            trans_class[entry] = CLASS_TO_NUM[entry_status]
+        else:
+            proj_class[entry] = CLASS_TO_NUM[entry_status]
+    return proj_class, trans_class
+
+
+def gene_losses_summary(
+    loss_data_arg,
+    ref_bed,
+    pre_final_bed_arg,
+    bed_out,
+    summary_arg,
+    trace_arg=None,
+    iforms_file=None,
+    paral=None,
+    exclude_arg=None,
+    predefined_class=None,
+):
     """Gene losses summary core function."""
     t0 = dt.now()
     # TOGA don't make any conclusions about projections via paralogous chains
@@ -534,21 +638,30 @@ def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
     p_to_oub_prop = loss_data_all[4]
     p_80_int = loss_data_all[5]
     p_80_pre = loss_data_all[6]
+    # read predefined glp classes if they are:
+    predef_proj_class, predef_trans_class = read_predefined_glp_data(predefined_class)
 
     # for consistency: get a set of all possible projections
-    all_projections = set(p_to_pintact_M_ign.keys()).union(set(projection_to_mutations.keys()))
+    all_projections = set(p_to_pintact_M_ign.keys()).union(
+        set(projection_to_mutations.keys())
+    )
     # call this function to classify projections
-    projection_class = get_projection_classes(all_projections,
-                                              trans_exon_sizes,
-                                              p_to_pintact_M_ign,
-                                              p_to_pintact_M_int,
-                                              projection_to_mutations,
-                                              p_to_i_codon_prop,
-                                              p_to_oub_prop,
-                                              p_80_int,
-                                              p_80_pre,
-                                              trace=trace_arg,
-                                              paral_=paralogs_set)
+    projection_class = get_projection_classes(
+        all_projections,
+        trans_exon_sizes,
+        p_to_pintact_M_ign,
+        p_to_pintact_M_int,
+        projection_to_mutations,
+        p_to_i_codon_prop,
+        p_to_oub_prop,
+        p_80_int,
+        p_80_pre,
+        trace=trace_arg,
+        paral_=paralogs_set,
+    )
+    projection_class.update(predef_proj_class)
+    # add projections that we added from predefined list
+    all_projections.update(projection_class.keys())
 
     # projections are classified, we can color the bed file now:
     color_bed_file(pre_final_bed_arg, bed_out, projection_class)
@@ -577,12 +690,14 @@ def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
         p_classes = set(projection_class.get(p) for p in projections)
         status = max(p_classes)  # just use Enum I > UL > L > M > N
         transcript_class[trans] = status
+    transcript_class.update(predef_trans_class)
     all_transcripts = set(transcript_class.keys())
 
     # classify genes part
     if iforms_file:  # if isoforms provided, get gene: [transcripts] dict
-        gene_to_trans, _, _ = read_isoforms_file(iforms_file,
-                                                 pre_def_trans_list=all_transcripts)
+        gene_to_trans, _, _ = read_isoforms_file(
+            iforms_file, pre_def_trans_list=all_transcripts
+        )
     else:  # no isoforms provided: nothing we can do next
         gene_to_trans = {}
 
@@ -617,15 +732,17 @@ def gene_losses_summary(loss_data_arg, ref_bed, pre_final_bed_arg,
 def main():
     """Entry point for CLI."""
     args = parse_args()
-    gene_losses_summary(args.loss_data,
-                        args.ref_bed,
-                        args.pre_final_bed,
-                        args.bed_out,
-                        args.summary,
-                        trace_arg=args.trace,
-                        iforms_file=args.isoforms,
-                        paral=args.paral_projections,
-                        exclude_arg=args.exclude)
+    gene_losses_summary(
+        args.loss_data,
+        args.ref_bed,
+        args.pre_final_bed,
+        args.bed_out,
+        args.summary,
+        trace_arg=args.trace,
+        iforms_file=args.isoforms,
+        paral=args.paral_projections,
+        exclude_arg=args.exclude,
+    )
 
 
 if __name__ == "__main__":

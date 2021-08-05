@@ -35,11 +35,13 @@ HORIZONTAL = "horizontal"
 MUT_LINE_FIELDS = 8
 MUT_LINE_FIELDS_SP = MUT_LINE_FIELDS + 1
 
-GREY = "#cccccc"
-RED = "#e60000"
-BLUE = "#3366ff"
 BLACK = "#121212"
-EXON_COLOR = "#ffeb00"
+MISS_SEQ_COLOR = "#878787"
+MASKED_MUT_COLOR = "#878787"
+INACT_MUT_COLOR = "#cf232b"
+FP_EXON_DEL_COLOR = "#0c7bdc"
+BACKGROUND_COLOR = "#87bcbc"
+STOP_CODON_COLOR = "#121212"
 
 MAX_VERTICAL_SPACE = 100  # pixels
 HALF_EXON_HEIGHT = 15  # pixels
@@ -61,21 +63,30 @@ ARROW_SIZE = 1  # pixels per base
 PRINT_EXON_SCHEME = False
 ROUND_EDGES = False
 INTRON_STYLE = 'style="stroke:#999; stroke-width:3;" '
-EXON_ANC_STYLE = 'stroke-width:3;'
-EXON_NON_ANC_STYLE = 'stroke: black; stroke-width:3; stroke-dasharray: 5,5;'
+EXON_ANC_STYLE = "stroke-width:3;"
+EXON_NON_ANC_STYLE = "stroke: black; stroke-width:3; stroke-dasharray: 5,5;"
 INSERT_STYLE = 'style="fill:{0}; stroke-opacity:1; fill-opacity:1"'
 DEL_STYLE = 'style="stroke:{0}; stroke-width:{1}; stroke-opacity:1"'
 MISSSEQ_STYLE = 'style="stroke:{0}; stroke-width:{1}; stroke-opacity:1"'
 STOP_CODON_STYLE = 'style="stroke:{0};stroke-width:3;"'
 COMP_INDEL_STYLE = 'style="fill:none;stroke-width:1;stroke:green;"'
-TEXT_HIGHLIGHT_STYLE = 'style="fill:red;"'
-FONTFAMILY = 'Courier New'
+TEXT_HIGHLIGHT_STYLE = f'style="fill:{INACT_MUT_COLOR};"'
+FONTFAMILY = "Courier New"
 STOP_LABEL_FONTSIZE = 18
 SS_LABEL_FONTSIZE = 18
 MO_FONTSIZE = 18
 STACKING_THRESHOLD = 35  # pixels
 J_STYLE = False
 picture_width = 0
+
+
+SVG_PLACEHOLDER="""
+<svg>
+<rect fill="#aaa" stroke="#000" x="0" y="0" width="400" height="100"/>
+<line x1="0" y1="0" x2="400" y2="100" stroke="red" stroke-width="4" />
+<line x1="0" y1="100" x2="400" y2="0" stroke="red" stroke-width="4" />
+</svg>
+"""
 
 
 class MouseOver:
@@ -85,12 +96,20 @@ class MouseOver:
         """Probably doesn't really work with TOGA output!"""
         MouseOver.id_counter += 1
         self.id_counter = MouseOver.id_counter
-        lens_ = [len(x) - 4 * x.count("<cc>") for x in texts if not x.startswith("http://")]
+        lens_ = [
+            len(x) - 4 * x.count("<cc>") for x in texts if not x.startswith("http://")
+        ]
         self.width = max(lens_) * 0.65 * MO_FONTSIZE
-        self.height = MO_FONTSIZE * sum([(1, 0)[t.startswith("http://")] for t in texts])
-        # align text horizontally and vertically to image boarder 
-        self.pos = ((pos[0], max(0, picture_width - self.width))[pos[0] + self.width > picture_width],
-                    (pos[1], pos[1] + self.height)[pos[1] - self.height < 0])
+        self.height = MO_FONTSIZE * sum(
+            [(1, 0)[t.startswith("http://")] for t in texts]
+        )
+        # align text horizontally and vertically to image boarder
+        self.pos = (
+            (pos[0], max(0, picture_width - self.width))[
+                pos[0] + self.width > picture_width
+            ],
+            (pos[1], pos[1] + self.height)[pos[1] - self.height < 0],
+        )
         self.texts = texts
 
     def __str__(self):
@@ -98,38 +117,44 @@ class MouseOver:
             elements, i, linecounter = "", 0, 0
             while i < len(self.texts):
                 y_ = self.pos[1] - linecounter * MO_FONTSIZE
-                elem_list = [f'<tspan x="{self.pos[0]}" y="{y_}" ', ]
+                elem_list = [
+                    f'<tspan x="{self.pos[0]}" y="{y_}" ',
+                ]
                 if self.texts[i].startswith("http://"):
                     # create link
-                    elem_list.append('>')
-                    xlink_ = self.texts[i].replace('&', '&amp;')
+                    elem_list.append(">")
+                    xlink_ = self.texts[i].replace("&", "&amp;")
                     elem_list.append(f'<a xlink:href="{xlink_}" target="_blank">')
                     i += 1
-                    elem_list.append('<tspan>')
+                    elem_list.append("<tspan>")
                     tparts = self.texts[i].split("<cc>")
                     elem_list.append(tparts[0])
                     for j in range(1, len(tparts)):
-                        s_1 = ('', TEXT_HIGHLIGHT_STYLE)[j % 2]  # B: wtf is that?
+                        s_1 = ("", TEXT_HIGHLIGHT_STYLE)[j % 2]  # B: wtf is that?
                         s_2 = tparts[j]
-                        elem_list.append(f'</tspan><tspan {s_1}>{s_2}')
-                    elem_list.append('</tspan></a>')
+                        elem_list.append(f"</tspan><tspan {s_1}>{s_2}")
+                    elem_list.append("</tspan></a>")
                 else:
                     tparts = self.texts[i].split("<cc>")
                     start_index = tparts[0] == ""
-                    s_1 = ('', TEXT_HIGHLIGHT_STYLE)[start_index % 2]
-                    elem_list.append(f'{s_1}>')
+                    s_1 = ("", TEXT_HIGHLIGHT_STYLE)[start_index % 2]
+                    elem_list.append(f"{s_1}>")
                     elem_list.append(tparts[start_index])
                     for j in range(start_index + 1, len(tparts)):
-                        s_1 = ('', TEXT_HIGHLIGHT_STYLE)[j % 2]
+                        s_1 = ("", TEXT_HIGHLIGHT_STYLE)[j % 2]
                         s_2 = tparts[j]
-                        elem_list.append(f'</tspan><tspan {s_1}>{s_2}')
-                elem_list.append('</tspan>')
+                        elem_list.append(f"</tspan><tspan {s_1}>{s_2}")
+                elem_list.append("</tspan>")
                 elements = "".join(elem_list)
                 i += 1
                 linecounter += 1
-            out = [f'  <g id="Mouseover{self.id_counter}" visibility="hidden">\n', ]
-            out.append(f'    <text style="font-size:{MO_FONTSIZE}px">{elements}</text>\n')
-            out.append('  </g>\n')
+            out = [
+                f'  <g id="Mouseover{self.id_counter}" visibility="hidden">\n',
+            ]
+            out.append(
+                f'    <text style="font-size:{MO_FONTSIZE}px">{elements}</text>\n'
+            )
+            out.append("  </g>\n")
             out_str = "".join(out)
             return out_str
         else:
@@ -137,8 +162,17 @@ class MouseOver:
 
 
 class Textstack:
-    def __init__(self, pos, direction, label, mouseover=None, fontsize=STOP_LABEL_FONTSIZE,
-                 style="", anchor="", color=None):
+    def __init__(
+        self,
+        pos,
+        direction,
+        label,
+        mouseover=None,
+        fontsize=STOP_LABEL_FONTSIZE,
+        style="",
+        anchor="",
+        color=None,
+    ):
         self.pos = pos
         self.direction = direction
         self.size = fontsize
@@ -149,9 +183,9 @@ class Textstack:
         self.anchor = f'text-anchor="{anchor}"' if anchor_cond else ""
 
     def add_label(self, label, y, mouseover=None, color=None):
-        if 'up' in self.direction:
+        if "up" in self.direction:
             self.pos = (self.pos[0], min(self.pos[1], y))
-        elif 'down' in self.direction:
+        elif "down" in self.direction:
             self.pos = (self.pos[0], max(self.pos[1], y))
         self.labels.append((label, mouseover))
         if color is not None and self.color is not None:
@@ -168,7 +202,7 @@ class Textstack:
         global picture_width  # TODO: needs to be refactored
         out_lines = []
         mouseovers = []
-        if self.direction == 'upwards' or self.direction == 'downwards':
+        if self.direction == "upwards" or self.direction == "downwards":
             print("deprecated text direction")
             # some hacks because 'writing-mode="tb"' and 'glyph-orientation-vertical:360'
             # are not supported by firefox yet
@@ -176,57 +210,75 @@ class Textstack:
             length = len(self.labels) + sum([len(label[0]) for label in self.labels])
             offset = HALF_EXON_HEIGHT + 0.5 * self.size
 
-            if self.direction == 'upwards':
-                self.labels = [(label[0][::-1], label[1]) for label in self.labels]  # reverse each label
+            if self.direction == "upwards":
+                self.labels = [
+                    (label[0][::-1], label[1]) for label in self.labels
+                ]  # reverse each label
                 rotation = 90
                 pos_of_ = self.pos[1] - offset
                 pos_of_len_ = self.pos[1] - offset - length * self.size
-                path = f'M{self.pos[0]} {pos_of_} V{pos_of_len_}'
+                path = f"M{self.pos[0]} {pos_of_} V{pos_of_len_}"
             else:
                 rotation = 270
                 pos_of_ = self.pos[1] + offset
                 pos_of_len_ = self.pos[1] + offset + length * self.size
-                path = f'M{self.pos[0]} {pos_of_} V{pos_of_len_}'
+                path = f"M{self.pos[0]} {pos_of_} V{pos_of_len_}"
 
-            out_lines.append(f'  <path id="textpath{self.pos[0]}{self.direction}" d="{path}" fill="none"/>\n')
+            out_lines.append(
+                f'  <path id="textpath{self.pos[0]}{self.direction}" d="{path}" fill="none"/>\n'
+            )
             out_lines.append(f'  <text style="{self.style}" rotate="{rotation}">\n')
-            out_lines.append(f'    <textPath xlink:href="#textpath{self.pos[0]}{self.direction}">\n')
+            out_lines.append(
+                f'    <textPath xlink:href="#textpath{self.pos[0]}{self.direction}">\n'
+            )
 
             for i in range(len(self.labels)):
                 fill_ = (f"fill:{BLACK};", f"fill:{BLACK};")[i % 2]
-                out_lines.append(f'<tspan style="font-size:{self.size};{fill_}">{self.labels[i][0]} </tspan>')
-            out_lines.append('    </textPath>\n')
+                out_lines.append(
+                    f'<tspan style="font-size:{self.size};{fill_}">{self.labels[i][0]} </tspan>'
+                )
+            out_lines.append("    </textPath>\n")
             height = 0.5 * self.size + length * self.size
-            out_lines.append('  </text>\n')
+            out_lines.append("  </text>\n")
             out_str = "".join(out_lines)
             return out_str, height
         else:
             out_lines.append(f'  <text style="{self.style}" {self.anchor}>\n')
             y = self.pos[1]
             c = 1
-            if self.direction == 'down':
+            if self.direction == "down":
                 y += HALF_EXON_HEIGHT + 1.5 * self.size
-            elif self.direction == 'up':
+            elif self.direction == "up":
                 y -= HALF_EXON_HEIGHT + 0.5 * self.size
                 c = -1
             for i in range(len(self.labels)):
                 if self.labels[i][1] is not None:
-                    mouseovers.append(MouseOver((self.pos[0], y - self.size), self.labels[i][1]))
+                    mouseovers.append(
+                        MouseOver((self.pos[0], y - self.size), self.labels[i][1])
+                    )
                     picture_width = max(picture_width, mouseovers[-1].width)
-                    mo_ref = f'onmouseover="mouseover(evt, \'Mouseover{MouseOver.id_counter}\')"'
+                    mo_ref = f"onmouseover=\"mouseover(evt, 'Mouseover{MouseOver.id_counter}')\""
                 else:
-                    mo_ref = ''
+                    mo_ref = ""
                 if self.color == [None]:
-                    switch_ = (self.style, f"fill:{RED};")[i % 2]  # B: don't understand this
+                    switch_ = (self.style, f"fill:{INACT_MUT_COLOR};")[
+                        i % 2
+                    ]  # B: don't understand this
                     label_ = self.labels[i][0]
-                    out_lines.append(f'<tspan x="{self.pos[0]}" y="{y}" style="font-size:{self.size}px;')
+                    out_lines.append(
+                        f'<tspan x="{self.pos[0]}" y="{y}" style="font-size:{self.size}px;'
+                    )
                     out_lines.append(f'{switch_}" {mo_ref}>{label_}</tspan>')
                 else:
                     label_ = self.labels[i][0]
-                    out_lines.append(f'<tspan x="{self.pos[0]}" y="{y}" style="font-size:{self.size}px;')
-                    out_lines.append(f'fill:{self.color[i]};" {mo_ref}>{label_}</tspan>')
+                    out_lines.append(
+                        f'<tspan x="{self.pos[0]}" y="{y}" style="font-size:{self.size}px;'
+                    )
+                    out_lines.append(
+                        f'fill:{self.color[i]};" {mo_ref}>{label_}</tspan>'
+                    )
                 y += c * self.size
-            height = y - self.pos[1] - (0, self.size)[self.direction == 'up']
+            height = y - self.pos[1] - (0, self.size)[self.direction == "up"]
 
             mouseovers_join = "".join([str(mo) for mo in mouseovers])
             out_lines_merge = "".join(out_lines)
@@ -235,20 +287,31 @@ class Textstack:
 
 
 class Exon:
-    def __init__(self, pos, width, is_exon=True, opacity=OPACITY, color=None, ancestral=True, annotation=None):
+    def __init__(
+        self,
+        pos,
+        width,
+        is_exon=True,
+        opacity=OPACITY,
+        color=None,
+        ancestral=True,
+        annotation=None,
+    ):
         self.pos = [pos[0], pos[1]]
         self.width = width
         self.half_height = HALF_EXON_HEIGHT if is_exon else HALF_UTR_HEIGHT
         self.final_height = 2 * self.half_height
         self.opacity = opacity
         self.data = []
-        self.labels = {}  # keys: '(direction, base_number)'   values: '(tag, y-value, mouseover)'
-        self.mouseover = ''
+        self.labels = (
+            {}
+        )  # keys: '(direction, base_number)'   values: '(tag, y-value, mouseover)'
+        self.mouseover = ""
         self.annotation = annotation
         self.ancestral = ancestral
 
         if color is None and ancestral:
-            self.color = EXON_COLOR
+            self.color = BACKGROUND_COLOR
         elif color is None:
             self.color = "none"
         else:
@@ -257,11 +320,14 @@ class Exon:
     def __copy__(self):
         """Copy method implementation."""
         pos_copy = [self.pos[0], self.pos[1]]
-        new_one = Exon(pos_copy, self.width,
-                       opacity=self.opacity,
-                       color=self.color,
-                       ancestral=self.ancestral,
-                       annotation=self.annotation)
+        new_one = Exon(
+            pos_copy,
+            self.width,
+            opacity=self.opacity,
+            color=self.color,
+            ancestral=self.ancestral,
+            annotation=self.annotation,
+        )
         return new_one
 
     def shift_vertical(self, distance):
@@ -276,18 +342,24 @@ class Exon:
             first_key, last_key, cluster = keys[0], keys[0], []
             for k in keys:
                 if k[1] > first_key[1] + STACKING_THRESHOLD or k[0] != first_key[0]:
-                    cluster_center = self.pos[0] + (first_key[1] + last_key[1]) / 2 * EXON_BASE_SIZE
-                    t = Textstack((cluster_center, self.labels[cluster[0]][1]),
-                                  first_key[0],
-                                  self.labels[cluster[0]][0],
-                                  mouseover=self.labels[cluster[0]][2],
-                                  anchor='middle',
-                                  color=self.labels[cluster[0]][3])
+                    cluster_center = (
+                        self.pos[0] + (first_key[1] + last_key[1]) / 2 * EXON_BASE_SIZE
+                    )
+                    t = Textstack(
+                        (cluster_center, self.labels[cluster[0]][1]),
+                        first_key[0],
+                        self.labels[cluster[0]][0],
+                        mouseover=self.labels[cluster[0]][2],
+                        anchor="middle",
+                        color=self.labels[cluster[0]][3],
+                    )
                     for i in range(1, len(cluster)):
-                        t.add_label(self.labels[cluster[i]][0],
-                                    self.labels[cluster[i]][1],
-                                    self.labels[cluster[i]][2],
-                                    color=self.labels[cluster[i]][3])
+                        t.add_label(
+                            self.labels[cluster[i]][0],
+                            self.labels[cluster[i]][1],
+                            self.labels[cluster[i]][2],
+                            color=self.labels[cluster[i]][3],
+                        )
 
                     s, h = t.toString()
                     self.data.append(s)
@@ -297,59 +369,92 @@ class Exon:
                 else:
                     cluster.append(k)
                     last_key = k
-            cluster_center = self.pos[0] + (first_key[1] + last_key[1]) / 2 * EXON_BASE_SIZE
+            cluster_center = (
+                self.pos[0] + (first_key[1] + last_key[1]) / 2 * EXON_BASE_SIZE
+            )
 
-            t = Textstack((cluster_center, self.labels[cluster[0]][1]),
-                          first_key[0],
-                          self.labels[cluster[0]][0],
-                          mouseover=self.labels[cluster[0]][2],
-                          anchor='middle',
-                          color=self.labels[cluster[0]][3])
+            t = Textstack(
+                (cluster_center, self.labels[cluster[0]][1]),
+                first_key[0],
+                self.labels[cluster[0]][0],
+                mouseover=self.labels[cluster[0]][2],
+                anchor="middle",
+                color=self.labels[cluster[0]][3],
+            )
             for i in range(1, len(cluster)):
-                t.add_label(self.labels[cluster[i]][0],
-                            self.labels[cluster[i]][1],
-                            self.labels[cluster[i]][2],
-                            color=self.labels[cluster[i]][3])
+                t.add_label(
+                    self.labels[cluster[i]][0],
+                    self.labels[cluster[i]][1],
+                    self.labels[cluster[i]][2],
+                    color=self.labels[cluster[i]][3],
+                )
             s, h = t.toString()
             self.data.append(s)
             height = max(height, self.pos[1] - self.labels[cluster[0]][1] + h)
         self.height = height
 
     def add_mouseover(self, labels):
-        self.mouseover = MouseOver((self.pos[0] + self.width / 2, self.pos[1] - 1.1 * self.half_height),
-                                   labels)
+        self.mouseover = MouseOver(
+            (self.pos[0] + self.width / 2, self.pos[1] - 1.1 * self.half_height), labels
+        )
 
     def add_stop_codon(self, start_base_pos, tag, mouseover, is_masked):
         x = self.pos[0] + (start_base_pos + 1) * EXON_BASE_SIZE
         y = self.pos[1]
-        color_ = GREY if is_masked else BLACK
+        color_ = MASKED_MUT_COLOR if is_masked else STOP_CODON_COLOR
         style_ = STOP_CODON_STYLE.format(color_)
-        self.data.append(draw_line((x, y - HALF_EXON_HEIGHT),
-                                   (x, y + HALF_EXON_HEIGHT),
-                                   style_))
+        self.data.append(
+            draw_line((x, y - HALF_EXON_HEIGHT), (x, y + HALF_EXON_HEIGHT), style_)
+        )
         self.labels[("up", start_base_pos)] = (tag, y, mouseover, color_)
 
     def add_deletion(self, start_base_pos, length, mouseover, is_masked):
-        color = GREY if is_masked else RED
+        color = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
         style = DEL_STYLE.format(color, length * EXON_BASE_SIZE)
-        self.data.append(draw_line((self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
-                                    self.pos[1] - HALF_EXON_HEIGHT),
-                                   (self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
-                                   self.pos[1] + HALF_EXON_HEIGHT),
-                                   style))
-        self.labels[("up", start_base_pos)] = ("-" + str(length), self.pos[1], mouseover, color)
+        self.data.append(
+            draw_line(
+                (
+                    self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
+                    self.pos[1] - HALF_EXON_HEIGHT,
+                ),
+                (
+                    self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
+                    self.pos[1] + HALF_EXON_HEIGHT,
+                ),
+                style,
+            )
+        )
+        self.labels[("up", start_base_pos)] = (
+            "-" + str(length),
+            self.pos[1],
+            mouseover,
+            color,
+        )
 
     def add_missing_sequence(self, start_base_pos, length, mouseover):
-        style = MISSSEQ_STYLE.format(GREY, length * EXON_BASE_SIZE)
-        self.data.append(draw_line((self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
-                                    self.pos[1] - HALF_EXON_HEIGHT),
-                                   (self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
-                                   self.pos[1] + HALF_EXON_HEIGHT),
-                                   style))
-        self.labels[("up", start_base_pos)] = (str(length), self.pos[1], mouseover, GREY)
+        style = MISSSEQ_STYLE.format(MISS_SEQ_COLOR, length * EXON_BASE_SIZE)
+        self.data.append(
+            draw_line(
+                (
+                    self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
+                    self.pos[1] - HALF_EXON_HEIGHT,
+                ),
+                (
+                    self.pos[0] + (start_base_pos + length / 2) * EXON_BASE_SIZE,
+                    self.pos[1] + HALF_EXON_HEIGHT,
+                ),
+                style,
+            )
+        )
+        self.labels[("up", start_base_pos)] = (
+            str(length),
+            self.pos[1],
+            mouseover,
+            MISS_SEQ_COLOR,
+        )
 
     def add_insertion(self, base_pos, length, mouseover, is_masked):
-        color = GREY if is_masked else RED
+        color = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
         style = INSERT_STYLE.format(color)
         x = self.pos[0] + base_pos * EXON_BASE_SIZE
         y = self.pos[1] - HALF_EXON_HEIGHT
@@ -360,9 +465,16 @@ class Exon:
         p2y_ = y - height
         p3x_ = x - width / 2
         p3y_ = y - height
-        self.data.append(f'  <polygon points="{x},{y} {p2x_},{p2y_} {p3x_},{p3y_}" {style}/>\n')
+        self.data.append(
+            f'  <polygon points="{x},{y} {p2x_},{p2y_} {p3x_},{p3y_}" {style}/>\n'
+        )
         plus_len_ = f"+{str(length)}"
-        self.labels[("up", base_pos)] = (plus_len_, self.pos[1] - height, mouseover, color)
+        self.labels[("up", base_pos)] = (
+            plus_len_,
+            self.pos[1] - height,
+            mouseover,
+            color,
+        )
 
     def add_altSS(self, offset, width, style):
         rect_x_ = self.pos[0] + offset
@@ -378,18 +490,24 @@ class Exon:
         else:
             # mo_id_str_ = str(self.mouseover.id_counter)
             mo_id_str_ = ""
-            attr_lines = [f'onmouseover="mouseover(evt, \'Mouseover{mo_id_str_}\')"', ]
+            attr_lines = [
+                f"onmouseover=\"mouseover(evt, 'Mouseover{mo_id_str_}')\"",
+            ]
 
         extra_attr = f' rx="{HALF_EXON_HEIGHT / 3}" ry ="{HALF_EXON_HEIGHT / 3}" '  # B: don't know what it stands for
-        attr_lines.append(('', extra_attr)[ROUND_EDGES])
+        attr_lines.append(("", extra_attr)[ROUND_EDGES])
         if self.annotation is not None:
-            mouseover = MouseOver((self.pos[0] + self.width / 2, self.pos[1] + 1.1 * self.half_height),
-                                  self.annotation)
+            mouseover = MouseOver(
+                (self.pos[0] + self.width / 2, self.pos[1] + 1.1 * self.half_height),
+                self.annotation,
+            )
             mo_str_ = str(mouseover)
             dline_str = f'style="stroke:white; stroke-width:5;" onmouseover="mouseover(evt, \'Mouseover{mo_str_}\')"'
-            dline_ = draw_line([self.pos[0], self.pos[1] + self.half_height],
-                               [self.pos[0] + self.width, self.pos[1] + self.half_height],
-                               dline_str)
+            dline_ = draw_line(
+                [self.pos[0], self.pos[1] + self.half_height],
+                [self.pos[0] + self.width, self.pos[1] + self.half_height],
+                dline_str,
+            )
             annotation = str(mouseover) + dline_
         else:
             annotation = ""
@@ -403,8 +521,10 @@ class Exon:
         fill_opac_ = self.opacity / 100.0
         attributes = "".join(attr_lines)
         data_str = "".join(self.data)
-        rect_line = f'  <rect class="{rect_class_}anc_exon" x="{x_}" y="{y_}" width="{self.width}" ' \
-                    f'height="{height_}" style="fill:{self.color};fill-opacity:{fill_opac_:1.2f}" {attributes}/>\n'
+        rect_line = (
+            f'  <rect class="{rect_class_}anc_exon" x="{x_}" y="{y_}" width="{self.width}" '
+            f'height="{height_}" style="fill:{self.color};fill-opacity:{fill_opac_:1.2f}" {attributes}/>\n'
+        )
         result_line = f"{annotation}{self_mo_str_}{rect_line}{data_str}"
         return result_line, self.height
 
@@ -420,21 +540,35 @@ class Intron:
 
     def toString(self):
         if not self.seperated:
-            line = draw_line(self.pos, (self.pos[0] + self.width, self.pos[1]), INTRON_STYLE)
+            line = draw_line(
+                self.pos, (self.pos[0] + self.width, self.pos[1]), INTRON_STYLE
+            )
         else:
             gap_l = self.pos[0] + self.width // 2 - GAP_WIDTH // 2
             gap_r = gap_l + GAP_WIDTH
             line_pieces = []
             line_pieces.append(draw_line(self.pos, (gap_l, self.pos[1]), INTRON_STYLE))
-            line_pieces.append(draw_line((gap_l, self.pos[1] - HALF_GAP_HEIGHT),
-                                         (gap_l, self.pos[1] + HALF_GAP_HEIGHT),
-                                         INTRON_STYLE))
-            line_pieces.append(draw_line((gap_r, self.pos[1] - HALF_GAP_HEIGHT),
-                                         (gap_r, self.pos[1] + HALF_GAP_HEIGHT),
-                                         INTRON_STYLE))
-            line_pieces.append(draw_line((gap_r, self.pos[1]),
-                                         (self.pos[0] + self.width, self.pos[1]),
-                                         INTRON_STYLE))
+            line_pieces.append(
+                draw_line(
+                    (gap_l, self.pos[1] - HALF_GAP_HEIGHT),
+                    (gap_l, self.pos[1] + HALF_GAP_HEIGHT),
+                    INTRON_STYLE,
+                )
+            )
+            line_pieces.append(
+                draw_line(
+                    (gap_r, self.pos[1] - HALF_GAP_HEIGHT),
+                    (gap_r, self.pos[1] + HALF_GAP_HEIGHT),
+                    INTRON_STYLE,
+                )
+            )
+            line_pieces.append(
+                draw_line(
+                    (gap_r, self.pos[1]),
+                    (self.pos[0] + self.width, self.pos[1]),
+                    INTRON_STYLE,
+                )
+            )
             line = "".join(line_pieces)
         return line, 2 * HALF_GAP_HEIGHT
 
@@ -448,7 +582,9 @@ def draw_line(pos1, pos2, otherAttributes):
 
 
 def draw_comp_indel(pos1, pos2):
-    center = " ".join(2 * [str((pos1[0] + pos2[0]) // 2), str(pos1[1] - HALF_UTR_HEIGHT)])
+    center = " ".join(
+        2 * [str((pos1[0] + pos2[0]) // 2), str(pos1[1] - HALF_UTR_HEIGHT)]
+    )
     d = f"M{pos1[0]} {pos1[1] - HALF_EXON_HEIGHT} C {center} {pos2[0]} {pos2[1] - HALF_EXON_HEIGHT}"
     return f'  <path d="{d}" {COMP_INDEL_STYLE} />\n'
 
@@ -458,14 +594,25 @@ def parse_args():
     app = argparse.ArgumentParser()
     app.add_argument("bed_file", help="Reference annotation, bed12 file")
     app.add_argument("toga_mut_file", help="TOGA mutations")
-    app.add_argument("transcripts", help="Transcripts of interest (comma-sep list or a single one)")
+    app.add_argument(
+        "transcripts", help="Transcripts of interest (comma-sep list or a single one)"
+    )
     app.add_argument("output", help="Path to output image")
     app.add_argument("--chain", default=None, help="Limit to a particular projection")
-    app.add_argument("--isoforms_file", "-i", default=None,
-                     help="If you provide geneID instead of transcript, please also provide "
-                          "an isoforms file.")
-    app.add_argument("--multi_species", "--ms", action="store_true", dest="multi_species",
-                     help="Please see documentation which is not yet written")
+    app.add_argument(
+        "--isoforms_file",
+        "-i",
+        default=None,
+        help="If you provide geneID instead of transcript, please also provide "
+        "an isoforms file.",
+    )
+    app.add_argument(
+        "--multi_species",
+        "--ms",
+        action="store_true",
+        dest="multi_species",
+        help="Please see documentation which is not yet written",
+    )
     app.add_argument("--alt_template", "-a", help="Alternative template path")
     if len(sys.argv) < 4:
         app.print_help()
@@ -514,7 +661,9 @@ def get_mut_list(mut_file, trans):
             trans_lines_str = b_mut_lines.astype(u_type)
             trans_related_lines = trans_lines_str.split("\n")
         except KeyError:
-            trans_related_lines = ["", ]
+            trans_related_lines = [
+                "",
+            ]
         h.close()
         return trans_related_lines
     else:  # ordinary text file
@@ -554,8 +703,8 @@ def parse_trans_data(bed_line):
     thickEnd = int(line_data[7])
     _ = line_data[8]  # never used
     blockCount = int(line_data[9])
-    blockSizes = [int(x) for x in line_data[10].split(',') if x != '']
-    blockStarts = [int(x) for x in line_data[11].split(',') if x != '']
+    blockSizes = [int(x) for x in line_data[10].split(",") if x != ""]
+    blockStarts = [int(x) for x in line_data[11].split(",") if x != ""]
     blockEnds = [blockStarts[i] + blockSizes[i] for i in range(blockCount)]
 
     blockAbsStarts = [blockStarts[i] + chromStart for i in range(blockCount)]
@@ -585,23 +734,27 @@ def parse_trans_data(bed_line):
 
     exons = list(zip(blockNewStarts, blockNewEnds))
 
-    bed_data = {"chrom": chrom,
-                "name": name,
-                "strand": strand,
-                "exons": exons,
-                "rel_starts": rel_starts,
-                "exon_num": len(exons)}
+    bed_data = {
+        "chrom": chrom,
+        "name": name,
+        "strand": strand,
+        "exons": exons,
+        "rel_starts": rel_starts,
+        "exon_num": len(exons),
+    }
     return bed_data
 
 
 def comp_width(trans_data):
     """Compute picture width."""
     exon_coords = trans_data["exons"]
-    gene_width = UTR_WIDTH \
-        + int((exon_coords[0][1] - exon_coords[0][0]) * EXON_BASE_SIZE) \
+    gene_width = (
+        UTR_WIDTH
+        + int((exon_coords[0][1] - exon_coords[0][0]) * EXON_BASE_SIZE)
         + max(UTR_WIDTH, 2 * SS_LABEL_FONTSIZE)
+    )
     for i in range(1, trans_data["exon_num"]):
-        intron_length = (exon_coords[i][0] - exon_coords[i - 1][1])
+        intron_length = exon_coords[i][0] - exon_coords[i - 1][1]
         intron_length = min(max(intron_length, MIN_INTRON_SIZE), MAX_INTRON_SIZE)
         gene_width += int(intron_length * INTRON_BASE_SIZE)
         gene_width += int((exon_coords[i][1] - exon_coords[i][0]) * EXON_BASE_SIZE)
@@ -634,7 +787,7 @@ def get_comp_pairs(mut_ids):
 
 def prepare_mut_data(mut_lines, sp, rel_starts, chain_lim=None):
     """Adjust mutations data.
-    
+
     Absolute codon positions -> relative nucl.
     Split compensations in pairs.
     """
@@ -724,15 +877,17 @@ def write_pic(filebuffer, picture_width, picture_height, vbox_h, mcv, alt_templa
 
     # replace all placeholders with our values
     vbox_val = min(0, MAX_VERTICAL_SPACE / 2 - vbox_h)
-    rep = {"FILE_BUFFER": str(filebuffer),
-           "PICTURE_WIDTH": str(picture_width),
-           "PICTURE_HEIGHT": str(picture_height),
-           "VBOX": str(vbox_val),
-           "EXON_ANC_STYLE": EXON_ANC_STYLE,
-           "EXON_NON_ANC_STYLE": EXON_NON_ANC_STYLE,
-           "STOP_LABEL_FONTSIZE": str(STOP_LABEL_FONTSIZE),
-           "FONT_FAMILY": FONTFAMILY,
-           "MOUSEOVERCOUNTER": str(mcv)}
+    rep = {
+        "FILE_BUFFER": str(filebuffer),
+        "PICTURE_WIDTH": str(picture_width),
+        "PICTURE_HEIGHT": str(picture_height),
+        "VBOX": str(vbox_val),
+        "EXON_ANC_STYLE": EXON_ANC_STYLE,
+        "EXON_NON_ANC_STYLE": EXON_NON_ANC_STYLE,
+        "STOP_LABEL_FONTSIZE": str(STOP_LABEL_FONTSIZE),
+        "FONT_FAMILY": FONTFAMILY,
+        "MOUSEOVERCOUNTER": str(mcv),
+    }
     rep_d = {re.escape(k): v for k, v in rep.items()}
     pattern = re.compile("|".join(rep_d.keys()))
     text = pattern.sub(lambda m: rep[re.escape(m.group(0))], template)
@@ -745,24 +900,26 @@ def trans_data_direction(trans_data):
         return
     max_coord = trans_data["exons"][-1][1]
     for i in range(trans_data["exon_num"]):
-        trans_data["exons"][i] = (max_coord - trans_data["exons"][i][1],
-                                  max_coord - trans_data["exons"][i][0])
+        trans_data["exons"][i] = (
+            max_coord - trans_data["exons"][i][1],
+            max_coord - trans_data["exons"][i][0],
+        )
     trans_data["exons"].reverse()
 
 
 def init_human_exons(x, y, ancestral_exons, trans_data):
     """Just init human exons list."""
-    human_exons = [Exon((0, y), x[0], is_exon=False), ]
+    human_exons = [
+        Exon((0, y), x[0], is_exon=False),
+    ]
     # 1 is always in ancestrals!
     # one_in_anc_exons = "1" in ancestral_exons
-    human_exons.append(Exon((x[0], y),
-                            x[1] - x[0],
-                            opacity=OPACITY,
-                            ancestral=True,
-                            annotation=None))
+    human_exons.append(
+        Exon((x[0], y), x[1] - x[0], opacity=OPACITY, ancestral=True, annotation=None)
+    )
 
     for i in range(1, trans_data["exon_num"]):
-        intron_length = (trans_data["exons"][i][0] - trans_data["exons"][i - 1][1])
+        intron_length = trans_data["exons"][i][0] - trans_data["exons"][i - 1][1]
         seperated = intron_length > MAX_INTRON_SIZE
         intron_length = min(max(intron_length, MIN_INTRON_SIZE), MAX_INTRON_SIZE)
 
@@ -770,16 +927,23 @@ def init_human_exons(x, y, ancestral_exons, trans_data):
         to_add_ = int(x[-1] + intron_length * INTRON_BASE_SIZE)
         x.append(to_add_)
         # doing this twice
-        to_add_ = int(x[-1] + (trans_data["exons"][i][1] - trans_data["exons"][i][0]) * EXON_BASE_SIZE)
+        to_add_ = int(
+            x[-1]
+            + (trans_data["exons"][i][1] - trans_data["exons"][i][0]) * EXON_BASE_SIZE
+        )
         x.append(to_add_)
 
         human_exons.append(Intron((x[-3], y), x[-2] - x[-3], seperated))  # ith Intron
         is_ancestral = str(i + 1) in ancestral_exons
-        human_exons.append(Exon((x[-2], y),
-                                x[-1] - x[-2],
-                                opacity=OPACITY,
-                                ancestral=is_ancestral,
-                                annotation=None))  # (i+1)th Exon
+        human_exons.append(
+            Exon(
+                (x[-2], y),
+                x[-1] - x[-2],
+                opacity=OPACITY,
+                ancestral=is_ancestral,
+                annotation=None,
+            )
+        )  # (i+1)th Exon
     human_exons.append(Exon((x[-1], y), UTR_WIDTH, is_exon=False))  # UTR
     return human_exons
 
@@ -825,10 +989,16 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
                 e.shift_vertical(vert_offset)
 
             label = f"{sp}.{trans}.{chain}"
-            labels = [(Textstack((x[0], y + HALF_EXON_HEIGHT + MO_FONTSIZE),
-                                 HORIZONTAL,
-                                 label,
-                                 fontsize=MO_FONTSIZE))]
+            labels = [
+                (
+                    Textstack(
+                        (x[0], y + HALF_EXON_HEIGHT + MO_FONTSIZE),
+                        HORIZONTAL,
+                        label,
+                        fontsize=MO_FONTSIZE,
+                    )
+                )
+            ]
             for label in labels:
                 label.shift_vertical(vert_offset)
             curr_projection = projection
@@ -858,10 +1028,14 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             fs_2_id = f"FS_{comp_ids_num[1]}"
             try:
                 data1, data2 = speciesdata[fs_1_id], speciesdata[fs_2_id]
-                start = (exons[2 * int(data1[0]) - 1].pos[0] + data1[2] * EXON_BASE_SIZE,
-                         exons[2 * int(data1[0]) - 1].pos[1])
-                end = (exons[2 * int(data2[0]) - 1].pos[0] + data2[1] * EXON_BASE_SIZE,
-                       exons[2 * int(data2[0]) - 1].pos[1])
+                start = (
+                    exons[2 * int(data1[0]) - 1].pos[0] + data1[2] * EXON_BASE_SIZE,
+                    exons[2 * int(data1[0]) - 1].pos[1],
+                )
+                end = (
+                    exons[2 * int(data2[0]) - 1].pos[0] + data2[1] * EXON_BASE_SIZE,
+                    exons[2 * int(data2[0]) - 1].pos[1],
+                )
                 comp_substrings.append(draw_comp_indel(start, end))
             except KeyError:
                 # TODO: check why FS2 could be deleted from list
@@ -874,23 +1048,33 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
         if defect_class == SSM:
             mouseover = None
             to_what = mut.split("->")[1]
-            color_ = GREY if is_masked else RED
+            color_ = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
             if pos == 1:  # donor
-                labels.append(Textstack((exon.pos[0] + exon.width, exon.pos[1]),
-                                        HORIZONTAL,
-                                        to_what,
-                                        mouseover,
-                                        SS_LABEL_FONTSIZE,
-                                        f"fill:{color_};"))
+                labels.append(
+                    Textstack(
+                        (exon.pos[0] + exon.width, exon.pos[1]),
+                        HORIZONTAL,
+                        to_what,
+                        mouseover,
+                        SS_LABEL_FONTSIZE,
+                        f"fill:{color_};",
+                    )
+                )
             else:  # acceptor
-                pos_tup_ = (exon.pos[0] - len(to_what) * 0.64 * SS_LABEL_FONTSIZE,
-                            exon.pos[1] + SS_LABEL_FONTSIZE)
-                labels.append(Textstack(pos_tup_,
-                                        HORIZONTAL,
-                                        to_what,
-                                        mouseover,
-                                        SS_LABEL_FONTSIZE,
-                                        f"fill:{color_};"))
+                pos_tup_ = (
+                    exon.pos[0] - len(to_what) * 0.64 * SS_LABEL_FONTSIZE,
+                    exon.pos[1] + SS_LABEL_FONTSIZE,
+                )
+                labels.append(
+                    Textstack(
+                        pos_tup_,
+                        HORIZONTAL,
+                        to_what,
+                        mouseover,
+                        SS_LABEL_FONTSIZE,
+                        f"fill:{color_};",
+                    )
+                )
         # deal with insertions
         elif defect_class in INS:
             start = pos
@@ -907,16 +1091,16 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             speciesdata[mut_id] = (exonnumber, start, start + length - 1)
         # add deleted exon
         elif defect_class == EX_DEL:
-            exon.color = BLUE if is_masked else RED
+            exon.color = FP_EXON_DEL_COLOR if is_masked else INACT_MUT_COLOR
             speciesdata[mut_id] = (exonnumber, 0, 0)
         # and also with missing exons
         elif defect_class == EX_MIS:
-            exon.color = GREY
+            exon.color = MISS_SEQ_COLOR
             speciesdata[mut_id] = (exonnumber, 0, 0)
         # draw stop
         elif defect_class == STOP:
             if "->" in mut:
-                codon = mut.split('->')[1]
+                codon = mut.split("->")[1]
             else:
                 # split stop codon
                 codon = mut
@@ -982,9 +1166,16 @@ def get_sp_to_mbd_data(mut_files_list):
     return sp_to_file
 
 
-def make_plot(bed_file, toga_mut_file, transcripts, chain,
-              isoforms_file, multi_species, alt_template,
-              inact_lines=None):
+def make_plot(
+    bed_file,
+    toga_mut_file,
+    transcripts,
+    chain,
+    isoforms_file,
+    multi_species,
+    alt_template,
+    inact_lines=None,
+):
     """Enrty point."""
     if isoforms_file is None:
         transcripts = [t for t in transcripts.split(",") if t != ""]
@@ -1003,8 +1194,10 @@ def make_plot(bed_file, toga_mut_file, transcripts, chain,
     for transcript in transcripts:
         trans_bed = get_transcript(bed_file, transcript)
         if trans_bed is None:
-            # not found 
-            sys.stderr.write(f"Warning! Cannot find {transcript} in the bed {bed_file}\n")
+            # not found
+            sys.stderr.write(
+                f"Warning! Cannot find {transcript} in the bed {bed_file}\n"
+            )
             continue
 
         trans_data = parse_trans_data(trans_bed)
@@ -1017,15 +1210,22 @@ def make_plot(bed_file, toga_mut_file, transcripts, chain,
             else:
                 # called by external program: inact data already extracted
                 mut_lines_raw = inact_lines
-            mut_lines = prepare_mut_data(mut_lines_raw, sp, trans_data["rel_starts"],
-                                         chain_lim=chain)
+            mut_lines = prepare_mut_data(
+                mut_lines_raw, sp, trans_data["rel_starts"], chain_lim=chain
+            )
             all_mut_lines.extend(mut_lines)
 
         t_picture_width = comp_width(trans_data)
-        picture_width = t_picture_width if t_picture_width > picture_width else picture_width
+        picture_width = (
+            t_picture_width if t_picture_width > picture_width else picture_width
+        )
 
         # something we need
-        x = [UTR_WIDTH, UTR_WIDTH + (trans_data["exons"][0][1] - trans_data["exons"][0][0]) * EXON_BASE_SIZE]
+        x = [
+            UTR_WIDTH,
+            UTR_WIDTH
+            + (trans_data["exons"][0][1] - trans_data["exons"][0][0]) * EXON_BASE_SIZE,
+        ]
         y = MAX_VERTICAL_SPACE / 2
 
         ancestral_exons = [str(x) for x in range(1, trans_data["exon_num"] + 1)]
@@ -1034,29 +1234,41 @@ def make_plot(bed_file, toga_mut_file, transcripts, chain,
 
     if len(trans_to_h_exons.keys()) == 0:
         sys.exit("Not found any data for your transcripts")
-    if len(all_mut_lines) == 0:
-        sys.exit("Please check your filters -> nothing to plot")
-    filebuffer, up_num, vbox_h = generate_filebuffer(all_mut_lines, trans_to_h_exons, x, y)
+    if len(all_mut_lines) == 0 and inact_lines is None:
+        sys.exit(f"{str(transcripts)}: Please check your filters -> nothing to plot")
+    elif len(all_mut_lines) == 0:
+        return SVG_PLACEHOLDER
+    filebuffer, up_num, vbox_h = generate_filebuffer(
+        all_mut_lines, trans_to_h_exons, x, y
+    )
 
-    # compute height 
+    # compute height
     picture_height, vbox_h = compute_pic_and_vbox_h(up_num, vbox_h)
 
     # save figure
     mouse_counter_val = MouseOver.id_counter + 1
-    svg_line = write_pic(filebuffer, picture_width, picture_height,
-                         vbox_h, mouse_counter_val, alt_template)
+    svg_line = write_pic(
+        filebuffer,
+        picture_width,
+        picture_height,
+        vbox_h,
+        mouse_counter_val,
+        alt_template,
+    )
     return svg_line
 
 
 if __name__ == "__main__":
     args = parse_args()
-    svg_line = make_plot(args.bed_file,
-                         args.toga_mut_file,
-                         args.transcripts,
-                         args.chain,
-                         args.isoforms_file,
-                         args.multi_species,
-                         args.alt_template)
+    svg_line = make_plot(
+        args.bed_file,
+        args.toga_mut_file,
+        args.transcripts,
+        args.chain,
+        args.isoforms_file,
+        args.multi_species,
+        args.alt_template,
+    )
     f = open(args.output, "w") if args.output != "stdout" else sys.stdout
     f.write(svg_line)
     f.close() if args.output != "stdout" else None

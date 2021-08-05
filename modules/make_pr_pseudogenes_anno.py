@@ -4,6 +4,7 @@ import argparse
 import sys
 import os
 from collections import defaultdict
+
 try:
     from modules.common import chain_extract_id
     from modules.common import bed_extract_id
@@ -24,8 +25,9 @@ def parse_args():
     app.add_argument("chain_file", help="Chain file")
     app.add_argument("bed_db", help="Bed indexed file")
     app.add_argument("output", help="Bed-9 output")
-    app.add_argument("--verbose", "-v", action="store_true", dest="verbose",
-                     help="Enable verbosity")
+    app.add_argument(
+        "--verbose", "-v", action="store_true", dest="verbose", help="Enable verbosity"
+    )
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -78,7 +80,7 @@ def extract_chain(chain_file, chain_dict, chain):
 
 def get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v=False):
     """Create projection: q region dict.
-    
+
     We assume the following:
     1) processed pseudogene is a "single-exon" element
     2) ppgene chain covers the ppgene and nothing else.
@@ -88,7 +90,9 @@ def get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v=Fal
     # iterate over gene: [chain ids] elements
     for num, (gene, chains) in enumerate(gene_to_pp_chains.items()):
         if v:
-            verbose(f"# Processing gene {gene} {num} / {task_size} with {len(chains)} chains")
+            verbose(
+                f"# Processing gene {gene} {num} / {task_size} with {len(chains)} chains"
+            )
         # extract gene track
         gene_track = bed_extract_id(bed_bdb, gene).rstrip().split("\t")
         gene_strand = gene_track[5]  # we need the strand only
@@ -131,7 +135,17 @@ def make_bed_lines(proj_to_reg):
         thick_start = chrom_start
         thick_end = chrom_start
         # we don't need score field -> so there is some default value
-        line_data = (chrom, chrom_start, chrom_end, name, DEF_SCORE, strand, thick_start, thick_end, PINK_COLOR)
+        line_data = (
+            chrom,
+            chrom_start,
+            chrom_end,
+            name,
+            DEF_SCORE,
+            strand,
+            thick_start,
+            thick_end,
+            PINK_COLOR,
+        )
         line = "\t".join(str(x) for x in line_data)
         bed_lines.append(line)
     return bed_lines
@@ -156,7 +170,9 @@ def create_ppgene_track(chain_class_file, chain_file, bed_bdb, output, v=None):
     gene_to_pp_chains = get_pp_gene_chains(chain_class_file, v)
     # for each gene-chain pair get corresponding region in query
     verbose("Extracting corresponding regions") if v else None
-    projection_to_reg = get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v)
+    projection_to_reg = get_corr_q_regions(
+        gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v
+    )
     # convert the regions to bed-9 formatted-lines
     verbose("Saving results") if v else None
     bed_lines = make_bed_lines(projection_to_reg)
@@ -166,8 +182,10 @@ def create_ppgene_track(chain_class_file, chain_file, bed_bdb, output, v=None):
 
 if __name__ == "__main__":
     args = parse_args()
-    create_ppgene_track(args.chain_classification,
-                        args.chain_file,
-                        args.bed_db,
-                        args.output,
-                        v=args.verbose)
+    create_ppgene_track(
+        args.chain_classification,
+        args.chain_file,
+        args.bed_db,
+        args.output,
+        v=args.verbose,
+    )

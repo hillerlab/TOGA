@@ -9,6 +9,17 @@ GENERATE_TAB_FILES = "generate_tab_files.py"
 GENERATE_PLOTS = "make_togaPlot.py"
 LOCATION = os.path.dirname(__file__)
 
+IFEAT_PLACEHOLDER = ["0.0" for _ in range(6)]
+PROT_PLACEHOLDER = ["<TT>NO_DATA</TT>"]
+UNDEF = "UNDEFINED"
+SVG_PLACEHOLDER = """<svg>
+<rect fill="#aaa" stroke="#000" x="0" y="0" width="400" height="100"/>
+<line x1="0" y1="0" x2="400" y2="100" stroke="red" stroke-width="4" />
+<line x1="0" y1="100" x2="400" y2="0" stroke="red" stroke-width="4" />
+</svg>
+"""
+PLOT_PLACEHOLDER = [SVG_PLACEHOLDER, ]
+
 
 def parse_args():
     """Parse args."""
@@ -19,6 +30,7 @@ def parse_args():
         sys.exit(0)
     args = app.parse_args()
     return args
+
 
 def call_gen_tab_files(project_dir):
     """Call Generate tab files subprocess."""
@@ -58,6 +70,14 @@ def read_tab_file(tab_file):
     return trans_to_dat
 
 
+
+def __gen_info_placeholder(p_name):
+    """Generate info placeholder."""
+    t_name = ".".join(p_name.split(".")[:-1])
+    placeholder = [t_name, UNDEF, UNDEF, "0.0", "0", "0.0", "0.0", "0.0", "0.0", "0.0", UNDEF]
+    return placeholder
+
+
 def make_toga_data(project_dir):
     """Merge togaPlot, togaProt, togaInfo and togaInactFeat tables into togaData."""
     tabs_dir = os.path.join(project_dir, "tabs")
@@ -72,21 +92,28 @@ def make_toga_data(project_dir):
     trans_to_ifeat = read_tab_file(toga_inact_feat_file)
     trans_to_plot = read_tab_file(toga_plot_file)
     trans_to_prot = read_tab_file(toga_prot_file)
-    
+
     transcripts = trans_to_info.keys()
     print(f"Got data for {len(transcripts)} transcripts")
 
     f = open(out_file, "w")
     for t in transcripts:
-        info = trans_to_info[t]
-        ifeat = trans_to_ifeat[t]
-        prot = trans_to_prot[t]
-        plot = trans_to_plot[t]
+        info = trans_to_info.get(t)
+        if info is None:
+            info = __gen_info_placeholder(t)
+        ifeat = trans_to_ifeat.get(t, IFEAT_PLACEHOLDER.copy())
+        prot = trans_to_prot.get(t, PROT_PLACEHOLDER.copy())
+        plot = trans_to_plot.get(t, PLOT_PLACEHOLDER.copy())
         data_lst = [t] + info + ifeat + prot + plot
         tab_str = "\t".join(data_lst)
         f.write(tab_str)
         f.write("\n")
     f.close()
+    # do cleanup
+    os.remove(toga_info_file)
+    os.remove(toga_inact_feat_file)
+    os.remove(toga_plot_file)
+    os.remove(toga_prot_file)
     print("Done")
 
 

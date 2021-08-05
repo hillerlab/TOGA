@@ -18,7 +18,7 @@ from modules.common import die
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 # global
@@ -41,35 +41,76 @@ def parse_args():
     # app.add_argument("chain_index", type=str, help="Chain sqlite 3 index db")
     app.add_argument("bed_file", type=str, help="Bed file, gene annotations.")
     app.add_argument("bed_index", type=str, help="Indexed bed")
-    app.add_argument("--jobs_num", "--jn", type=int, default=800,
-                     help="Number of cluster jobs, 800 as default.")
-    app.add_argument("--job_size", type=int, default=None,
-                     help="How many jobs to put into one cluster job."
-                     "If defined, --jobs_Num is ignored.")
-    app.add_argument("--verbose", "-v", action="store_true",
-                     dest="verbose", help="Verbose messages.")
-    app.add_argument("--jobs", "-j", type=str, default="chain_classification_jobs",
-                     help="Directory to save lists with chains and "
-                     "intersected genes, chain_classification_jobs as default.")
-    app.add_argument("--jobs_file", "-c", type=str, default="jobs_file",
-                     help="File containing combined jobs, jobs_file as default.")
-    app.add_argument("--results_dir", "-r", type=str, default='results',
-                     help="Redirect stdout from cluster job to this dir, "
-                          "results_dir as default")
-    app.add_argument("--errors_dir", "-e", type=str, default=None,
-                     help="Redirect stderr from cluster job to "
-                          "this dir, None as default")
-    app.add_argument("--make_index", "-i", action="store_true",
-                     dest="make_index", help="Make index file.")
+    app.add_argument(
+        "--jobs_num",
+        "--jn",
+        type=int,
+        default=800,
+        help="Number of cluster jobs, 800 as default.",
+    )
+    app.add_argument(
+        "--job_size",
+        type=int,
+        default=None,
+        help="How many jobs to put into one cluster job."
+        "If defined, --jobs_Num is ignored.",
+    )
+    app.add_argument(
+        "--verbose", "-v", action="store_true", dest="verbose", help="Verbose messages."
+    )
+    app.add_argument(
+        "--jobs",
+        "-j",
+        type=str,
+        default="chain_classification_jobs",
+        help="Directory to save lists with chains and "
+        "intersected genes, chain_classification_jobs as default.",
+    )
+    app.add_argument(
+        "--jobs_file",
+        "-c",
+        type=str,
+        default="jobs_file",
+        help="File containing combined jobs, jobs_file as default.",
+    )
+    app.add_argument(
+        "--results_dir",
+        "-r",
+        type=str,
+        default="results",
+        help="Redirect stdout from cluster job to this dir, " "results_dir as default",
+    )
+    app.add_argument(
+        "--errors_dir",
+        "-e",
+        type=str,
+        default=None,
+        help="Redirect stderr from cluster job to " "this dir, None as default",
+    )
+    app.add_argument(
+        "--make_index",
+        "-i",
+        action="store_true",
+        dest="make_index",
+        help="Make index file.",
+    )
     # second-part related stuff
-    app.add_argument("--index_file", "-b", type=str, help="BDB file containing "
-                     "chains. If not assigned use [chain_file].bdb as default.")
-    app.add_argument("--ref", type=str, default="hg38",
-                     help="Reference species, hg38 as default.")
-    app.add_argument("--vv", action="store_true", dest="vv",
-                     help="Add -v flag to unit commands.")
-    app.add_argument("--rejected", default=None,
-                     help="Track rejected genes in the file given")
+    app.add_argument(
+        "--index_file",
+        "-b",
+        type=str,
+        help="BDB file containing "
+        "chains. If not assigned use [chain_file].bdb as default.",
+    )
+    app.add_argument(
+        "--ref", type=str, default="hg38", help="Reference species, hg38 as default."
+    )
+    app.add_argument(
+        "--vv", action="store_true", dest="vv", help="Add -v flag to unit commands."
+    )
+    app.add_argument(
+        "--rejected", default=None, help="Track rejected genes in the file given"
+    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -95,28 +136,40 @@ def check_args(args):
     try:  # check the directories, create if it is necessary
         os.mkdir(args.jobs) if not os.path.isdir(args.jobs) else None
         os.mkdir(args.results_dir) if not os.path.isdir(args.results_dir) else None
-        os.mkdir(args.errors_dir) \
-            if args.errors_dir and not os.path.isdir(args.errors_dir) \
-            else None
+        os.mkdir(args.errors_dir) if args.errors_dir and not os.path.isdir(
+            args.errors_dir
+        ) else None
         WORK_DATA["jobs"] = args.jobs
         WORK_DATA["results_dir"] = args.results_dir
         WORK_DATA["errors_dir"] = args.errors_dir
-        verbose(f"Directories in usage: {args.jobs} {args.results_dir} {args.errors_dir}")
+        verbose(
+            f"Directories in usage: {args.jobs} {args.results_dir} {args.errors_dir}"
+        )
 
     except FileNotFoundError as grepexc:  # a one of those tasks failed
         eprint(f"Arguments are corrupted!\n{str(grepexc)}")
         die("Cannot create one of the directories requested.")
 
     # define about chain and bed files
-    WORK_DATA["chain_file"] = args.chain_file if os.path.isfile(args.chain_file) \
+    WORK_DATA["chain_file"] = (
+        args.chain_file
+        if os.path.isfile(args.chain_file)
         else die(f"Error! Chain file {args.chain_file} is wrong!")
+    )
 
-    WORK_DATA["bed_file"] = args.bed_file if os.path.isfile(args.bed_file) \
+    WORK_DATA["bed_file"] = (
+        args.bed_file
+        if os.path.isfile(args.bed_file)
         else die(f"Error! Bed file {args.bed_file} is wrong!")
+    )
     verbose(f"Use bed file {args.bed_file} and chain file {args.chain_file}")
 
     # look for .ID.bb file
-    index_file = args.index_file if args.index_file else args.chain_file.replace(".chain", ".chain_ID_position")
+    index_file = (
+        args.index_file
+        if args.index_file
+        else args.chain_file.replace(".chain", ".chain_ID_position")
+    )
 
     if os.path.isfile(index_file):  # check if bb file is here
         WORK_DATA["index_file"] = index_file
@@ -127,8 +180,10 @@ def check_args(args):
         call_proc(idbb_cmd)
         WORK_DATA["index_file"] = index_file
     else:  # die
-        die(f"Error! Cannot find index file at {index_file}\n"
-            "Please define it manually")
+        die(
+            f"Error! Cannot find index file at {index_file}\n"
+            "Please define it manually"
+        )
 
     # define the number of jobs
     if args.job_size:  # easy:
@@ -163,8 +218,9 @@ def get_intersections():
     """Make an array of intersections between genes and alignments."""
     verbose("Splitting the jobs.")
     # this function will get all chain X bed track intersections
-    chain_genes_raw, skipped = chain_bed_intersect(WORK_DATA["chain_file"],
-                                                   WORK_DATA["bed_file"])
+    chain_genes_raw, skipped = chain_bed_intersect(
+        WORK_DATA["chain_file"], WORK_DATA["bed_file"]
+    )
     chain_genes = {k: ",".join(v) + "," for k, v in chain_genes_raw.items()}
     del chain_genes_raw
     # skipped genes do not intersect any chain
@@ -238,14 +294,15 @@ def save(template, batch):
     for num, path in filenames.items():
         cmd = template.format(path)
         stdout_part = f"> {WORK_DATA['results_dir']}/{num}.txt"
-        stderr_part = "2> {WORK_DATA['errors_dir']}/{num}.txt" \
-            if WORK_DATA["errors_dir"] else ""
+        stderr_part = (
+            "2> {WORK_DATA['errors_dir']}/{num}.txt" if WORK_DATA["errors_dir"] else ""
+        )
         jobs_file_line = "{0} {1} {2}\n".format(cmd, stdout_part, stderr_part)
         f.write(jobs_file_line)
     # make executable
-    rc = subprocess.call(f"chmod +x {WORK_DATA['jobs_file']}", shell=True)
-    if rc != 0:  # just in case
-        die(f"Error! chmod +x {WORK_DATA['jobs_file']} failed")
+    # rc = subprocess.call(f"chmod +x {WORK_DATA['jobs_file']}", shell=True)
+    # if rc != 0:  # just in case
+    #     die(f"Error! chmod +x {WORK_DATA['jobs_file']} failed")
     f.close()
 
 
@@ -254,6 +311,9 @@ def main():
     args = parse_args()
     check_args(args)  # check if all the files, dependencies etc are correct
     intersections, skipped = get_intersections()  # intersect chains and beds
+    # # extract genes that are not intersected by any chain
+    # # or chrom is not aligned at all
+    # missing_genes_not_ali = [x[0] for x in skipped]
     if args.rejected:
         # skipped: genes that do not intersect any chain
         save_rejected_genes(skipped, args.rejected)

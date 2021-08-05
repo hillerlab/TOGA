@@ -11,7 +11,7 @@ import h5py
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 
@@ -30,7 +30,9 @@ def bed_hdf5_index(in_bed, out_db):
 
     if lines_counter == 0:  # meaning bed file was empty
         # this should not happen: halt TOGA
-        sys.stderr.write(f"(bed_hdf5_index.py) Error! Input file {in_bed} is empty! Aborted.\n")
+        sys.stderr.write(
+            f"(bed_hdf5_index.py) Error! Input file {in_bed} is empty! Aborted.\n"
+        )
         sys.exit(1)
 
 

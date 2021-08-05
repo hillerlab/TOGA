@@ -3,14 +3,15 @@
 import argparse
 import sys
 import subprocess
+from subprocess import PIPE
 from modules.common import eprint
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = 2
 
 
 def parse_args():
@@ -18,10 +19,10 @@ def parse_args():
     app = argparse.ArgumentParser()
     app.add_argument("jobs_file", help="File containing a list of CESAR wrapper jobs")
     app.add_argument("output", help="BDB file containing CESAR wrapper output")
-    app.add_argument("--check_loss", default=None,
-                     help="File to save gene loss data if requested")
-    app.add_argument("--rejected_log", default=None,
-                     help="Log gene rejection events")
+    app.add_argument(
+        "--check_loss", default=None, help="File to save gene loss data if requested"
+    )
+    app.add_argument("--rejected_log", default=None, help="Log gene rejection events")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -34,17 +35,21 @@ def call_job(cmd):
     """Call job, continue loop if fails."""
     attempts = 0
     # try 3 times
-    err = ""
+    err_msg = ""
     while attempts < MAX_ATTEMPTS:
-        try:  # try to call this job
-            cmd_out = subprocess.check_output(cmd, shell=True).decode("utf-8")
+        # cmd_out = subprocess.check_output(cmd, shell=True).decode("utf-8")
+        p = subprocess.Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        b_stdout, b_stderr = p.communicate()
+        rc = p.returncode
+        cmd_out = b_stdout.decode("utf-8")
+        err_msg = b_stderr.decode("utf-8").replace("\n", " ")
+        if rc == 0:
             return cmd_out, 0
-        except subprocess.CalledProcessError as err_:
-            err = err_
-            eprint(str(err))
+        else:
+            eprint(err_msg)
             eprint(f"\n{cmd} FAILED")
             attempts += 1
-    return err, 1  # send failure signal
+    return err_msg, 1  # send failure signal
 
 
 def main():
@@ -86,14 +91,22 @@ def main():
             # processing job output, there is CESAR out, meta-data + inact. mut
             job_out_lines = job_out.split("\n")
             # lines starting with # and ! -> inact mut scanner output
-            job_gene_loss = "\n".join([line for line in job_out_lines
-                                       if line.startswith("#")
-                                       or line.startswith("!")])
+            job_gene_loss = "\n".join(
+                [
+                    line
+                    for line in job_out_lines
+                    if line.startswith("#") or line.startswith("!")
+                ]
+            )
             gene_loss_data.append((gene, job_gene_loss))
             # all other lines -> processed CESAR output
-            job_out = "\n".join([line for line in job_out_lines
-                                 if not line.startswith("#")
-                                 and not line.startswith("!")])
+            job_out = "\n".join(
+                [
+                    line
+                    for line in job_out_lines
+                    if not line.startswith("#") and not line.startswith("!")
+                ]
+            )
 
         # write output
         out.write(f"#{gene}\n")

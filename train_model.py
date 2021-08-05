@@ -6,18 +6,19 @@ import xgboost as xgb
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import cross_val_score
+
 # from sklearn.metrics import mean_squared_error
 import joblib
 
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 # lists of features required by single and multi exon models
-SE_MODEL_FEATURES = ['gl_exo', 'flank_cov', 'exon_perc', 'synt_log']
-ME_MODEL_FEATURES = ['gl_exo', 'loc_exo', 'flank_cov', 'synt_log', 'intr_perc']
+SE_MODEL_FEATURES = ["gl_exo", "flank_cov", "exon_perc", "synt_log"]
+ME_MODEL_FEATURES = ["gl_exo", "loc_exo", "flank_cov", "synt_log", "intr_perc"]
 
 
 def train_on(x, y, save_to, name=None):
@@ -27,9 +28,9 @@ def train_on(x, y, save_to, name=None):
     max_depth = 3
     learning_rate = 0.1
     # create and fit the model, also add cross-validation
-    model = xgb.XGBClassifier(n_estimators=n_trees,
-                              max_depth=max_depth,
-                              learning_rate=learning_rate)
+    model = xgb.XGBClassifier(
+        n_estimators=n_trees, max_depth=max_depth, learning_rate=learning_rate
+    )
     kfold = StratifiedKFold(n_splits=5, random_state=777, shuffle=True)
     results = cross_val_score(model, x, y, cv=kfold)
     model.fit(x, y)

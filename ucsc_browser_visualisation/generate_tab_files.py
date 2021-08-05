@@ -11,8 +11,14 @@ from collections import defaultdict
 
 SPACE = "&nbsp;"
 PLACE_HOLDER_EXON_MID = "".join([SPACE for _ in range(5)])
-INACT_FEATS = ["INTACT_PERC_IGNORE_M", "INTACT_PERC_INTACT_M", "INTACT_CODONS_PROP",
-               "OUT_OF_CHAIN_PROP", "MIDDLE_80%_INTACT", "MIDDLE_80%_PRESENT"]
+INACT_FEATS = [
+    "INTACT_PERC_IGNORE_M",
+    "INTACT_PERC_INTACT_M",
+    "INTACT_CODONS_PROP",
+    "OUT_OF_CHAIN_PROP",
+    "MIDDLE_80%_INTACT",
+    "MIDDLE_80%_PRESENT",
+]
 # for assembled from fragments: we cannot get chain class features
 FRAGM_FEATS = (0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
@@ -24,6 +30,10 @@ LOSS_SUMM_DATA = "loss_summ_data.tsv"
 INACT_MUT_DATA = "inact_mut_data.txt"
 CESAR_RESULTS = "cesar_results.txt"
 
+CODON_FASTA = "codon.fasta"
+PROT_FASTA = "prot.fasta"
+TEMP = "temp"
+
 ZERO_S = "0"
 ONE_S = "1"
 NINE_S = "9"  # for NA values, 0 - False, 1 - True, 9 - N/A
@@ -31,7 +41,7 @@ NINE_S = "9"  # for NA values, 0 - False, 1 - True, 9 - N/A
 
 def parts(lst, n=3):
     """Split an iterable into parts with size n."""
-    return [lst[i:i + n] for i in iter(range(0, len(lst), n))]
+    return [lst[i : i + n] for i in iter(range(0, len(lst), n))]
 
 
 def parse_args():
@@ -42,6 +52,15 @@ def parse_args():
     # app.add_argument("ref_name", help="Reference name, example: hg38")
     # app.add_argument("que_name", help="Query name, example: mm10")
     app.add_argument("output", help="Output dir")
+    app.add_argument(
+        "--no_raw_cesar_output",
+        "--nrco",
+        dest="no_raw_cesar_output",
+        action="store_true",
+        help=("If raw cesar output is not present, extract "
+              "data from default output fasta files. Will be "
+              "the default behaviour in the future"),
+    )
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -51,7 +70,7 @@ def parse_args():
 
 def split_proj_name(proj_name):
     """Split projection name.
-    
+
     Projections named as follows: ${transcript_ID}.{$chain_id}.
     This function splits projection back into transcript and chain ids.
     We cannot just use split("."), because there migth be dots
@@ -85,7 +104,7 @@ def get_query_coordinates(wd):
 def get_ref_coordinates(wd):
     """Read reference trascript coordinates."""
     print("Reading reference annotation data")
-    ref_coords_file = os.path.join(wd, REF_BED)
+    ref_coords_file = os.path.join(wd, TEMP, REF_BED)
     f = open(ref_coords_file, "r")
     ref_trans_to_region = {}
     for line in f:
@@ -104,7 +123,7 @@ def get_chain_scores(wd, projections_list):
     """Extract chain orthology scores."""
     print(f"Reading chain scores")
     proj_to_chain_score = {}
-    chain_scores_file = os.path.join(wd, ORTH_SCORES)
+    chain_scores_file = os.path.join(wd, TEMP, ORTH_SCORES)
     f = open(chain_scores_file, "r")
     f.__next__()
     for line in f:
@@ -125,7 +144,7 @@ def get_chain_features(wd, projections_list):
     print("Extracting chain features")
     # get projection -> chain features
     proj_to_chain_features = {}
-    f = open(os.path.join(wd, CHAIN_RESULTS_DF), "r")
+    f = open(os.path.join(wd, TEMP, CHAIN_RESULTS_DF), "r")
     f.__next__()
     # remembed the order
     for line in f:
@@ -147,9 +166,17 @@ def get_chain_features(wd, projections_list):
         exon_fract_ = line_data[13]
         intron_fract_ = line_data[14]
         flank_cov_ = line_data[15]
-        
-        exon_cov = str(float(exon_cover_) / float(exon_fract_)) if float(exon_fract_) != 0 else "0"
-        intron_cov = str(float(intron_cover_) / float(intron_fract_)) if float(intron_fract_) != 0 else "0"
+
+        exon_cov = (
+            str(float(exon_cover_) / float(exon_fract_))
+            if float(exon_fract_) != 0
+            else "0"
+        )
+        intron_cov = (
+            str(float(intron_cover_) / float(intron_fract_))
+            if float(intron_fract_) != 0
+            else "0"
+        )
         tup = (synt_, flank_cov_, gl_exo_, loc_exon_, exon_cov, intron_cov)
         proj_to_chain_features[projection] = tup
     f.close()
@@ -189,16 +216,22 @@ def get_projection_class(wd):
     return proj_to_classification
 
 
-def save_toga_info_tab(out_dir, projections_list, proj_to_q_coords,
-                       ref_trans_to_region, proj_to_chain_score,
-                       proj_to_chain_features, projection_to_loss_class):
+def save_toga_info_tab(
+    out_dir,
+    projections_list,
+    proj_to_q_coords,
+    ref_trans_to_region,
+    proj_to_chain_score,
+    proj_to_chain_features,
+    projection_to_loss_class,
+):
     """Save tab file for TOGAinfo table."""
     toga_info_tab_path = os.path.join(out_dir, "togaInfo.tab")
-    print("Saving TOGAInfo tab file")
+    print(f"Saving TOGAInfo tab file / {len(projections_list)} items")
     f = open(toga_info_tab_path, "w")
     for projection in projections_list:
         trans, chain = split_proj_name(projection)
-        glp_class = projection_to_loss_class[projection]
+        glp_class = projection_to_loss_class.get(projection, "Missing")
         # default 0.5 for fragmented assemblies
         chain_score = proj_to_chain_score.get(projection, 0.5)
         query_region = proj_to_q_coords[projection]
@@ -211,8 +244,20 @@ def save_toga_info_tab(out_dir, projections_list, proj_to_q_coords,
         loc_exo = chain_feats[3]
         exon_cov = chain_feats[4]
         intr_cov = chain_feats[5]
-        tab_row = (projection, trans, ref_region, query_region, chain_score,
-                   synteny, flank, gl_exo, loc_exo, exon_cov, intr_cov, glp_class)
+        tab_row = (
+            projection,
+            trans,
+            ref_region,
+            query_region,
+            chain_score,
+            synteny,
+            flank,
+            gl_exo,
+            loc_exo,
+            exon_cov,
+            intr_cov,
+            glp_class,
+        )
         tab_strs_ = map(str, tab_row)
         f.write("\t".join(tab_strs_))
         f.write("\n")
@@ -229,7 +274,9 @@ def format_as_ali(seq_1, seq_2, w=80):
         upper_seq = "".join([x[0] for x in part])
         lower_seq = "".join([x[1] for x in part])
         seq_len = len(upper_seq)
-        middle = "".join([SPACE if upper_seq[i] != lower_seq[i] else "|" for i in range(seq_len)])
+        middle = "".join(
+            [SPACE if upper_seq[i] != lower_seq[i] else "|" for i in range(seq_len)]
+        )
         lines.append(f"ref:{SPACE}{upper_seq}<BR>")
         lines.append(f"{PLACE_HOLDER_EXON_MID}{middle}<BR>")
         lines.append(f"que:{SPACE}{lower_seq}<BR><BR>")
@@ -249,10 +296,163 @@ def ret_cesar_lines(f):
     yield None
 
 
+def read_simple_pairwise_fasta(wd, fname, all_projections):
+    """Read protein or codon fasta file."""
+    prot_fasta = os.path.join(wd, fname)
+    # for each protein/codon ali: ref and que
+    proj_to_reference_seq = {}
+    proj_to_query_seq = {}
+    curr_projection = None
+    is_ref = None
+    skip_next = False
+
+    f = open(prot_fasta, "r")
+    for line in f:
+        if line.startswith(">"):
+            # this is header
+            header_data = line.rstrip().lstrip(">").split(" | ")
+            if header_data[1] != "PROT" and fname == PROT_FASTA:
+                skip_next = True
+                continue
+            elif header_data[1] != "CODON" and fname == CODON_FASTA:
+                skip_next = True
+                continue
+            curr_projection = header_data[0]
+            is_ref = header_data[2] == "REFERENCE"
+        else:
+            # this is a sequence, must be related to the previously selected header
+            if skip_next is True:
+                skip_next = False
+                continue
+            seq = line.rstrip()
+            if is_ref:
+                proj_to_reference_seq[curr_projection] = seq
+            else:
+                proj_to_query_seq[curr_projection] = seq
+            # for safety: reset curr proj and isref
+            curr_projection = None
+            is_ref = None
+    f.close()
+
+    projection_to_ali = {}
+    for proj, que_prot_seq in proj_to_query_seq.items():
+        ref_prot_seq = proj_to_reference_seq.get(proj, None)
+        if not ref_prot_seq:
+            print(proj)
+        prot_ali = format_as_ali(ref_prot_seq, que_prot_seq)
+        projection_to_ali[proj] = prot_ali
+    return projection_to_ali
+
+
+def extract_exons_meta_data(meta_data_file):
+    """Just read exons meta data file."""
+    exon_id_to_meta_features = {}
+    f = open(meta_data_file, "r")
+    f.__next__()
+    """Header:
+    gene    exon_num        chain_id        act_region      exp_region      in_exp  pid
+    blosum  gap     class paralog  q_mark
+    """
+    for line in f:
+        line_data = line.rstrip().split("\t")
+        transcript_id = line_data[0]
+        exon_num = int(line_data[1])
+        chain_id = int(line_data[2])
+        projection_id = f"{transcript_id}.{chain_id}"
+        coordinates = line_data[3]
+        exp_range = line_data[4]
+        in_expected = ONE_S if line_data[5] == "INC" else ZERO_S
+        pid = float(line_data[6])
+        blosum = float(line_data[7])
+        is_gap = ONE_S if line_data[8] == "GAP" else ZERO_S
+        ali_class = line_data[9]
+        start_end_strs = coordinates.split(":")[1].split("-")
+        q_start = int(start_end_strs[0])
+        q_end = int(start_end_strs[1])
+        len_in_q = abs(q_end - q_start)
+        
+        exon_id = (projection_id, exon_num)
+        exon_data = {
+            "location": coordinates,
+            "pid": pid,
+            "blosum": blosum,
+            "ali_class": ali_class,
+            "is_gap": is_gap,
+            "exp_range": exp_range,
+            "in_exp": in_expected,
+            "len_in_Q": len_in_q
+        }
+        exon_id_to_meta_features[exon_id] = exon_data
+    f.close()
+    return exon_id_to_meta_features
+
+
+def extract_full_nucl_sequences(nucl_fasta):
+    """Extract full projection nucleotide sequences."""
+    p_to_ref = {}
+    p_to_que = {}
+    f = open(nucl_fasta, "r")
+    current_proj = None
+    reading_ref = None
+
+    for line in f:
+        if line.startswith(">"):
+            # reading header
+            header = line.lstrip(">").rstrip()
+            if header.startswith("ref_"):
+                reading_ref = True
+                current_proj = header[len("ref_"):]
+            else:
+                reading_ref = False
+                current_proj = header
+            continue
+        # reading sequence
+        seq = line.rstrip()
+        if reading_ref:
+            p_to_ref[current_proj] = seq
+        else:
+            p_to_que[current_proj] = seq
+        current_proj = None
+        reading_ref = None            
+    f.close()
+    return p_to_ref, p_to_que
+
+
+def __join_proj_to_nucl(p_to_ref, p_to_que):
+    """Join projection to nucleotide dicts."""
+    ret = {}
+    for p in p_to_ref.keys():
+        ref = p_to_ref[p]
+        que = p_to_que[p]
+        ret[p] = {"ref": ref, "que": que}
+    return ret
+
+
+def get_nucl_data_from_fasta(wd, all_projections):
+    """Extract nucleotide data."""
+    meta_data = os.path.join(wd, "temp", "exons_meta_data.tsv")
+    nucl_fasta = os.path.join(wd, "nucleotide.fasta")
+    exon_to_meta_data = extract_exons_meta_data(meta_data)
+    projection_to_ref, projection_to_q = extract_full_nucl_sequences(nucl_fasta)
+    projection_to_nucl = __join_proj_to_nucl(projection_to_ref, projection_to_q)
+    for k, v in projection_to_nucl.items():
+        print(k, v)
+    exit()
+    return []
+
+
+def get_seq_data_from_fasta(wd, all_projections):
+    """Get seq data from fasta files."""
+    projection_exon_data = get_nucl_data_from_fasta(wd, all_projections)
+    projection_to_prot_ali = read_simple_pairwise_fasta(wd, PROT_FASTA, all_projections)
+    projection_to_codon_ali = read_simple_pairwise_fasta(wd, CODON_FASTA, all_projections)
+    return [], projection_to_prot_ali, projection_to_codon_ali
+
+
 def get_sequence_data(wd, all_projections):
     """Parse nucleotide and protein sequence data."""
     print("Reading sequence data")
-    gigafasta = os.path.join(wd, CESAR_RESULTS)
+    gigafasta = os.path.join(wd, TEMP, CESAR_RESULTS)
     # all_transcripts = set(split_proj_name(x)[0] for x in all_projections)
     f = open(gigafasta, "r")
     lines_gen = ret_cesar_lines(f)
@@ -314,7 +514,8 @@ def get_sequence_data(wd, all_projections):
             projection_id = f"{transcript_id}.{chain_id}"
             if projection_id not in all_projections:
                 continue
-            exon_id = (projection_id, exon_num)
+            # need this int for sorting later
+            exon_id = (projection_id, int(exon_num))
             if header_data[-1] == "query_exon":
                 # obviously, this is a header of query exon
                 location = header_data[3]
@@ -324,8 +525,16 @@ def get_sequence_data(wd, all_projections):
                 ali_class = header_data[7]
                 exp_range = header_data[8]
                 in_exp = ONE_S if header_data[9] == "INC" else ZERO_S
-                exon_data = (location, pid, blosum, is_gap, ali_class,
-                             exp_range, in_exp, sequence)
+                exon_data = (
+                    location,
+                    pid,
+                    blosum,
+                    is_gap,
+                    ali_class,
+                    exp_range,
+                    in_exp,
+                    sequence,
+                )
                 query_exon_to_nucl_data[exon_id] = exon_data
             else:
                 ref_exon_to_nucl_seq[exon_id] = sequence
@@ -345,8 +554,14 @@ def get_sequence_data(wd, all_projections):
 
     projection_exon_data = []
     # save exons data
-    for exon_id, exon_data in query_exon_to_nucl_data.items():
-        projection_id, exon_num = exon_id
+    # sort exons by 1) projection ID and 2) their number
+    sorted_exons = sorted(query_exon_to_nucl_data.keys(), key=lambda x: (x[0], x[1]))
+    # for exon_id, exon_data in query_exon_to_nucl_data.items():
+    for exon_id in sorted_exons:
+        exon_data = query_exon_to_nucl_data[exon_id]
+        projection_id, exon_num_int = exon_id
+        # and here we need str for "".join operation
+        exon_num = str(exon_num_int)
         ref_sequence = ref_exon_to_nucl_seq[exon_id]
         que_sequence = exon_data[-1]
         if len(ref_sequence) > 0 and que_sequence == "-":
@@ -369,7 +584,7 @@ def save_toga_nucl_tab(out_dir, exon_data):
         f.write("\t".join(elem))
         f.write("\n")
     f.close()
-    print(f"Saved TOGANucl tab to {toga_nucl_tab_path}")
+    print(f"Saved TOGANucl tab to {toga_nucl_tab_path} / {len(exon_data)} items")
 
 
 def save_toga_prot_tab(out_dir, prot_data):
@@ -380,7 +595,7 @@ def save_toga_prot_tab(out_dir, prot_data):
     for proj, seq in prot_data.items():
         f.write(f"{proj}\t{seq}\n")
     f.close()
-    print(f"Saved TOGAProt tab to {toga_prot_tab_path}")
+    print(f"Saved TOGAProt tab to {toga_prot_tab_path} / {len(prot_data)} items")
 
 
 def get_inact_data(wd, all_projections):
@@ -479,18 +694,25 @@ def main():
     proj_to_chain_score = get_chain_scores(args.wd, all_projections)
     proj_to_chain_features = get_chain_features(args.wd, all_projections)
     projection_to_loss_class = get_projection_class(args.wd)
-    seq_data = get_sequence_data(args.wd, all_projections)
+    if args.no_raw_cesar_output:
+        raise NotImplementedError("Cancelled branch")
+        seq_data = get_seq_data_from_fasta(args.wd, all_projections)
+        exit()
+    else:
+        seq_data = get_sequence_data(args.wd, all_projections)
     projection_exon_data = seq_data[0]
     projection_to_prot_ali = seq_data[1]
     projection_to_codon_ali = seq_data[2]
     proj_to_inact_feat, proj_to_inact_mut = get_inact_data(args.wd, all_projections)
-    save_toga_info_tab(args.output,
-                       all_projections,
-                       proj_to_q_coords,
-                       trans_to_ref_coords,
-                       proj_to_chain_score,
-                       proj_to_chain_features,
-                       projection_to_loss_class)
+    save_toga_info_tab(
+        args.output,
+        all_projections,
+        proj_to_q_coords,
+        trans_to_ref_coords,
+        proj_to_chain_score,
+        proj_to_chain_features,
+        projection_to_loss_class,
+    )
     save_toga_nucl_tab(args.output, projection_exon_data)
     save_toga_prot_tab(args.output, projection_to_prot_ali)
     save_toga_inact_feat_tab(args.output, proj_to_inact_feat)

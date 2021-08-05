@@ -7,7 +7,9 @@ Remove:
 """
 import argparse
 import sys
+import re
 from collections import Counter
+
 try:
     from modules.common import die
     from modules.common import eprint
@@ -17,17 +19,26 @@ except ImportError:
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+
+ALLOWED_CHARSET = "a-zA-Z0-9._-"
+ALLOWED_CHARSET_RE = rf"[^{ALLOWED_CHARSET}]"
 
 
 def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
     app.add_argument("input", help="Bed-12 formatted annotation track.")
-    app.add_argument("output", default="stdout", help="Output destination, stdout as default")
-    app.add_argument("--out_of_frame", action="store_true", dest="out_of_frame",
-                     help="Do not skip out-of-frame genes.")
+    app.add_argument(
+        "output", default="stdout", help="Output destination, stdout as default"
+    )
+    app.add_argument(
+        "--out_of_frame",
+        action="store_true",
+        dest="out_of_frame",
+        help="Do not skip out-of-frame genes.",
+    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -41,6 +52,8 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
     new_lines = []  # keep updated lines
     rejected = []  # keep IDs of skipped transcripts + the reason why
     names = Counter()  # we need to make sure that all names are unique
+    allowed_re = re.compile(ALLOWED_CHARSET_RE).search
+    broken_names = []
 
     f = open(bed_file, "r")
     for num, line in enumerate(f, 1):
@@ -50,7 +63,9 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
         if len(line_data) != 12:
             f.close()  # this is for sure an error
             # it is possible only if something except a bed12 was provided
-            die("Error! Bed 12 file is required! Got a file with {len(line_data)} fields instead")
+            die(
+                "Error! Bed 12 file is required! Got a file with {len(line_data)} fields instead"
+            )
 
         chrom = line_data[0]
         if only_chrom and chrom != only_chrom:
@@ -60,6 +75,10 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
         chromStart = int(line_data[1])
         chromEnd = int(line_data[2])
         name = line_data[3]  # gene_name usually
+        corr_name = not bool(allowed_re(name))
+        if corr_name is False:
+            broken_names.append(name)
+        # TODO: check weird characters in the transcript name
         # bed_score = int(line_data[4])  # never used
         # strand = line_data[5]  # otherwise:
         # strand = True if line_data[5] == '+' else False
@@ -67,8 +86,8 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
         thickEnd = int(line_data[7])
         # itemRgb = line_data[8]  # never used
         blockCount = int(line_data[9])
-        blockSizes = [int(x) for x in line_data[10].split(',') if x != '']
-        blockStarts = [int(x) for x in line_data[11].split(',') if x != '']
+        blockSizes = [int(x) for x in line_data[10].split(",") if x != ""]
+        blockStarts = [int(x) for x in line_data[11].split(",") if x != ""]
         blockEnds = [blockStarts[i] + blockSizes[i] for i in range(blockCount)]
         blockAbsStarts = [blockStarts[i] + chromStart for i in range(blockCount)]
         blockAbsEnds = [blockEnds[i] + chromStart for i in range(blockCount)]
@@ -120,8 +139,9 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
             continue
 
         block_new_count = len(blockNewStarts)
-        blockNewSizes = [blockNewEnds[i] - blockNewStarts[i]
-                         for i in range(block_new_count)]
+        blockNewSizes = [
+            blockNewEnds[i] - blockNewStarts[i] for i in range(block_new_count)
+        ]
 
         if sum(blockNewSizes) % 3 != 0 and not ouf:
             # this is an out-of-frame (or incomplete transcript)
@@ -135,6 +155,12 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
         new_lines.append(new_line)
     f.close()
 
+    # if not allowed characters in transcript names: list them
+    if len(broken_names) > 0:
+        eprint("Error! Some transcript names contain not allowed characters")
+        for t in broken_names:
+            eprint(t)
+        die(f"Allowed characters are: {ALLOWED_CHARSET}")
     # if there are non-unique transcript IDs: die
     # I kill it there, not earlier to show them altogether
     if any(v > 1 for v in names.values()):
@@ -146,7 +172,9 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
 
     if len(new_lines) == 0:
         # no transcripts pass the filter: probably an input data mistake
-        sys.exit(f"Error! No reference annotation tracks left after filtering procedure! Abort")
+        sys.exit(
+            f"Error! No reference annotation tracks left after filtering procedure! Abort"
+        )
 
     # write transcripts that passed the filter to the output file
     f = open(output, "w") if output != "stdout" else sys.stdout

@@ -23,7 +23,7 @@ except ImportError:
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 # paths to single (SE) and multi-exon (ME) models
@@ -37,8 +37,8 @@ P_PGENES = "P_PGENES"
 
 # we actually extract a redundant amount of features
 # lists of features required by single and multi exon models
-SE_MODEL_FEATURES = ['gl_exo', 'flank_cov', 'exon_perc', 'synt_log']
-ME_MODEL_FEATURES = ['gl_exo', 'loc_exo', 'flank_cov', 'synt_log', 'intr_perc']
+SE_MODEL_FEATURES = ["gl_exo", "flank_cov", "exon_perc", "synt_log"]
+ME_MODEL_FEATURES = ["gl_exo", "loc_exo", "flank_cov", "synt_log", "intr_perc"]
 print = functools.partial(print, flush=True)
 
 
@@ -50,14 +50,13 @@ def verbose(msg):
 def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
-    app.add_argument("table", type=str,
-                     help="Table containing merged results.")
-    app.add_argument("output", type=str,
-                     help="Write the table here.")
+    app.add_argument("table", type=str, help="Table containing merged results.")
+    app.add_argument("output", type=str, help="Write the table here.")
     app.add_argument("se_model", help="A trained XGBoost model for single-exon genes.")
     app.add_argument("me_model", help="A trained XGBoost model for multi-exon genes.")
-    app.add_argument("--raw_model_out", "--ro", default=None,
-                     help="Save gene: chain xgboost output")
+    app.add_argument(
+        "--raw_model_out", "--ro", default=None, help="Save gene: chain xgboost output"
+    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -66,9 +65,15 @@ def parse_args():
     return args
 
 
-def classify_chains(table, output, se_model_path, me_model_path,
-                    raw_out=None, rejected=None,
-                    annot_threshold=0.5):
+def classify_chains(
+    table,
+    output,
+    se_model_path,
+    me_model_path,
+    raw_out=None,
+    rejected=None,
+    annot_threshold=0.5,
+):
     """Core chain classifier function."""
     verbose("Loading dataset...")
     # read dataframe
@@ -120,15 +125,19 @@ def classify_chains(table, output, se_model_path, me_model_path,
         se_model = joblib.load(se_model_path)
         me_model = joblib.load(me_model_path)
     except FileNotFoundError:
-        err_msg = f"Cannot find models {se_model_path} and {me_model_path}\n" \
-                  f"Please call train_model.py to create them.\nAbort."
+        err_msg = (
+            f"Cannot find models {se_model_path} and {me_model_path}\n"
+            f"Please call train_model.py to create them.\nAbort."
+        )
         raise FileNotFoundError(err_msg)
     except (xgb.core.XGBoostError, AttributeError):
         xgboost_version = xgb.__version__
-        err_msg = f"Cannot load models {se_model_path} and {me_model_path} " \
-                  f"Probably, models were trained with a different version of " \
-                  f"XGBoost. You used XBGoost version: {xgboost_version}; " \
-                  f"Please make sure you called train_model.py with the same version."
+        err_msg = (
+            f"Cannot load models {se_model_path} and {me_model_path} "
+            f"Probably, models were trained with a different version of "
+            f"XGBoost. You used XBGoost version: {xgboost_version}; "
+            f"Please make sure you called train_model.py with the same version."
+        )
         raise ValueError(err_msg)
     # and apply them
     me_pred = me_model.predict_proba(X_me)[:, 1] if len(X_me) > 0 else np.array([])
@@ -148,10 +157,13 @@ def classify_chains(table, output, se_model_path, me_model_path,
     # 2) synteny == 1
     # 3) cds_to_qlen > 0.95
     # set them score -2
-    df_me_result.loc[(df_me_result["synt"] == 1)
-                     & (df_me_result["exon_qlen"] > 0.95)
-                     & (df_me_result["pred"] < annot_threshold)
-                     & (df_me_result["exon_perc"] > 0.65), "pred"] = -2
+    df_me_result.loc[
+        (df_me_result["synt"] == 1)
+        & (df_me_result["exon_qlen"] > 0.95)
+        & (df_me_result["pred"] < annot_threshold)
+        & (df_me_result["exon_perc"] > 0.65),
+        "pred",
+    ] = -2
 
     # we need gene -> chain -> prediction from each row
     df_se_result = df_se_result.loc[:, ["gene", "chain", "pred"]]
@@ -171,7 +183,7 @@ def classify_chains(table, output, se_model_path, me_model_path,
     genes = set(overall_result["gene"])
     for gene in genes:
         gene_class_chains[gene] = {ORTH: [], PARA: [], TRANS: [], P_PGENES: []}
-    
+
     verbose("Combining classification data...")
     for data in overall_result.itertuples():
         gene = data.gene
@@ -218,11 +230,13 @@ def classify_chains(table, output, se_model_path, me_model_path,
 
 def main():
     args = parse_args()
-    classify_chains(args.table,
-                    args.output,
-                    args.se_model,
-                    args.me_model,
-                    raw_out=args.raw_model_out)
+    classify_chains(
+        args.table,
+        args.output,
+        args.se_model,
+        args.me_model,
+        raw_out=args.raw_model_out,
+    )
 
 
 if __name__ == "__main__":

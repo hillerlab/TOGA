@@ -10,6 +10,7 @@ import argparse
 import sys
 from collections import defaultdict
 import networkx as nx
+
 try:
     from modules.common import flatten
     from modules.common import get_graph_components
@@ -28,6 +29,12 @@ def parse_args():
     app.add_argument("query_bed", help="Query annotation bed file.")
     app.add_argument("output", help="Output containing query isoforms data")
     app.add_argument("--genes_track", help="Save gene borders track")
+    app.add_argument(
+        "--ignore_color",
+        action="store_true",
+        dest="ignore_color",
+        help="Disable color filter",
+    )
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -35,7 +42,7 @@ def parse_args():
     return args_ret
 
 
-def read_query_bed(bed_file):
+def read_query_bed(bed_file, ignore_color=False):
     """Read query bed, return exons and exon to gene dict."""
     f = open(bed_file, "r")
     exon_counter = 0  # each exon gets an unique ID
@@ -54,15 +61,15 @@ def read_query_bed(bed_file):
         # 0, 200, 255 -> light blue -> p intact
         # 255, 160, 120 -> salmon -> grey
         color = line_data[8]
-        if color not in BED_COLORS_TO_KEEP:
+        if color not in BED_COLORS_TO_KEEP and ignore_color is False:
             # M, L and so on: not in the classification
             continue
         # we need CDS start, end == thickStart & thickEnd
         thickStart = int(line_data[6])
         thickEnd = int(line_data[7])
         blockCount = int(line_data[9])
-        blockSizes = [int(x) for x in line_data[10].split(',') if x != '']
-        blockStarts = [int(x) for x in line_data[11].split(',') if x != '']
+        blockSizes = [int(x) for x in line_data[10].split(",") if x != ""]
+        blockStarts = [int(x) for x in line_data[11].split(",") if x != ""]
         # we can now save transcript range:
         trans_range = (chrom, strand, thickStart, thickEnd)
         trans_to_range[transcript_name] = trans_range
@@ -99,8 +106,9 @@ def split_exons_in_chr_dir(exons_list):
         chr_dir_exons_not_sorted[chr_dir].append(exon_reduced)
     # sort exons in each chr_dir track -> for efficient algorithm
     # use start (field 1) as key
-    chr_dir_exons = {k: sorted(v, key=lambda x: x[1])
-                     for k, v in chr_dir_exons_not_sorted.items()}
+    chr_dir_exons = {
+        k: sorted(v, key=lambda x: x[1]) for k, v in chr_dir_exons_not_sorted.items()
+    }
     return chr_dir_exons
 
 
@@ -112,7 +120,7 @@ def intersect_ranges(region_1, region_2):
 
 def intersect_exons(chr_dir_exons, exon_id_to_transcript):
     """Create graph of connected exons.
-    
+
     We will use a graph where nodes are transcript IDs.
     Nodes are connected if they have a pair of intersected exons.
     """
@@ -226,12 +234,16 @@ def save_regions(genes_data, output):
     f.close() if output != "stdout" else None
 
 
-def get_query_isoforms_data(query_bed, query_isoforms, save_genes_track=None):
+def get_query_isoforms_data(
+    query_bed, query_isoforms, save_genes_track=None, ignore_color=False
+):
     """Create isoforms track for query."""
     # extract all exons
     # exon could be described as: <ID, chrom, strand, start, end>
     # + table exon_ID -> corresponding gene
-    exons_list, exon_id_to_transcript, trans_to_range = read_query_bed(query_bed)
+    exons_list, exon_id_to_transcript, trans_to_range = read_query_bed(
+        query_bed, ignore_color=ignore_color
+    )
     # get {(chr, dir) -> [exons]} dict (sorted)
     # exons from different chrom/direction cannot actually intersect
     chr_dir_to_exons = split_exons_in_chr_dir(exons_list)
@@ -250,4 +262,9 @@ def get_query_isoforms_data(query_bed, query_isoforms, save_genes_track=None):
 
 if __name__ == "__main__":
     args = parse_args()
-    get_query_isoforms_data(args.query_bed, args.output, save_genes_track=args.genes_track)
+    get_query_isoforms_data(
+        args.query_bed,
+        args.output,
+        save_genes_track=args.genes_track,
+        ignore_color=args.ignore_color,
+    )

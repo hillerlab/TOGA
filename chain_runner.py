@@ -18,11 +18,12 @@ from modules.common import load_chain_dict
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 FLANK_SIZE = 10000  # gene flank size -> for flank ali feature
 COMBINED_BED_ID = "COMBINED"  # placeholder gene name for intermediate tracks
+ALL_EXONS_COMBINED = "ALL_EXONS_COMBINED"
 VERBOSE = False
 
 
@@ -34,14 +35,27 @@ def verbose(msg):
 def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
-    app.add_argument("input_file", type=str, help="File containing chain to genes lines."
-                     "Also you can use \"chain [genes]\" as a single argument.")
-    app.add_argument("bed_file", type=str, help="BDB file containing annotation tracks.")
+    app.add_argument(
+        "input_file",
+        type=str,
+        help="File containing chain to genes lines."
+        'Also you can use "chain [genes]" as a single argument.',
+    )
+    app.add_argument(
+        "bed_file", type=str, help="BDB file containing annotation tracks."
+    )
     app.add_argument("chain_file", type=str, help="Chain file.")
-    app.add_argument("--verbose", "-v", action="store_true", dest="verbose", help="Verbose messages.")
-    app.add_argument("--extended", "-e", action="store_true", dest="extended",
-                     help="Write the output in extended (human readable) format. "
-                     "Is not recommended for genome-wide scale.")
+    app.add_argument(
+        "--verbose", "-v", action="store_true", dest="verbose", help="Verbose messages."
+    )
+    app.add_argument(
+        "--extended",
+        "-e",
+        action="store_true",
+        dest="extended",
+        help="Write the output in extended (human readable) format. "
+        "Is not recommended for genome-wide scale.",
+    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -73,7 +87,9 @@ def extract_chain(chain_file, chain_dict, chain):
     return chain
 
 
-def check_args(chain_id, genes, chain_file, chain_dict, bed_file, verbose_level, work_data, result):
+def check_args(
+    chain_id, genes, chain_file, chain_dict, bed_file, verbose_level, work_data, result
+):
     # print(chain_index, chain_file)
     """Check if arguments are correct, extract initial data if so."""
     global VERBOSE  # set verbosity level
@@ -94,12 +110,12 @@ def check_args(chain_id, genes, chain_file, chain_dict, bed_file, verbose_level,
     if len(raw_genes) != len(bed_lines.split("\n")[:-1]):
         eprint("Warning. Not all the genes you set were found!\n")
         need_ = len(raw_genes)
-        extracted_ = len(bed_lines.split('\n')[:-1])
+        extracted_ = len(bed_lines.split("\n")[:-1])
         eprint(f"You set {need_} genes, {extracted_}")
         missing_genes = ",".join([x for x in raw_genes if x not in work_data["genes"]])
         eprint(f"Missing genes:\n{missing_genes}")
 
-    # extract chain body from the file 
+    # extract chain body from the file
     work_data["chain"] = extract_chain(chain_file, chain_dict, chain_id)
 
     # parse chain header
@@ -122,7 +138,7 @@ def read_input(input_file):
         tasks = {}
         f = open(input_file)
         for line in f:
-            line_info = line[:-1].split("\t")
+            line_info = line.rstrip().split("\t")
             chain = line_info[0]
             genes = line_info[1]
             tasks[chain] = genes
@@ -134,8 +150,10 @@ def read_input(input_file):
         genes = input_file.split()[1]
         return {chain: genes}
     else:
-        err_msg = "Error! Wrong input. Please provide either a file containing chain to genes\n" \
-                  "list or a \"chain<space>[comma-separated list of genes]\" formatted-file"
+        err_msg = (
+            "Error! Wrong input. Please provide either a file containing chain to genes\n"
+            'list or a "chain<space>[comma-separated list of genes]" formatted-file'
+        )
         die(err_msg)
         return
 
@@ -150,7 +168,9 @@ def bed12_to_ranges(bed):
         glob_start = int(line_info[1])
         blocks_num = int(line_info[9])
         block_sizes = [int(x) for x in line_info[10].split(",") if x != ""]
-        block_starts = [glob_start + int(x) for x in line_info[11].split(",") if x != ""]
+        block_starts = [
+            glob_start + int(x) for x in line_info[11].split(",") if x != ""
+        ]
         block_ends = [block_starts[i] + block_sizes[i] for i in range(blocks_num)]
         for i in range(blocks_num):  # save the range for each exon
             ranges_unsort.append((block_starts[i], block_ends[i]))
@@ -161,7 +181,7 @@ def bed12_to_ranges(bed):
 
 def bedcov_ranges(ranges, chrom):
     """Return a set of exons without overlaps.
-    
+
     Python re-implementation of bedCov (kent) functionality.
     """
     ranges_filtered, pointer = [ranges[0]], 0  # initial values for filter
@@ -196,6 +216,26 @@ def check_nest(work_data, cds_bed):
     return nested
 
 
+def get_tot_exons_track(work_data):
+    """Get all exons including UTR and collapse them."""
+    chrom, ranges = bed12_to_ranges(work_data["bed"])
+    exons, _ = bedcov_ranges(ranges, chrom)
+    bed_template = "{0}\t{1}\t{2}\t{6}\t1000\t+\t{1}\t{2}\t0,0,0\t{3}\t{4}\t{5}"
+    gene = ALL_EXONS_COMBINED
+    blocks_uns = [(int(x.split("\t")[1]), int(x.split("\t")[2])) for x in exons]
+    blocks = sorted(
+        blocks_uns, key=lambda x: x[0]
+    )  # no guarantee that it is sorted initially
+    bed_12_start = min([x[0] for x in blocks])
+    bed_12_end = max(x[1] for x in blocks)
+    block_starts = ",".join([str(x[0] - bed_12_start) for x in blocks]) + ","
+    block_sizes = ",".join([str(x[1] - x[0]) for x in blocks]) + ","
+    bed_12 = bed_template.format(
+        chrom, bed_12_start, bed_12_end, len(exons), block_sizes, block_starts, gene
+    )
+    return bed_12
+
+
 def collapse_exons(work_data):
     """Compensate nested genes."""
     # how bed12 looks like:
@@ -204,28 +244,40 @@ def collapse_exons(work_data):
     # I need to fill it with chrom, start and end and blocks info
     bed_template = "{0}\t{1}\t{2}\t{6}\t1000\t+\t{1}\t{2}\t0,0,0\t{3}\t{4}\t{5}"
     chrom, _, _, gene = work_data["exons"][0][:-1].split("\t")
-    blocks_uns = [(int(x.split("\t")[1]), int(x.split("\t")[2])) for x in work_data["exons"]]
-    blocks = sorted(blocks_uns, key=lambda x: x[0])  # no guarantee that it is sorted initially
+    blocks_uns = [
+        (int(x.split("\t")[1]), int(x.split("\t")[2])) for x in work_data["exons"]
+    ]
+    blocks = sorted(
+        blocks_uns, key=lambda x: x[0]
+    )  # no guarantee that it is sorted initially
     bed_12_start = min([x[0] for x in blocks])
     bed_12_end = max(x[1] for x in blocks)
     block_starts = ",".join([str(x[0] - bed_12_start) for x in blocks]) + ","
     block_sizes = ",".join([str(x[1] - x[0]) for x in blocks]) + ","
-    bed_12 = bed_template.format(chrom, bed_12_start, bed_12_end,
-                                 len(work_data["exons"]), block_sizes,
-                                 block_starts, gene)
+    bed_12 = bed_template.format(
+        chrom,
+        bed_12_start,
+        bed_12_end,
+        len(work_data["exons"]),
+        block_sizes,
+        block_starts,
+        gene,
+    )
     work_data["nested"] = bed_12
 
 
 def extend_bed_lines(bed_lines):
     """Create bed tracks for overlapSelect."""
     bed_lines_extended = ""  # init the variable to store the extended bed lines
-    for line in bed_lines.split('\n')[:-1]:
+    for line in bed_lines.split("\n")[:-1]:
         # verbose(f"Extending line:\n{line}")
-        bed_lines_extended += line + '\n'  # first, I add the original bed line
+        bed_lines_extended += line + "\n"  # first, I add the original bed line
         grange_track = line.split("\t")  # tab-separated file
         # create the second track for the genomic region of the same gene
         # also known as "gene body"
-        grange_track[3] = grange_track[3] + '_grange'  # I add _grange for the gene name, mark it
+        grange_track[3] = (
+            grange_track[3] + "_grange"
+        )  # I add _grange for the gene name, mark it
         grange_track[11] = "0"  # one block --> one start, starts from 0
         # size of block == size of the gene
         grange_track[10] = str(int(grange_track[2]) - int(grange_track[1]))
@@ -256,6 +308,14 @@ def extend_bed_lines(bed_lines):
     return bed_lines_extended
 
 
+# def cound_cds_exons(bed_lines_extended):
+#     """Count CDS exons in each gene/transcript."""
+#     bed_lines = [x.rstrip().split("\t") for x in bed_lines_extended.split("\n") if x != ""]
+#     cds_lines = [x for x in bed_lines if x[3].endswith("_CDS")]
+#     ret = {x[3][:-4]: int(x[9]) for x in cds_lines}
+#     return ret
+
+
 def get_features(work_data, result, bed_lines_extended, nested=False):
     """Compute local exon overlap score.
 
@@ -277,14 +337,24 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
     verbose("Computing local overlap score, getting genomic regions...")
 
     # call overlap select
-    chain_glob_bases, local_exo_dict = overlap_select(bed_lines_extended, work_data["chain"])
+    chain_glob_bases, local_exo_dict, bed_cov_times = overlap_select(
+        bed_lines_extended, work_data["chain"]
+    )
+    nums_of_cds_exons_covered = [
+        len(v) for k, v in bed_cov_times.items() if k.endswith("_CDS")
+    ]
+    max_num_of_cds_exons_covered = (
+        max(nums_of_cds_exons_covered) if len(nums_of_cds_exons_covered) > 0 else 0
+    )
 
-    verbose("OverlapSelect output in get_features is:\n{0}".format("\n".join([f"{k} - {v}"
-            for k, v in local_exo_dict.items()])))
+    verbose(
+        "OverlapSelect output in get_features is:\n{0}".format(
+            "\n".join([f"{k} - {v}" for k, v in local_exo_dict.items()])
+        )
+    )
     verbose(f"Chain block bases: {chain_glob_bases}")
     # compute for each gene finally
     chain_cds_bases = 0  # summarize global set here
-    chain_exon_bases = 0  # summ all exons at once
 
     for gene in work_data["genes"]:
         # pick the data from overlap select table
@@ -292,6 +362,7 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
         blocks_v_cds = local_exo_dict[gene + "_CDS"]
         blocks_v_gene = local_exo_dict[gene + "_grange"]
         blocks_v_flanks_and_gene = local_exo_dict[gene + "_flanks"]
+        # cds_exons_num = gene_to_cds_exons[gene]
 
         # all exons - CDS exons -> UTR exons
         blocks_v_utr_exons = blocks_v_exons - blocks_v_cds
@@ -313,7 +384,6 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
         # global counters
         # CDS bases increase with blocks V cds in the gene
         chain_cds_bases += blocks_v_cds
-        chain_exon_bases += blocks_v_exons
         # increase number of UTR exons
         # chain_utr_exon_bases += blocks_v_utr_exons
 
@@ -321,7 +391,11 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
         result["gene_coverage"] += f"{gene}={blocks_v_cds},"
         result["gene_introns"] += f"{gene}={blocks_v_introns},"
         result["flanks_cov"] += f"{gene}={flank_feature},"
-        local_exo = blocks_v_cds / blocks_v_no_utr_exons if blocks_v_no_utr_exons != 0.0 else 0.0
+        local_exo = (
+            blocks_v_cds / blocks_v_no_utr_exons
+            if blocks_v_no_utr_exons != 0.0
+            else 0.0
+        )
         assert local_exo >= 0
         assert local_exo <= 1
         result["local_exons"] += "{0}={1},".format(gene, local_exo)
@@ -336,11 +410,26 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
             result["gene_overlaps"].append(f"{gene}=None")
     # do not forget about global feature
     # chain_glob_bases -= chain_utr_exon_bases  # ignore UTR exons!
+    chain_v_all_exons = local_exo_dict[ALL_EXONS_COMBINED]
     chain_cds_bases = local_exo_dict[COMBINED_BED_ID] if nested else chain_cds_bases
-    result["global_exo"] = chain_cds_bases / chain_glob_bases if chain_glob_bases != 0 else 0
+    chain_v_utr_exons = chain_v_all_exons - chain_cds_bases
+    q_len_corrected = work_data["chain_QLen"] - chain_v_utr_exons
+    assert (
+        q_len_corrected >= 0
+    )  # chain length in query - blocks cover UTR cannot be a negative number
+    result["global_exo"] = (
+        chain_cds_bases / chain_glob_bases if chain_glob_bases != 0 else 0
+    )
     # here we consider this transcript separately
     # nested genes do not affect this feature
-    result["Exlen_to_Qlen"] = chain_exon_bases / work_data["chain_QLen"] if work_data["chain_QLen"] != 0 else 0
+    # chain_exon_bases = local_exo_dict[COMBINED_BED_ID] if nested else chain_exon_bases
+    if max_num_of_cds_exons_covered > 1:
+        result["Exlen_to_Qlen"] = (
+            chain_cds_bases / q_len_corrected if q_len_corrected != 0 else 0
+        )
+    else:  # if chain covers at most 1 CDS exon -> this feature is not applicable
+        result["Exlen_to_Qlen"] = 0
+    assert result["Exlen_to_Qlen"] <= 1  # blocklen / qlen cannot be > 1
 
 
 def extract_cds_lines(all_bed_lines):
@@ -357,9 +446,19 @@ def extract_cds_lines(all_bed_lines):
 def make_output(work_data, result, t0):
     """Arrange the output."""
     # verbose("Making the output...")
-    chain_fields = ["chain", work_data["chain_id"], result["chain_synteny"], result["chain_global_score"],
-                    result["global_exo"], result["Exlen_to_Qlen"], result["local_exons"], result["gene_coverage"],
-                    result["gene_introns"], result["flanks_cov"], result["chain_len"]]
+    chain_fields = [
+        "chain",
+        work_data["chain_id"],
+        result["chain_synteny"],
+        result["chain_global_score"],
+        result["global_exo"],
+        result["Exlen_to_Qlen"],
+        result["local_exons"],
+        result["gene_coverage"],
+        result["gene_introns"],
+        result["flanks_cov"],
+        result["chain_len"],
+    ]
     chain_output = "\t".join([str(x) for x in chain_fields]) + "\n"
     genes_output = "genes\t{0}\n".format("\t".join(result["gene_overlaps"]))
     time_output = f"#estimated time: {dt.now() - t0}\n"
@@ -372,62 +471,78 @@ def extended_output(result, t0):
     for key, value in result.items():
         if key == "gene_overlaps":
             continue
-        chain_output += f"\"{key}\": {value}\n"
-    genes_output = "These genes are overlapped by these chains:\n{0}".format("\t".join(result["gene_overlaps"]))
+        chain_output += f'"{key}": {value}\n'
+    genes_output = "These genes are overlapped by these chains:\n{0}".format(
+        "\t".join(result["gene_overlaps"])
+    )
     time_output = f"#estimated time: {dt.now() - t0}\n"
     return chain_output, genes_output, time_output
 
 
-def chain_feat_extractor(chain_id, genes, chain_file, bed_file, chain_dict,
-                         verbose_arg=None, extended=False):
+def chain_feat_extractor(
+    chain_id, genes, chain_file, bed_file, chain_dict, verbose_arg=None, extended=False
+):
     """Chain features extractor entry point."""
     # global vars
     t0 = dt.now()
     # global work_data: bed, chain, etc
-    work_data = {"bed": "",
-                 "chain": "",
-                 "nested": None,
-                 "chain_id": "",
-                 "chain_Qlen": 0,
-                 "genes": [],
-                 "chain_len": 0,
-                 "chain_Tstarts": 0,
-                 "chain_Tends": 0,
-                 "chain_global_score": 0,
-                 }
+    work_data = {
+        "bed": "",
+        "chain": "",
+        "nested": None,
+        "chain_id": "",
+        "chain_Qlen": 0,
+        "genes": [],
+        "chain_len": 0,
+        "chain_Tstarts": 0,
+        "chain_Tends": 0,
+        "chain_global_score": 0,
+    }
     # structure to collect the results
-    result = {"global_exo": 0.0,
-              "flanks_cov": "",
-              "gene_coverage": "",
-              "gene_introns": "",
-              "chain_synteny": 0,
-              "local_exons": "",
-              "gene_overlaps": [],
-              "Exlen_to_Qlen": 0
-              }
+    result = {
+        "global_exo": 0.0,
+        "flanks_cov": "",
+        "gene_coverage": "",
+        "gene_introns": "",
+        "chain_synteny": 0,
+        "local_exons": "",
+        "gene_overlaps": [],
+        "Exlen_to_Qlen": 0,
+    }
     # check if all the files, dependencies etc are correct
-    check_args(chain_id, genes, chain_file, chain_dict, bed_file, verbose_arg, work_data, result)
+    check_args(
+        chain_id,
+        genes,
+        chain_file,
+        chain_dict,
+        bed_file,
+        verbose_arg,
+        work_data,
+        result,
+    )
 
     # the main part, computations
     bed_lines_extended = extend_bed_lines(work_data["bed"])
     cds_bed_lines = extract_cds_lines(bed_lines_extended)
+    tot_track = get_tot_exons_track(work_data)
+    bed_lines_extended += f"{tot_track}\n"
     nested = check_nest(work_data, cds_bed_lines)  # check if the genes are nested
 
-    if not nested: 
+    if not nested:
         # 99% cases go here
         # there are no nested genes
         get_features(work_data, result, bed_lines_extended)
-    else: 
+    else:
         # another case, firstly need to make bed track with no intersections
         # and only after that call this function with flag NESTED for updated bed file
         collapse_exons(work_data)
-        bed_lines_extended += work_data["nested"] + "\n"
+        bed_lines_extended += f"{work_data['nested']}\n"
         get_features(work_data, result, bed_lines_extended, nested=True)
     # make a tuple with chain, genes and time output
     if not extended:
         # provide short version of output
         output = make_output(work_data, result, t0)
-    else: 
+    else:
         # provide extended output
         # human-readable version
         output = extended_output(result, t0)
@@ -454,8 +569,15 @@ def main():
     for job_num, (chain, genes) in enumerate(batch.items(), 1):
         # one unit: one chain + intersected genes
         # call routine that extracts chain feature
-        unit_output = chain_feat_extractor(chain, genes, args.chain_file, args.bed_file, chain_dict,
-                                           verbose_arg=args.verbose, extended=args.extended)
+        unit_output = chain_feat_extractor(
+            chain,
+            genes,
+            args.chain_file,
+            args.bed_file,
+            chain_dict,
+            verbose_arg=args.verbose,
+            extended=args.extended,
+        )
         chain_output, genes_output, time_output = unit_output
         # save output:
         sys.stdout.write(chain_output)

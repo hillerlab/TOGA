@@ -3,10 +3,11 @@
 For a chain and a set of genes returns the following:
 gene: how many bases this chain overlap in exons.
 """
+from collections import defaultdict
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 
@@ -29,7 +30,9 @@ def make_bed_ranges(bed_line):
 def parse_bed(bed_lines):
     """Return sorted genomic regions."""
     ranges = []
-    for bed_line in bed_lines.split("\n")[:-1]:
+    for bed_line in bed_lines.split("\n"):
+        if bed_line == "":
+            continue
         gene_ranges = make_bed_ranges(bed_line)
         ranges.extend(gene_ranges)
     return list(sorted(ranges, key=lambda x: x[0]))
@@ -53,7 +56,7 @@ def chain_reader(chain):
             block_end = block_start + block_size
             yield block_start, block_end
             break  # end the loop
-        
+
         # get intermediate block data
         block_size = int(block_info[0])
         dt = int(block_info[1])
@@ -75,6 +78,9 @@ def overlap_select(bed, chain):
 
     # bed overlaps: our results, count overlapped bases per gene
     bed_overlaps = {gene: 0 for gene in genes}
+    bed_covered_times = defaultdict(
+        set
+    )  # for each bed track: how many exons intersected
     chain_len = 0  # sum of chain blocks
     start_with = 0  # bed tracks counter
 
@@ -100,7 +106,7 @@ def overlap_select(bed, chain):
             exon = ranges[bed_num]  # pick the exon
             if block[1] < exon[0]:  # too late
                 break  # means that bed is "righter" than chain block
-            
+
             # get intersection between the chain block and exon
             block_vs_exon = intersect(block, (exon[0], exon[1]))
             if block_vs_exon > 0:  # they intersect
@@ -113,6 +119,7 @@ def overlap_select(bed, chain):
                     FLAG = True  # otherwise starts_with will be preserved
                 # add the intersection size
                 bed_overlaps[exon[2]] += block_vs_exon
+                bed_covered_times[exon[2]].add(exon[0])
 
             else:  # we recorded all the region with intersections
                 if block[0] > exon[1]:  # too early
@@ -129,4 +136,4 @@ def overlap_select(bed, chain):
                     break  # and all intersections are saved --> proceed to the next chain
 
     # return the required values
-    return chain_len, bed_overlaps
+    return chain_len, bed_overlaps, bed_covered_times

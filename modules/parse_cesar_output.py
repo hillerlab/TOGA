@@ -3,6 +3,7 @@
 import argparse
 import sys
 from copy import deepcopy
+
 try:  # for robustness
     from modules.common import eprint
     from modules.common import die
@@ -61,13 +62,14 @@ def parse_cesar_out(target, query, v=False):
     eprint(f"Expecting {codons_num} target codons") if v else None
     codon_data = []
     # this "struct" contains codon information
-    next_elem_box = {"ref_codon": "",  # keep reference codon; str
-                     "que_codon": "",  # keep query codon; str
-                     "q_exon_num": 0,  # exon number of codon, in query; int
-                     "t_exon_num": 0,  # exon num in target; int
-                     "split_": 0,  # 0 - not split 
-                     "que_coords": []  # relative coordinates in query
-                     }
+    next_elem_box = {
+        "ref_codon": "",  # keep reference codon; str
+        "que_codon": "",  # keep query codon; str
+        "q_exon_num": 0,  # exon number of codon, in query; int
+        "t_exon_num": 0,  # exon num in target; int
+        "split_": 0,  # 0 - not split
+        "que_coords": [],  # relative coordinates in query
+    }
     for _ in range(codons_num):
         # fill codon table with struct-like objects
         codon_data.append(deepcopy(next_elem_box))
@@ -81,7 +83,7 @@ def parse_cesar_out(target, query, v=False):
     codon_counter = 0  # counter for codons
     is_split_now = False  # flag means that we are reading a split codon
     q_coord = -1  # coordinate in query (relative)
-    
+
     for t, q in zip(target, query):
         # read a pair of characters, one from ref, another from query
         # intron deletion-related conditions
@@ -122,7 +124,9 @@ def parse_cesar_out(target, query, v=False):
 
             if is_split_now:
                 # this is a split codon: compute split_ value
-                codon_data[codon_num]["split_"] = len(codon_data[codon_num]["ref_codon"])
+                codon_data[codon_num]["split_"] = len(
+                    codon_data[codon_num]["ref_codon"]
+                )
             continue
 
         elif t == " ":
@@ -164,7 +168,7 @@ def parse_cesar_out(target, query, v=False):
         if codon_num == codons_num:
             # must be no codons anymore
             break
-        
+
     for elem in codon_data:
         # show codon table if required
         eprint(str(elem)) if v else None
@@ -179,9 +183,13 @@ def parse_cesar_out(target, query, v=False):
         if t_codon_seq.upper() != "ATG" and is_first:  # starts with ATG?
             eprint("Error! CESAR output is corrupted, target must start with ATG!")
         elif t_codon_seq.upper() not in STOPS and is_last:  # ends with STOP?
-            eprint("Error! CESAR output is corrupted, target must end with a stop codon!")
+            eprint(
+                "Error! CESAR output is corrupted, target must end with a stop codon!"
+            )
         elif t_codon_seq.upper() in STOPS and not is_last:  # Stop in frame?
-            eprint("Error! CESAR output is corrupted, found in-frame STOP codon in reference!")
+            eprint(
+                "Error! CESAR output is corrupted, found in-frame STOP codon in reference!"
+            )
         # all ref letters in codon must be either lower or uppercase, not a mixture
         all_hi = all(x.isupper() for x in t_codon_seq)
         all_lo = all(x.islower() for x in t_codon_seq)
@@ -201,7 +209,7 @@ def parse_args():
         app.print_help()
         sys.exit(0)
     args = app.parse_args()
-    return args    
+    return args
 
 
 def classify_exon(ex_class, incl, pid, blosum, v=False):

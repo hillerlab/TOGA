@@ -323,6 +323,8 @@ void doHillerLabTOGAGene(struct trackDb *tdb, char *item, char *table_name)
         char **row;
         printf("<a data-toggle=\"collapse\" href=\"#collapseExons\">Show exon sequences and features</a>\n");
         printf("<div id=\"collapseExons\" class=\"panel-collapse collapse\">\n");
+        // TODO: make sure this clause is not necessary
+        // order by exon_num
         sqlSafef(query, sizeof(query), "select * from %s where transcript='%s'", togaNuclTableName, item);
         sr = sqlGetResult(conn, query);
 

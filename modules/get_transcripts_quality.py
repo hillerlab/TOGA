@@ -6,7 +6,7 @@ from collections import defaultdict
 
 __author__ = "Bogdan Kirilenko, 2020."
 __version__ = "1.0"
-__email__ = "kirilenk@mpi-cbg.de"
+__email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 
@@ -20,8 +20,13 @@ def parse_args():
     app = argparse.ArgumentParser()
     app.add_argument("meta_data", help="Exons meta data")
     app.add_argument("orthology_scores", help="Orthology scores file")
-    app.add_argument("--hq_threshold", "--hqt", type=float, default=0.95,
-                     help="Orthology score for high-confidence transcripts")
+    app.add_argument(
+        "--hq_threshold",
+        "--hqt",
+        type=float,
+        default=0.95,
+        help="Orthology score for high-confidence transcripts",
+    )
     app.add_argument("output", help="Save output to")
     if len(sys.argv) < 3:
         app.print_help()
@@ -64,7 +69,7 @@ def get_exon_marks(meta_data_file):
 
 def get_transcript_score(ort_scores_file):
     """Read orthology scores.
-    
+
     There are scores for each chain-transcript pair
     assigned by XGBoost classifier."""
     result = {}
@@ -129,10 +134,9 @@ def save(transcript_class, output_file):
 def main():
     """Entry point."""
     args = parse_args()
-    classify_transcripts(args.meta_data,
-                         args.orthology_scores,
-                         args.hq_threshold,
-                         args.output)
+    classify_transcripts(
+        args.meta_data, args.orthology_scores, args.hq_threshold, args.output
+    )
 
 
 if __name__ == "__main__":
