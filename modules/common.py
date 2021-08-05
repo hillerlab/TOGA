@@ -271,11 +271,15 @@ def get_graph_components(graph):
     """Split graph in connected components."""
     nx_v = nx.__version__
     # could crash if x.y.z
-    v_split = nx_v.split(".")
-    f_s_nums = float(f"{v_split[0]}.{v_split[1]}")
-    if f_s_nums < 2.4:  # TODO: keep it for ~2 months, then remove deprecated branch
-        graph_components = list(nx.connected_component_subgraphs(graph))
+    # or something like 3.aplha
+    v_split = [x for x in nx_v.split(".") if x.isnumeric()]
+    if len(v_split) > 1:
+        f_s_nums = float(f"{v_split[0]}.{v_split[1]}")
     else:
+        f_s_nums = float(v_split[0])
+    if f_s_nums < 2.4:  # old networkx versions
+        graph_components = list(nx.connected_component_subgraphs(graph))
+    else:  # modern networkx versions
         graph_components = [graph.subgraph(c) for c in nx.connected_components(graph)]
     return graph_components
 
