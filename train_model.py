@@ -35,8 +35,10 @@ def train_on(x, y, save_to, name=None):
     results = cross_val_score(model, x, y, cv=kfold)
     model.fit(x, y)
     if name:  # some verbosity
+        y_lst = list(y)
         print(f"{name} model: ")
         print(f"Training on {len(x)} samples")
+        print(f"Positives: {y_lst.count(1)}; Negatives: {y_lst.count(0)}")
         print(f"Using features: {x.columns}")
     print("Accuracy: {0:.3f} {1:.3f}".format(results.mean() * 100, results.std() * 100))
     joblib.dump(model, save_to)  # save the model

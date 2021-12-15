@@ -52,13 +52,18 @@ def get_pp_gene_chains(chain_class_file, v=False):
         # gene orthologs paralogs trans p_pseudogenes
         trans = line_data[0]
         # proc_pseudogene chains are in the 4th field
-        pp_genes_field = line_data[4]
-        if pp_genes_field == "0":
-            # it 0 -> no ppgene chains -> skip
-            continue
+        # pp_genes_field = line_data[4]
+        # if pp_genes_field == "0":
+        #     # it 0 -> no ppgene chains -> skip
+        #     continue
         # parse comma-separated string and save to dict
-        pp_genes = [int(x) for x in pp_genes_field.split(",") if x != ""]
-        gene_to_pp_chains[trans] = pp_genes
+        # pp_genes = [int(x) for x in pp_genes_field.split(",") if x != ""]
+        # gene_to_pp_chains[trans] = pp_genes
+        chain = int(line_data[1])
+        stat = line_data[2]
+        if stat == "-2.0":
+            gene_to_pp_chains[trans].append(chain)
+
     f.close()
     if v:
         verbose(f"Extracted {len(gene_to_pp_chains)} genes with proc pseudogenes")

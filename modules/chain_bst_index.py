@@ -39,17 +39,10 @@ def chain_bst_index(chain_file, index_file, txt_index=None):
 
     # read chain file, get necessary data: start bytes and offsets
     print("Reading chain...")
-    chain_ids, start_bytes, offsets = (
-        [
-            0,
-        ],
-        [
-            0,
-        ],
-        [
-            0,
-        ],
-    )
+    chain_ids = [0]
+    start_bytes = [0]
+    offsets = [0]
+
     byte_num, offset = 0, 0
 
     f = open(chain_file, "rb")

@@ -20,7 +20,7 @@ SOURCE = "SOURCE"
 SINK = "SINK"
 SCORE_THRESHOLD = 0.5
 EXON_COV_THRESHOLD = 1.33
-MAX_OVERLAP = 60
+MAX_OVERLAP = 250  # TODO: check whether 250 is a good option
 
 
 class Vertex:

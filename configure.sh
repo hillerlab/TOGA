@@ -3,7 +3,7 @@ exit_status=0
 mydir="${0%/*}"
 
 printf "Compiling C code...\n"
-CFLAGS="-Wall -Wextra -O2 -g -std=c99"
+CFLAGS="-Wall -Wextra -O2 -g -std=c99" 
 
 gcc $CFLAGS -o ${mydir}/modules/chain_score_filter ${mydir}/modules/chain_score_filter.c 
 gcc $CFLAGS -o ${mydir}/modules/chain_filter_by_id ${mydir}/modules/chain_filter_by_id.c 

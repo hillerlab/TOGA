@@ -112,13 +112,6 @@ def parse_args():
         "no more that 30Gb. --buckets 0 means no separation.",
     )
     app.add_argument(
-        "--fields",
-        default=None,
-        help="Use those chains that are placed in these fields "
-        " in orthologs file. Comma-separated list. For example "
-        "PERF,GLOK - for perfect and good local chains.",
-    )
-    app.add_argument(
         "--mask_stops",
         "--ms",
         action="store_true",
@@ -176,6 +169,13 @@ def parse_args():
         dest="no_fpi",
         help="Consider some frame-preserving mutations as inactivating. "
         "See documentation for details.",
+    )
+    app.add_argument(
+        "--annotate_paralogs",
+        "--ap",
+        action="store_true",
+        dest="annotate_paralogs",
+        help="Annotate paralogs instead of orthologs.",
     )
     app.add_argument(
         "--fragments_data", help="Gene: fragments file for fragmented genomes."
@@ -237,7 +237,7 @@ def define_buckets(lim, buckets):
     return lim, buckets
 
 
-def read_orthologs(orthologs_file, fields_raw, only_o2o=False):
+def read_orthologs(orthologs_file, only_o2o=False, annotate_paralogs=False):
     """Read orthologs file."""
     # convert fields param string to list
     # fields = [x.upper() for x in fields_raw.split(",") if x != ""]
@@ -279,7 +279,9 @@ def read_orthologs(orthologs_file, fields_raw, only_o2o=False):
         # use orthologous chains by default,
         # if no orthologous chains -> use spanning chains (TRANS)
         # no spanning chains -> use paralogous
-        if len(chains[ORTHOLOG]) > 0:
+        if annotate_paralogs:
+            selected_field = PARALOG
+        elif len(chains[ORTHOLOG]) > 0:
             selected_field = ORTHOLOG
         elif len(chains[TRANS]) > 0:
             selected_field = TRANS
@@ -609,7 +611,6 @@ def main():
 
     # as default we create CESAR jobs for chains with "orth" or "trans" class
     # but user could select another set of chain classes
-    fields = "ORTH,TRANS" if args.fields is None else args.fields
 
     # read U12 introns: to create a list of U12-containing genes
     # need it to make subsequent commands
@@ -622,7 +623,7 @@ def main():
     predefined_glp_class = {}  # for projections which are M and L without CESAR
     # m_ -> to be added to Missing bucket
     batch, chain_gene_field, skipped_1, m_ = read_orthologs(
-        args.orthologs_file, fields, only_o2o=args.o2o_only
+        args.orthologs_file, only_o2o=args.o2o_only, annotate_paralogs=args.annotate_paralogs
     )
     for gene in m_:  # classify transcripts with no intersecting chains as missing
         predefined_glp_class[gene] = f"{TRANSCRIPT}\t{M}"
@@ -827,13 +828,15 @@ def main():
         f.close()
 
     # save IDs of paralogous projections
-    f = open(args.paralogs_log, "w")
-    for k, v in chain_gene_field.items():
-        if v != "PARA":
-            continue
-        gene_ = f"{k[1]}.{k[0]}\n"
-        f.write(gene_)
-    f.close()
+    # skip if we annotate only paralogs
+    if not args.annotate_paralogs:
+        f = open(args.paralogs_log, "w")
+        for k, v in chain_gene_field.items():
+            if v != "PARA":
+                continue
+            gene_ = f"{k[1]}.{k[0]}\n"
+            f.write(gene_)
+        f.close()
 
     eprint(f"Estimated: {dt.now() - t0}")
     sys.exit(0)

@@ -33,15 +33,15 @@ TEMPLATE_PATH_2 = "supply/svg_template.txt"
 OPACITY = 100
 HORIZONTAL = "horizontal"
 MUT_LINE_FIELDS = 8
-MUT_LINE_FIELDS_SP = MUT_LINE_FIELDS + 1
+MUT_LINE_FIELDS_SP = MUT_LINE_FIELDS
 
-BLACK = "#121212"
-MISS_SEQ_COLOR = "#878787"
-MASKED_MUT_COLOR = "#878787"
-INACT_MUT_COLOR = "#cf232b"
-FP_EXON_DEL_COLOR = "#0c7bdc"
-BACKGROUND_COLOR = "#87bcbc"
-STOP_CODON_COLOR = "#121212"
+BLACK = "#121212"  # almost black
+MISS_SEQ_COLOR = "#878787"  # Grey
+MASKED_MUT_COLOR = "#878787"  # Grey
+INACT_MUT_COLOR = "#cf232b"  # Dark Red
+FP_EXON_DEL_COLOR = "#0c7bdc"  # blue-ish
+BACKGROUND_COLOR = "#87bcbc"  # cyan-ish
+STOP_CODON_COLOR = "#121212"  # almost black
 
 MAX_VERTICAL_SPACE = 100  # pixels
 HALF_EXON_HEIGHT = 15  # pixels
@@ -80,13 +80,25 @@ J_STYLE = False
 picture_width = 0
 
 
-SVG_PLACEHOLDER="""
+SVG_PLACEHOLDER = """
 <svg>
 <rect fill="#aaa" stroke="#000" x="0" y="0" width="400" height="100"/>
 <line x1="0" y1="0" x2="400" y2="100" stroke="red" stroke-width="4" />
 <line x1="0" y1="100" x2="400" y2="0" stroke="red" stroke-width="4" />
 </svg>
 """
+
+
+DEFAULT_MODE = "DEFAULT"
+PUB_MODE_I = "PUB_MODE_I"
+DRAW_MODES = {
+    DEFAULT_MODE,
+    PUB_MODE_I,
+}
+
+# drawing modes where we don't show compensations
+# for now only one, can be extended
+DRAW_MODES_NO_COMPENSATIONS_SHOWN = {PUB_MODE_I}
 
 
 class MouseOver:
@@ -296,6 +308,7 @@ class Exon:
         color=None,
         ancestral=True,
         annotation=None,
+        draw_mode=DEFAULT_MODE,
     ):
         self.pos = [pos[0], pos[1]]
         self.width = width
@@ -309,6 +322,7 @@ class Exon:
         self.mouseover = ""
         self.annotation = annotation
         self.ancestral = ancestral
+        self.draw_mode = draw_mode
 
         if color is None and ancestral:
             self.color = BACKGROUND_COLOR
@@ -327,6 +341,7 @@ class Exon:
             color=self.color,
             ancestral=self.ancestral,
             annotation=self.annotation,
+            draw_mode=self.draw_mode,
         )
         return new_one
 
@@ -409,7 +424,11 @@ class Exon:
         self.labels[("up", start_base_pos)] = (tag, y, mouseover, color_)
 
     def add_deletion(self, start_base_pos, length, mouseover, is_masked):
-        color = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
+        if self.draw_mode == PUB_MODE_I:
+            # all mutations in black
+            color = BLACK
+        else:
+            color = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
         style = DEL_STYLE.format(color, length * EXON_BASE_SIZE)
         self.data.append(
             draw_line(
@@ -454,7 +473,10 @@ class Exon:
         )
 
     def add_insertion(self, base_pos, length, mouseover, is_masked):
-        color = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
+        if self.draw_mode == PUB_MODE_I:
+            color = BLACK
+        else:
+            color = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
         style = INSERT_STYLE.format(color)
         x = self.pos[0] + base_pos * EXON_BASE_SIZE
         y = self.pos[1] - HALF_EXON_HEIGHT
@@ -614,6 +636,14 @@ def parse_args():
         help="Please see documentation which is not yet written",
     )
     app.add_argument("--alt_template", "-a", help="Alternative template path")
+    app.add_argument(
+        "--publication_mode_heni",
+        "--pmh",
+        help="Publication mode; Indrischek et al. 2021 version",
+        dest="publication_mode_heni",
+        action="store_true",
+    )
+    app.add_argument("--verbose", "-v", action="store_true", dest="verbose")
     if len(sys.argv) < 4:
         app.print_help()
         sys.exit(0)
@@ -853,7 +883,8 @@ def prepare_mut_data(mut_lines, sp, rel_starts, chain_lim=None):
     to_ret = []
     for line in upd_lines:
         # add sp identifier
-        line_ret = f"{line}\t{sp}"
+        # line_ret = f"{line}\t{sp}"
+        line_ret = (line, sp)
         to_ret.append(line_ret)
     return to_ret
 
@@ -907,15 +938,22 @@ def trans_data_direction(trans_data):
     trans_data["exons"].reverse()
 
 
-def init_human_exons(x, y, ancestral_exons, trans_data):
+def init_human_exons(x, y, ancestral_exons, trans_data, drawing_mode=DEFAULT_MODE):
     """Just init human exons list."""
     human_exons = [
-        Exon((0, y), x[0], is_exon=False),
+        Exon((0, y), x[0], is_exon=False, draw_mode=drawing_mode),
     ]
     # 1 is always in ancestrals!
     # one_in_anc_exons = "1" in ancestral_exons
     human_exons.append(
-        Exon((x[0], y), x[1] - x[0], opacity=OPACITY, ancestral=True, annotation=None)
+        Exon(
+            (x[0], y),
+            x[1] - x[0],
+            opacity=OPACITY,
+            ancestral=True,
+            annotation=None,
+            draw_mode=drawing_mode,
+        )
     )
 
     for i in range(1, trans_data["exon_num"]):
@@ -942,14 +980,18 @@ def init_human_exons(x, y, ancestral_exons, trans_data):
                 opacity=OPACITY,
                 ancestral=is_ancestral,
                 annotation=None,
+                draw_mode=drawing_mode,
             )
         )  # (i+1)th Exon
-    human_exons.append(Exon((x[-1], y), UTR_WIDTH, is_exon=False))  # UTR
+    human_exons.append(
+        Exon((x[-1], y), UTR_WIDTH, is_exon=False, draw_mode=drawing_mode)
+    )  # UTR
     return human_exons
 
 
-def generate_filebuffer(mut_lines, human_exons_dct, x, y):
+def generate_filebuffer(mut_lines, human_exons_dct, x, y, drawing_mode=DEFAULT_MODE, verbose=False):
     """Generate the body of our SVG file."""
+    print("Generating SVG line") if verbose else None
     curr_projection = None  # name of the current handled species
     curr_sp = None
     speciesdata = {}  # mutation data: {mutationnumber:(exon, start, stop)}
@@ -958,18 +1000,20 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
     vert_offset = 0
     uniq_projections = set()
 
-    for defect_line in mut_lines:
+    for defect_line, sp_num_tup in mut_lines:
         defect_line_dat = defect_line.rstrip().split("\t")
         trans = defect_line_dat[0]
         chain = defect_line_dat[1]
-        sp = defect_line_dat[-1]
+        # sp = defect_line_dat[-1]
+        sp_name = sp_num_tup[0]
+        print(f"{defect_line_dat} {sp_num_tup} curr sp: {curr_sp}") if verbose else None
         human_exons = human_exons_dct[trans]
         projection = f"{trans}.{chain}"
         uniq_projections.add(projection)
         is_defect = len(defect_line_dat) == MUT_LINE_FIELDS_SP
 
         # check if we are at the same projection or now
-        if projection != curr_projection or sp != curr_sp:
+        if projection != curr_projection or sp_num_tup != curr_sp:
             # initiate new plot!
             if PRINT_EXON_SCHEME or curr_projection is not None:
                 height = 0
@@ -988,7 +1032,7 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             for e in exons:
                 e.shift_vertical(vert_offset)
 
-            label = f"{sp}.{trans}.{chain}"
+            label = f"{sp_name} {trans}.{chain}"
             labels = [
                 (
                     Textstack(
@@ -1002,7 +1046,7 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             for label in labels:
                 label.shift_vertical(vert_offset)
             curr_projection = projection
-            curr_sp = sp
+            curr_sp = sp_num_tup
             speciesdata = {}
             comp_substrings = []
 
@@ -1022,7 +1066,11 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             pos = int(defect_line_dat[3])
             mut = defect_line_dat[5]
             mut_id = defect_line_dat[7]
-        else:  # compensaition effect is a bit special
+        else:  # compensation track is a bit special
+            if drawing_mode in DRAW_MODES_NO_COMPENSATIONS_SHOWN:
+                # show it only if drawing mode allows so
+                # otherwise simply skip it
+                continue
             comp_ids_num = defect_line_dat[5].split("_")[1].split(",")
             fs_1_id = f"FS_{comp_ids_num[0]}"
             fs_2_id = f"FS_{comp_ids_num[1]}"
@@ -1048,7 +1096,13 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
         if defect_class == SSM:
             mouseover = None
             to_what = mut.split("->")[1]
-            color_ = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
+
+            # color depends on the
+            if drawing_mode == PUB_MODE_I:
+                color_ = BLACK
+            else:  # mode: default or non-affecting this mutation type
+                color_ = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
+
             if pos == 1:  # donor
                 labels.append(
                     Textstack(
@@ -1091,7 +1145,13 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y):
             speciesdata[mut_id] = (exonnumber, start, start + length - 1)
         # add deleted exon
         elif defect_class == EX_DEL:
-            exon.color = FP_EXON_DEL_COLOR if is_masked else INACT_MUT_COLOR
+
+            if drawing_mode == PUB_MODE_I:
+                # in this mode: all deleted exons in red, no blue ones anymore
+                exon.color = INACT_MUT_COLOR
+            else:  # default mode or not affecting deleted exons color
+                exon.color = FP_EXON_DEL_COLOR if is_masked else INACT_MUT_COLOR
+
             speciesdata[mut_id] = (exonnumber, 0, 0)
         # and also with missing exons
         elif defect_class == EX_MIS:
@@ -1155,13 +1215,21 @@ def get_sp_to_mbd_data(mut_files_list):
     """Read species: mut file data."""
     sp_to_file = {}
     f = open(mut_files_list, "r")
-    for line in f:
+    for num, line in enumerate(f, 1):
         line_data = line.rstrip().split()
-        sp = line_data[0]
-        rel_path = line_data[1]
+        if len(line_data) < 2:
+            err_msg = (
+                f"Error! {mut_files_list} file is incorrect. The following format "
+                f"applies:\n[Species name] <space> [path to corresponding inact mut "
+                f"file]. Species name can also be space-separated."
+            )
+            print(err_msg)
+            sys.exit(1)
+        sp = " ".join(line_data[:-1])
+        rel_path = line_data[-1]
         dir_name = os.path.dirname(mut_files_list)
         abs_path = os.path.join(dir_name, rel_path)
-        sp_to_file[sp] = abs_path
+        sp_to_file[(sp, num)] = abs_path
     f.close()
     return sp_to_file
 
@@ -1175,6 +1243,8 @@ def make_plot(
     multi_species,
     alt_template,
     inact_lines=None,
+    drawing_mode=DEFAULT_MODE,
+    verbose=False
 ):
     """Enrty point."""
     if isoforms_file is None:
@@ -1185,13 +1255,19 @@ def make_plot(
     if multi_species is True:
         sp_to_mdb = get_sp_to_mbd_data(toga_mut_file)
     else:
-        sp_to_mdb = {"SP": toga_mut_file}
+        sp_to_mdb = {("SP", 0): toga_mut_file}
+
+    if verbose:
+        print(f"SP to Mut data: {sp_to_mdb}\n\n")
 
     all_mut_lines = []
     trans_to_h_exons = {}
     picture_width = 0
 
     for transcript in transcripts:
+        if verbose:
+            print(f"Parsing data for transcript {transcript}")
+
         trans_bed = get_transcript(bed_file, transcript)
         if trans_bed is None:
             # not found
@@ -1204,21 +1280,28 @@ def make_plot(
         trans_data_direction(trans_data)
 
         for sp, mdb in sp_to_mdb.items():
+            print(f"# Extracting data for {sp} {mdb}") if verbose else None
             if inact_lines is None:
                 # ~100% cases
                 mut_lines_raw = get_mut_list(mdb, transcript)
             else:
                 # called by external program: inact data already extracted
                 mut_lines_raw = inact_lines
+            print(f"Extracted {len(mut_lines_raw)} raw mut lines") if verbose else None
+
             mut_lines = prepare_mut_data(
                 mut_lines_raw, sp, trans_data["rel_starts"], chain_lim=chain
             )
+            print(f"After filter: {len(mut_lines_raw)} lines") if verbose else None
+
             all_mut_lines.extend(mut_lines)
 
         t_picture_width = comp_width(trans_data)
         picture_width = (
             t_picture_width if t_picture_width > picture_width else picture_width
         )
+
+        print(f"Picture width: {picture_width}") if verbose else None
 
         # something we need
         x = [
@@ -1229,7 +1312,9 @@ def make_plot(
         y = MAX_VERTICAL_SPACE / 2
 
         ancestral_exons = [str(x) for x in range(1, trans_data["exon_num"] + 1)]
-        human_exons = init_human_exons(x, y, ancestral_exons, trans_data)
+        human_exons = init_human_exons(
+            x, y, ancestral_exons, trans_data, drawing_mode=drawing_mode
+        )
         trans_to_h_exons[transcript] = human_exons
 
     if len(trans_to_h_exons.keys()) == 0:
@@ -1239,7 +1324,7 @@ def make_plot(
     elif len(all_mut_lines) == 0:
         return SVG_PLACEHOLDER
     filebuffer, up_num, vbox_h = generate_filebuffer(
-        all_mut_lines, trans_to_h_exons, x, y
+        all_mut_lines, trans_to_h_exons, x, y, drawing_mode=drawing_mode, verbose=verbose
     )
 
     # compute height
@@ -1258,8 +1343,20 @@ def make_plot(
     return svg_line
 
 
+def __infer_draw_mode(args):
+    """Parse args to infer drawing mode.
+
+    If nothing specified: use DEFAULT.
+    """
+    # TODO: if several modes available, exit if > 1 modes assigned
+    if args.publication_mode_heni:
+        return PUB_MODE_I
+    return DEFAULT_MODE
+
+
 if __name__ == "__main__":
     args = parse_args()
+    _d_mode = __infer_draw_mode(args)
     svg_line = make_plot(
         args.bed_file,
         args.toga_mut_file,
@@ -1268,6 +1365,8 @@ if __name__ == "__main__":
         args.isoforms_file,
         args.multi_species,
         args.alt_template,
+        drawing_mode=_d_mode,
+        verbose=args.verbose
     )
     f = open(args.output, "w") if args.output != "stdout" else sys.stdout
     f.write(svg_line)

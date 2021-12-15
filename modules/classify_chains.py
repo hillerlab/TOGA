@@ -29,6 +29,7 @@ __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 # paths to single (SE) and multi-exon (ME) models
 SE_MODEL = "models/se_model.dat"
 ME_MODEL = "models/me_model.dat"
+LD_MODEL = "long_distance_model/long_dist_model.dat"
 
 ORTH = "ORTH"
 PARA = "PARA"
@@ -39,6 +40,9 @@ P_PGENES = "P_PGENES"
 # lists of features required by single and multi exon models
 SE_MODEL_FEATURES = ["gl_exo", "flank_cov", "exon_perc", "synt_log"]
 ME_MODEL_FEATURES = ["gl_exo", "loc_exo", "flank_cov", "synt_log", "intr_perc"]
+LD_MODEL_FEATURES = ["gl_exo", "flank_cov", "exon_perc", "synt_log", "loc_exo",
+                     "intr_perc", "score", "single_exon"]
+
 print = functools.partial(print, flush=True)
 
 
@@ -57,6 +61,7 @@ def parse_args():
     app.add_argument(
         "--raw_model_out", "--ro", default=None, help="Save gene: chain xgboost output"
     )
+    app.add_argument("--ld_model", action="store_true", dest="ld_model", help="Apply LD model")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -73,6 +78,7 @@ def classify_chains(
     raw_out=None,
     rejected=None,
     annot_threshold=0.5,
+    ld_model=None
 ):
     """Core chain classifier function."""
     verbose("Loading dataset...")
@@ -148,8 +154,23 @@ def classify_chains(
     df_se_result = df_se.copy()
     df_me_result = df_me.copy()
     trans_result = trans_lines.copy()
+
     df_se_result["pred"] = se_pred
     df_me_result["pred"] = me_pred
+
+    if ld_model:
+        # apply LD model in addition
+        # score from previous prediction is a feature for the LD model
+        ld_model = joblib.load(ld_model)
+        df_se_result = df_se_result.rename({"pred": "score"}, axis="columns")
+        df_me_result = df_me_result.rename({"pred": "score"}, axis="columns")
+        X_LD_me = df_me_result[LD_MODEL_FEATURES].copy()
+        X_LD_se = df_se_result[LD_MODEL_FEATURES].copy()
+        me_ld_pred = ld_model.predict_proba(X_LD_me)[:, 1] if len(X_LD_me) > 0 else np.array([])
+        se_ld_pred = ld_model.predict_proba(X_LD_se)[:, 1] if len(X_LD_se) > 0 else np.array([])
+        df_se_result["pred"] = se_ld_pred
+        df_me_result["pred"] = me_ld_pred
+
     # model prediction is a float from 0 to 1, -1 -> for trans chains
     trans_result["pred"] = -1
     # identify processed pseudogenes, they satisfy the following criteria:
@@ -236,6 +257,7 @@ def main():
         args.se_model,
         args.me_model,
         raw_out=args.raw_model_out,
+        ld_model=args.ld_model,
     )
 
 

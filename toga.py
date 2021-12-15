@@ -198,12 +198,13 @@ class Toga:
         self.cesar_mem_limit = args.cesar_mem_limit
         self.cesar_chain_limit = args.cesar_chain_limit
         self.uhq_flank = args.uhq_flank
-        self.cesar_fields = args.homology_types
         self.mask_stops = args.mask_stops
         self.no_fpi = args.no_fpi
         self.o2o_only = args.o2o_only
+        self.annotate_paralogs = args.annotate_paralogs
         self.keep_nf_logs = args.do_not_del_nf_logs
         self.exec_cesar_parts_sequentially = args.cesar_exec_seq
+        self.ld_model_arg = args.ld_model
 
         self.cesar_ok_merged = (
             None  # Flag: indicates whether any cesar job BATCHES crashed
@@ -917,7 +918,9 @@ class Toga:
         self.pred_scores = os.path.join(self.temp_wd, "orthology_scores.tsv")
         self.se_model = os.path.join(self.LOCATION, "models", "se_model.dat")
         self.me_model = os.path.join(self.LOCATION, "models", "me_model.dat")
+        self.ld_model = os.path.join(self.LOCATION, "long_distance_model", "long_dist_model.dat")
         cl_rej_log = os.path.join(self.rejected_dir, "classify_chains_rejected.txt")
+        ld_arg_ = self.ld_model if self.ld_model_arg else None
         if not os.path.isfile(self.se_model) or not os.path.isfile(self.me_model):
             self.__call_proc(self.MODEL_TRAINER, "Models not found, training...")
         classify_chains(
@@ -928,6 +931,7 @@ class Toga:
             rejected=cl_rej_log,
             raw_out=self.pred_scores,
             annot_threshold=self.orth_score_threshold,
+            ld_model=ld_arg_
         )
         # extract not classified transcripts
         # first column in the rejected log
@@ -941,7 +945,7 @@ class Toga:
         print("Creating processed pseudogenes track.")
         proc_pgenes_track = os.path.join(self.wd, "proc_pseudogenes.bed")
         create_ppgene_track(
-            self.orthologs, self.chain_file, self.index_bed_file, proc_pgenes_track
+            self.pred_scores, self.chain_file, self.index_bed_file, proc_pgenes_track
         )
 
     @staticmethod
@@ -1072,7 +1076,6 @@ class Toga:
         self.temp_files.append(self.predefined_glp_cesar_split)
 
         # different field names depending on --ml flag
-        fields = "ORTH,TRANS"
 
         self.temp_files.append(self.cesar_results)
         self.temp_files.append(self.gene_loss_data)
@@ -1092,7 +1095,6 @@ class Toga:
             f"--buckets {self.cesar_buckets} "
             f"--mem_limit {self.cesar_mem_limit} "
             f"--chains_limit {self.cesar_chain_limit} "
-            f"--fields {fields} "
             f"--skipped_genes {skipped_path} "
             f"--rejected_log {self.rejected_dir} "
             f"--cesar_binary {self.cesar_binary} "
@@ -1100,6 +1102,9 @@ class Toga:
             f"--uhq_flank {self.uhq_flank} "
             f"--predefined_glp_class_path {self.predefined_glp_cesar_split}"
         )
+
+        if self.annotate_paralogs:  # very rare occasion
+            split_cesar_cmd += f" --annotate_paralogs"
 
         # split_cesar_cmd = split_cesar_cmd + f" --cesar_binary {self.cesar_binary}" \
         #     if self.cesar_binary else split_cesar_cmd
@@ -1889,16 +1894,6 @@ def parse_args():
         help="Ignore genes requiring > N gig to run CESAR",
     )
     app.add_argument(
-        "--homology_types",
-        "--ht",
-        default="ORTH,TRANS",
-        help="TOGA classifies chain in the following categories: "
-        "ORTH, PARA ans TRANS. This parameter controls, "
-        "for which groups TOGA will seek for genes. For "
-        "example, ORTH,TRANS means that TOGA will seek for genes "
-        "throw chains which classified as ORTH and TRANS",
-    )
-    app.add_argument(
         "--time_marks",
         "-t",
         default=None,
@@ -1936,6 +1931,20 @@ def parse_args():
         action="store_true",
         help="Annotation of a fragmented genome: need to assemble query genes "
         "from pieces",
+    )
+    app.add_argument(
+        "--ld_model",
+        dest="ld_model",
+        action="store_true",
+        help="Apply extra classifier for molecular distances ~1sps.",
+    )
+    app.add_argument(
+        "--annotate_paralogs",
+        "--ap",
+        dest="annotate_paralogs",
+        action="store_true",
+        help="Annotate paralogs instead of orthologs. "
+             "(experimental feature for very specific needs)",
     )
     # print help if there are no args
     if len(sys.argv) < 2:
