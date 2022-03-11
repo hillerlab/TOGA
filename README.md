@@ -654,5 +654,4 @@ provide the chain of interest with --chain parameter:
 
 ## Citation
 
-Kirilenko et al, 2020.
-In preparation.
+Kirilenko BM, Munegowda C, Osipova E, Jebb D, Sharma V, Blumer M, Morales A, Ahmed AW, Kontopoulos DG, Hilgers L, Zoonomia Consortium, Hiller M. TOGA integrates gene annotation with orthology inference at scale, submitted
