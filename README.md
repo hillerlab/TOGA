@@ -3,6 +3,7 @@
 ![TOGA logo](https://github.com/hillerlab/TOGA/blob/master/supply/logo.png)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 ![version](https://img.shields.io/badge/version-1.0.0-blue)
+[![DOI](https://zenodo.org/badge/277817661.svg)](https://zenodo.org/badge/latestdoi/277817661)
 
 TOGA is a new method that integrates gene annotation, inferring orthologs and classifying
 genes as intact or lost.
