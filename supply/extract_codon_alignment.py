@@ -96,22 +96,30 @@ def parse_args():
     """Parse args."""
     app = argparse.ArgumentParser()
     app.add_argument(
-        "input_dirs", help="File containing a list of TOGA output directories"
+        "input_dirs",
+        help=("File containing a list of TOGA results directories.\n"
+              "Directories, listed in this file, will be used to produce the alignment.\n"
+              "")
     )
-    app.add_argument("reference_bed", help="Bed12-file containing reference annotations")
+    app.add_argument("reference_bed", help="Bed12-file containing *reference* annotations")
     app.add_argument("transcript_id",
                      help="ID of the aligned transcript (must be present in"
                           " the reference bed file)")
 
     app.add_argument("--output", "-o", default=None, help="Output file, default stdout")
     app.add_argument(
-        "--use_raw_sequences", "--raw", action="store_true", dest="use_raw_sequences"
+        "--use_raw_sequences",
+        "--raw",
+        action="store_true",
+        dest="use_raw_sequences",
+        help="(experimental feature) Use direct CESAR output instead of corrected sequence."
     )
     app.add_argument(
         "--save_not_aligned",
         "--sna",
         default=None,
-        help="Save input sequences in fasta format, works for entire gene alignments only",
+        help=("Path to fasta file to save input sequences used for alignment, default None. "
+              "This feature works with entire gene alignment only (not exon-by-exon)"),
     )
     app.add_argument(
         "--allow_one2zero",
@@ -140,7 +148,9 @@ def parse_args():
     app.add_argument(
         "--seq_number_limit",
         default=SEQ_NUMBER_LIMIT,
-        help="Exit if number of sequences exceeds the threshold",
+        help=("Exit if number of aligned sequences exceeds the threshold.\n"
+              "For example, if you like to align sequence of the gene X in 10 species,\n"
+              "and each species has 10 copies, the total number of sequences to align is 100."),
     )
     app.add_argument(
         "--temp_dir",
@@ -150,8 +160,9 @@ def parse_args():
     app.add_argument(
         "--macse_caller",
         default=None,
-        help="Macse 2 caller command. Example: java -jar /path/to/macse2.jar "
-        "(not just a path to macse2.jar!)",
+        help=("Executable containg command to call macse2.\n"
+              "Example of the command: java -jar /path/to/macse2.jar "
+              "(not just a path to macse2.jar!)"),
     )
     app.add_argument(
         "--use_prank",
@@ -160,9 +171,12 @@ def parse_args():
         help="Use prank instead of MACSE",
     )
     app.add_argument(
-        "--prank_executable", "--prank", default="prank", help="Prank executable"
+        "--prank_executable",
+        "--prank",
+        default="prank",
+        help="Prank executable in case you like to align sequences with PRANK"
     )
-    app.add_argument("--prank_tree", default=None, help="Tree to be used in PRANK")
+    app.add_argument("--prank_tree", default=None, help="Tree to be used with PRANK")
     app.add_argument(
         "--debug",
         "-d",
@@ -170,7 +184,9 @@ def parse_args():
         dest="debug",
         help="Write debugging information",
     )
-    app.add_argument("--reference_2bit", default=None, help="Reference 2bit file")
+    app.add_argument("--reference_2bit",
+                     default=None,
+                     help="Reference 2bit file, by default is inferred from TOGA output")
     app.add_argument(
         "--intermediate_data",
         default=None,
@@ -181,18 +197,25 @@ def parse_args():
         "--mpo",
         default=0.0,
         type=float,
-        help="Minimal fraction of species with at least one ortholog "
-        " that have exactly one ortholog (one2one or one2many), default 0.0, max 1.0",
+        help=("Minimal fraction of species with at least one ortholog "
+              " that have exactly one ortholog (one2one or one2many), default 0.0, max 1.0\n"
+              "For example, if you have 100 species, 80 of them have at least one ortholog, "
+              "(not one2zero), and 40 of them have one2one, this value equals 0.5"),
     )
     app.add_argument(
-        "--max_copies", default=1, type=int, help="Maximal number of copies allowed"
+        "--max_copies",
+        default=1,
+        type=int,
+        help=("Maximal number of gene copies allowed per species, default 1.\n"
+              "For example, if this arg equals 5, all species that have >5 orthologs "
+              "will be omitted.")
     )
     # Ariadna -> need to check whether it's a good idea
     app.add_argument(
         "--exclude_UL",
         dest="exclude_UL",
         action="store_true",
-        help="Do not consider UL projections as paralogous (NOT IMPLEMENTED YET)",
+        help="Do not consider UL projections as orthologous (NOT IMPLEMENTED YET)",
     )
 
     # if no args: print help message
