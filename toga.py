@@ -94,6 +94,8 @@ class Toga:
         self.__check_nf_config()
         # to avoid crash on filesystem without locks:
         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
+        # temporary fix for DSL error in recent NF versions
+        os.environ["NXF_DEFAULT_DSL"] = "1"  
 
         chain_basename = os.path.basename(args.chain_input)
 

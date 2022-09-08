@@ -1770,13 +1770,62 @@ def check_codon(codon):
         return codon
 
 
-def extract_codon_data(codon_table):
+def extract_codon_data(codon_table, excl_exons=None):
     """Get codon alignment."""
     t_codons = []
     q_codons = []
+    _excl_exons = excl_exons if excl_exons is not None else set()
+    prev_exon_was_del = None
+
     for codon in codon_table:
         ref_codon = codon["ref_codon"]
         que_codon = codon["que_codon"]
+        # needed if we filter D/M exons out
+        t_exon_num = codon["t_exon_num"]
+
+        # check whether we need to delete the codon or not
+        this_exon_to_del = t_exon_num in _excl_exons
+        prev_exon_to_del_this_codon_split = prev_exon_was_del and codon["split_"] > 0
+
+        if this_exon_to_del or prev_exon_to_del_this_codon_split:
+            # this codon to be deleted in query
+            if len(ref_codon) == 3:
+                ref_codon = check_codon(ref_codon)
+                t_codons.append(ref_codon)
+                q_codons.append(GAP_CODON)
+            elif len(que_codon) % 3 == 0:
+                # Frame-preserving ins
+                ref_subcodons = [check_codon(x) for x in parts(ref_codon, 3)]
+                que_subcodons = [GAP_CODON for x in range(len(ref_subcodons))]
+                t_codons.extend(ref_subcodons)
+                q_codons.extend(que_subcodons)
+            else:
+                # something strange
+                ref_int = check_codon(ref_codon[-3:])
+                t_codons.extend(ref_int)
+                q_codons.extend(GAP_CODON)
+
+            if this_exon_to_del:
+                prev_exon_was_del = True
+            else:
+                # meaning, prev_exon_to_del_this_codon_split is True
+                prev_exon_was_del = False
+            continue
+
+        if t_exon_num in _excl_exons:
+            prev_exon_was_del = True
+            if len(ref_codon) == 3:
+                ref_codon = check_codon(ref_codon)
+            continue
+
+        elif prev_exon_was_del and codon["split_"] > 0:
+            # split codon from prev exon
+            prev_exon_was_del = False
+            continue
+        # this codon is added for sure
+        prev_exon_was_del = False
+
+        # ordinary branch
         if len(ref_codon) == len(que_codon) == 3:
             # the simplest case
             ref_codon = check_codon(ref_codon)
@@ -1817,6 +1866,7 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
     )
     exon_num_corr = {}  # query exon num -> target exon nums
     aa_sat_seq = {}  # exon num -> no dels
+    chain_id_to_codon_table = {}  # chain id -> raw codon table
 
     for part in raw_data:
         # parse output
@@ -1826,9 +1876,11 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
         verbose(f"Processing query ID {chain_id}")
 
         codons_data = parse_cesar_out(target_raw, query_raw, v=VERBOSE)
+        chain_id_to_codon_table[chain_id] = codons_data
         # extract protein sequences also here, just to do it in one place
         part_pIDs, part_blosums, prot_seqs_part = compute_score(codons_data)
         prot_seqs[chain_id] = prot_seqs_part
+         # convert codon list to {"ref": [t_codons], "que": [q_codons]}
         codon_seqs_part = extract_codon_data(codons_data)
         codon_seqs[chain_id] = codon_seqs_part
         (
@@ -1883,6 +1935,7 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
         prot_seqs,
         codon_seqs,
         aa_sat_seq,
+        chain_id_to_codon_table,
     )
     return ret
 
@@ -1900,8 +1953,10 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
     cesar_raw_lines = cesar_raw_out.split("\n")
     target_seq_raw = cesar_raw_lines[1]
     query_seq_raw = cesar_raw_lines[3]
+    chain_id_to_codon_table = {} 
 
     codons_data = parse_cesar_out(target_seq_raw, query_seq_raw, v=VERBOSE)
+    chain_id_to_codon_table[FRAGMENT] = codons_data
     # extract protein sequences also here, just to do it in one place
     part_pIDs, part_blosums, prot_seqs_part = compute_score(codons_data)
     prot_seqs[FRAGMENT] = prot_seqs_part
@@ -1993,6 +2048,7 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
         prot_seqs,
         codon_seqs,
         aa_sat_seq,
+        chain_id_to_codon_table
     )
     return ret
 
@@ -2312,6 +2368,17 @@ def read_predefined_regions(arg):
     return ret
 
 
+def redo_codon_sequences(codon_tables, del_mis_exons):
+    """Rebuild codon alignments: now excluding deleted and missing exons."""
+    ret = {}
+    for chain_id, codon_table in codon_tables.items():
+        excl_exons = del_mis_exons.get(str(chain_id), set())
+        codon_seqs_upd = extract_codon_data(codon_table, excl_exons=excl_exons)
+        ret[chain_id] = codon_seqs_upd
+    return ret
+
+
+
 def realign_exons(args):
     """Entry point."""
     memlim = float(args["memlim"]) if args["memlim"] != "Auto" else None
@@ -2617,6 +2684,11 @@ def realign_exons(args):
     prot_s = proc_out[6]  # protein sequences in query
     codon_s = proc_out[7]
     aa_cesar_sat = proc_out[8]  # says whether an exon has outstanding quality
+        # raw codon table \ superset of "codon_s" basically
+    # after changes in TOGA1.1 is needed again
+    # TODO: needs refactoring
+    codon_tables = proc_out[9]  
+
     aa_eq_len = aa_eq_len_check(exon_sequences, query_exon_sequences)
 
     if chains:
@@ -2654,7 +2726,7 @@ def realign_exons(args):
     )
     verbose(f"Chain to exon to properties = {chain_to_exon_to_properties}")
     if args["check_loss"]:  # call inact mutations scanner,
-        loss_report = inact_mut_check(
+        loss_report, del_mis_exons = inact_mut_check(
             cesar_raw_out,
             v=VERBOSE,
             gene=args["gene"],
@@ -2665,6 +2737,15 @@ def realign_exons(args):
         )
     else:  # do not call inact mut scanner
         loss_report = None
+        del_mis_exons = None
+
+    # del_mis_exons contains:
+    # chain_id(string) = [0-based exon nums]
+    if del_mis_exons is not None and len(del_mis_exons.keys()) > 0:
+        # if exists, need to filter codon alignment accordingly
+        # chain id is numeric in "codon_table"
+        codon_s = redo_codon_sequences(codon_tables, del_mis_exons)
+
 
     # save protein/codon ali and text output
     save_prot(args["gene"], prot_s, args["prot_out"])

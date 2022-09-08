@@ -700,6 +700,8 @@ def classify_exons(
     exon_stat = [
         "X",
     ]  # exon status, start with 1, X - placeholder
+    del_miss_nums = []
+
     for exon_num in exon_nums:
         # 0-based to 1-based
         ex_num_ = exon_num + 1
@@ -721,6 +723,7 @@ def classify_exons(
             miss_num += 1
             exons_report.append(mut)
             exon_stat.append("M")
+            del_miss_nums.append(exon_num)
             continue
         # parse data from CESAR wrapper output
         ex_class = exon_class.get(exon_num, None)  # exon class
@@ -750,6 +753,7 @@ def classify_exons(
             # add to mut list, add new exon status
             exons_report.append(mut)
             exon_stat.append("M")
+            del_miss_nums.append(exon_num)
             continue
         elif del_ is False:
             # exon is deleted: need to write about this
@@ -767,13 +771,14 @@ def classify_exons(
             # add to mut list, append new exon status
             exons_report.append(mut)
             exon_stat.append("D")
+            del_miss_nums.append(exon_num)
             continue
         else:
             # something else -> exon is not deleted
             exon_stat.append("I")  # add I status to exon
             pass
     # return list of mutation objects + list of exon statuses
-    return exons_report, exon_stat
+    return exons_report, exon_stat, del_miss_nums
 
 
 def muts_to_text(
@@ -1305,6 +1310,7 @@ def inact_mut_check(
     out_of_b_vals = {}
     mutations = []
     ex_prop_provided = ex_prop is not None
+    del_miss_exons = {}
 
     for cesar_fraction in cesar_fractions:
         # analyze cesar fractions one-by-one
@@ -1363,7 +1369,7 @@ def inact_mut_check(
 
         # next loop -> for deleted/missed exons
         if ex_prop:  # if extra data provided by CESAR wrapper we can classify exons
-            exon_del_miss_, exon_stat_ = classify_exons(
+            exon_del_miss_, exon_stat_, dm_list = classify_exons(
                 gene,
                 q_name,
                 codon_table,
@@ -1386,12 +1392,14 @@ def inact_mut_check(
             # we don't have extra exons data
             # will just skip this part
             exon_stat = None
+            dm_list = []
             pass
 
         # big indels may be classified as inactivating mutations
         # but the bigger the exon: the bigger an indel should be
         # define the thresholds
         big_indel_thrs = infer_big_indel_thresholds(ex_lens)
+        del_miss_exons[q_name] = set(dm_list)
 
         # scan reading frame (codon table) for the rest on inact mutations
         inact_muts = scan_rf(
@@ -1450,7 +1458,7 @@ def inact_mut_check(
         middle_80_present,
         gene,
     )
-    return report
+    return report, del_miss_exons
 
 
 def main():
@@ -1460,7 +1468,7 @@ def main():
     # inact_mut_check() accepts a string containing raw CESAR output
     cesar_line = f.read()
     f.close()
-    report = inact_mut_check(
+    report, _ = inact_mut_check(
         cesar_line, u12_introns=args.u12, gene=args.gene, v=args.verbose
     )
     print(report)
