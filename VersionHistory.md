@@ -22,7 +22,7 @@ In TOGA 1.1, we now determine where the next inframe ATG codon is located that i
 * TOGA 1.0 generated bed and tab files that could be loaded as a total of 4 SQL tables to display the query annotation and provide rich information about each transcript via the TOGA handler function upon clicking on a transcript in the UCSC genome browser. TOGA 1.1 utilizes UCSC's bigBed functionality and produces a single bigBed file that contains all that information, enabling a SQL-free TOGA display. The TOGA handler function was updated to work with bigBed. The bigBed TOGA track often displays detailed information faster than the SQL version. 
 
 
-## Minor changes## 
+## Minor changes ## 
 * Longer lists of several compensating frameshifts (e.g. FS_1,2,3,4,5) could result in warnings when loading SQL tables if the string gets too long. To avoid this, we now write a condensed format FS_1-5. 
 
 * Avoiding overlapping exon annotations in fragmented query assemblies. If a gene is split into several query chains, there were rare cases where several query chains overlap in the query genome, resulting in exon annotations that overlap each other. This creates invalid bed or genePred records. In TOGA 1.1, we now classify such genes as missing and do not output a bed entry for this gene.
