@@ -6,6 +6,7 @@ Kirilenko BM, Munegowda C, Osipova E, Jebb D, Sharma V, Blumer M, Morales AE, Ah
 
 # TOGA 1.1 #
 
+
 ### Improved transcript classification ###
 * Improved handling of compensating frameshifts. If two or more frameshifts (such as +1, +1, +1) compensate each other and restore the reading frame without having a stop codon in the frame-shifted region, TOGA does not consider these frameshifts as inactivating. However, the region between these frameshifts is translated into a protein sequence that is likely entirely different from the reference proteins. We observed extreme cases where compensating frameshifts cover essentially the entire transcript, such that considering the transcript as intact is not correct. 
 In TOGA 1.1, we now consider the region between compensating frameshifts as deleted. This improves the transcript classification step. For example, the case where compensating frameshifts cover the entire transcript is now classified as lost. 

@@ -37,7 +37,7 @@ from modules.common import read_isoforms_file
 
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
+__version__ = "1.1"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
@@ -289,11 +289,14 @@ class Toga:
         # dump input parameters, object state
         self.toga_params_file = os.path.join(self.temp_wd, "toga_init_state.json")
         self.toga_args_file = os.path.join(self.wd, "project_args.json")
+        self.version_file = os.path.join(self.wd, "version.txt")
         with open(self.toga_params_file, "w") as f:
             # default=string is a workaround to serialize datetime object
             json.dump(self.__dict__, f, default=str)
         with open(self.toga_args_file, "w") as f:
             json.dump(vars(args), f, default=str)
+        with open(self.version_file, "w") as f:
+            f.write(self.version)
         print("#### TOGA initiated successfully! ####")
 
     @staticmethod
@@ -1930,11 +1933,12 @@ class Toga:
         """Get git hash if possible."""
         cmd = "git rev-parse HEAD"
         try:
-            version = subprocess.check_output(
+            git_hash = subprocess.check_output(
                 cmd, shell=True, cwd=self.toga_exe_path
             ).decode("utf-8")
         except subprocess.CalledProcessError:
-            version = "unknown"
+            git_hash = "unknown"
+        version = f"Version {__version__}\nCommit: {git_hash}\n"
         return version
 
     def __merge_split_files(self):
