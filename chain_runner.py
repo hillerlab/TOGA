@@ -560,12 +560,14 @@ def main():
     # 2) an argument: "chain ,-sep list of genes"
     batch = read_input(args.input_file)
     task_size = len(batch)
+    # TODO: check whether I don't need .bst
     # load chains dict; it would be much faster to load chain_ID: (start_byte, offset)
     # python dict once than ask HDF5 database each time TOGA needs another chain
     index_file = args.chain_file.replace(".chain", ".chain_ID_position")
     chain_dict = load_chain_dict(index_file)
 
     # call main processing tool
+    # TODO: rename genes to transcripts where appropropriate
     for job_num, (chain, genes) in enumerate(batch.items(), 1):
         # one unit: one chain + intersected genes
         # call routine that extracts chain feature

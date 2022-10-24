@@ -144,13 +144,13 @@ def read_loss_data(loss_dir):
                 perc = float(line_data[2].split()[1])
                 projection_to_p_intact_M_intact[projection_id] = perc
                 continue
-            elif line_data[2].startswith("MIDDLE_80%_INTACT"):
-                # flag: are there inact mutations in the middle 80% of CDS?
+            elif line_data[2].startswith("MIDDLE_IS_INTACT"):
+                # flag: are there inact mutations in the first 90%/mid 80% of CDS?
                 raw_val = line_data[2].split()[1]
                 val = True if raw_val == "TRUE" else False
                 proj_to_80_p_intact[projection_id] = val
                 continue
-            elif line_data[2].startswith("MIDDLE_80%_PRESENT"):
+            elif line_data[2].startswith("MIDDLE_IS_PRESENT"):
                 # flag: any missing fragment in the middle 80% if CDS?
                 raw_val = line_data[2].split()[1]
                 val = True if raw_val == "TRUE" else False
@@ -246,6 +246,7 @@ def get_projection_classes(
         p_intact_M_ign = p_to_pint_m_ign.get(projection, -1)
         p_intact_M_int = p_to_pint_m_int.get(projection, -1)
         p_i_codons = p_to_i_codon_prop.get(projection, -1)
+        # TODO: rename to NO LOSS IN FIRST 90%
         no_loss_in_80_p = p_80_int.get(projection, None)
         m_80_present = p_80_pre.get(projection, None)
         frame_oub = p_to_p_out_of_bord.get(projection, 0.0)

@@ -76,12 +76,21 @@ We will add another condition to handle TOGA tracks.
 
 Put another condition as shown here:
 
+
 ```c
-else if (startsWith("HLTOGA", table) && hTableExists(database, "TOGAData"))
-{
-    doHillerLabTOGAGene(tdb, item);
-}
+else if (startsWith("HLTOGAannot", trackHubSkipHubName(table)))
+    {
+    doHillerLabTOGAGene(database, tdb, item, table);
+    }
 ```
+
+
+[//]: # (```c)
+[//]: # (else if (startsWith("HLTOGA", table) && hTableExists(database, "TOGAData")))
+[//]: # ({)
+[//]: # (    doHillerLabTOGAGene(database, tdb, item, table);)
+[//]: # (}
+[//]: # (```)
 
 Then re-build your browser.
 
@@ -92,26 +101,18 @@ Then re-build your browser.
 ${project_dir}: directory containing TOGA results and intermediate data.
 
 ```shell
-./ucsc_browser_visualisation/make_sql_data.py ${project_dir}```
+./ucsc_browser_visualisation/make_bigbed_data_public.py ${project_dir}```
 # Wait, it will take a few minutes, most likely less than an hour
 ```
 
 #### Load tab files to browser database
 
-${tab_files_dir} = ${project_dir}/tabs
-${query} - annotated genome identifier.
-Use *.sql files located in the ucsc_browser_visualisation directory.
-Call the following commands:
+Transfer created *.bb, *.ix, and *.ixx files to the machine hosting your instance of UCSC genome browser, if need be.
+Create a table schema for bigBed tracks, using bigDataUrl field to specify the bigBed URL, and searchTrix field to specify the *.ix file URL (no need to specify *.ixx file separately, it just should be located in the same directory with the *.ix file.)
 
-```shell
-hgLoadSqlTab ${query} TOGAData togaData.sql ${tab_files_dir}/togaInfo.tab
-hgLoadSqlTab ${query} TOGANucl togaNucl.sql ${tab_files_dir}/togaNucl.tab
-hgLoadSqlTab ${query} TOGAInactMut togaInactMut.sql ${tab_files_dir}/togaInactMut.tab
+Please also specify the following fields:
 ```
-
-Also load bed file using hgLoadBed command.
-Create a track starting with HLTOGA, for instance HLTOGAannotation.
-
-```shell script
-hgLoadBed ${query} HLTOGAannotation ${project_dir}/query_annotation.bed
+type bigBed 12 +
+labelFields name
+searchIndex name
 ```

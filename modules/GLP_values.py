@@ -6,7 +6,12 @@ DEL_EXON = "Deleted exon"
 DEL_MISS = {MISS_EXON, DEL_EXON}
 COMPENSATION = "COMPENSATION"
 SSM = "SSM"
+# (ag)acceptor-EXON-donor(gt)
+SSM_D = "SSMD"  # Donor, right, GT,GC
+SSM_A = "SSMA"  # Acceptor, left, AG 
+
 START_MISSING = "START_MISSING"
+ATG = "ATG"
 FS_DEL = "FS_DEL"
 FS_INS = "FS_INS"
 BIG_DEL = "BIG_DEL"

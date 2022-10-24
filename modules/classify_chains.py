@@ -91,6 +91,7 @@ def classify_chains(
     # -> then this is a proc pseudogene
 
     # move trans chains to a different dataframe
+    # TODO: rename trans -> spanning
     # trans chain -> a syntenic chain that passes throw the gene body
     #                but has no aligning bases in the CDS
     trans_lines = df[(df["exon_cover"] == 0) & (df["synt"] > 1)]

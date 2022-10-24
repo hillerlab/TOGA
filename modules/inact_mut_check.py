@@ -124,7 +124,17 @@ def mask_mut(mut):
     return upd_mut
 
 
-def analyse_splice_sites(ref, query, gene, chain, u12_data=None, v=None):
+def analyse_splice_sites(
+    ref,
+    query,
+    gene,
+    chain,
+    codon_table,
+    atg_codons_data,
+    mask_all_first_10p=False,
+    u12_data=None,
+    v=None,
+):
     """Check correctness of the splice sites."""
     u12_data = set() if not u12_data else u12_data  # load U12 data if provided
     mut_counter = 1  # mut counter -> for mutations IDs
@@ -172,57 +182,99 @@ def analyse_splice_sites(ref, query, gene, chain, u12_data=None, v=None):
         # so we can get splice site coordinates
         # if there is N in the splice site -> we don't know what's there
         # -> we are not sure -> mask this mutation
-        left_splice_site = query[start - 2 : start]
-        left_splice_site_N = "n" in left_splice_site or "N" in left_splice_site
-        right_splice_site = query[end + 1 : end + 3]
-        right_splice_size_N = "n" in right_splice_site or "N" in right_splice_site
+        acceptor_splice_site = query[start - 2 : start]  # donor
+        acceptor_splice_site_N = (
+            "n" in acceptor_splice_site or "N" in acceptor_splice_site
+        )
+        donor_splice_site = query[end + 1 : end + 3]  # acceptor
+        donor_splice_size_N = "n" in donor_splice_site or "N" in donor_splice_site
+
+        # assign to the last / first codon of the exon (depends on what splice site is affected)
+        codon_pos_at_exon = [
+            n for n, c in enumerate(codon_table) if c["t_exon_num"] == exon_num_
+        ]
+        acceptor_codon_num = (
+            codon_pos_at_exon[0] if len(codon_pos_at_exon) > 0 else None
+        )
+        donor_codon_num = codon_pos_at_exon[-1] if len(codon_pos_at_exon) > 0 else None
 
         # check that splice sites are canonical
-        left_site_wrong = left_splice_site not in LEFT_SPLICE_CORR
-        right_site_wrong = right_splice_site not in RIGHT_SPLICE_CORR
+        acceptor_site_wrong = acceptor_splice_site not in LEFT_SPLICE_CORR
+        donor_site_wrong = donor_splice_site not in RIGHT_SPLICE_CORR
+
         eprint(
-            f"Exon {exon_num}; L_SPS: {left_splice_site}; R_SPS: {right_splice_site}"
+            f"Exon {exon_num}; L_SPS: {acceptor_splice_site}; R_SPS: {donor_splice_site}"
         ) if v else None
 
-        if exon_num != 1 and left_site_wrong:
+        # print(exon_num)
+        # print(acceptor_site_wrong)
+        # print(donor_site_wrong)
+
+        if exon_num != 1 and acceptor_site_wrong and acceptor_codon_num:
             # add mutation for left (acceptor) splice site
             # doesn't apply to the first exon obviously
             # mask this mutation if it's suspected to be U12 splice site
             mask = True if (exon_num, 0) in u12_data else False
             # if N in the splice site -> also mask it
-            mask = True if left_splice_site_N else mask
+            mask = True if acceptor_splice_site_N else mask
+
+            # if splice site mutation in first 10% but followed by ATG in first 10% then
+            atg_mask = _define_whether_mask(
+                acceptor_codon_num,
+                atg_codons_data["left_t"],
+                atg_codons_data["right_t"],
+                atg_codons_data["atg_codon_nums"],
+                mask_all_first_10p=mask_all_first_10p,
+            )
+
+            mask = True if atg_mask is True else mask
+
             # create mutation object, describe what happened
-            mut_ = f"{LEFT_SPLICE_CORR}->{left_splice_site}"
-            mut_id = f"SSM_{mut_counter}"
+            mut_ = f"{LEFT_SPLICE_CORR}->{acceptor_splice_site}"
+            mut_id = f"{SSM_A}_{mut_counter}"
+            # print(mut_id)
             mut_counter += 1
             mut = Mutation(
                 gene=gene,
                 chain=chain,
                 exon=exon_num,
-                position=0,
-                mclass=SSM,
+                position=acceptor_codon_num,
+                mclass=SSM_A,
                 mut=mut_,
                 masked=mask,
                 mut_id=mut_id,
             )
             sps_report.append(mut)  # add mutation to the list
 
-        if exon_num != exons_num and right_site_wrong:
+        if exon_num != exons_num and donor_site_wrong and donor_codon_num:
             # add mutation for right (donor) splice site
             # doesn't apply to the last exon
             # mask this mutation if it's suspected to be U12 splice site
             mask = True if (exon_num, 1) in u12_data else False
-            mask = True if right_splice_size_N else mask  # if N in mutation -> mask it
+            mask = True if donor_splice_size_N else mask  # if N in mutation -> mask it
+
+            # if splice site mutation in first 10% but followed by ATG in first 10% then
+            atg_mask = _define_whether_mask(
+                donor_codon_num,
+                atg_codons_data["left_t"],
+                atg_codons_data["right_t"],
+                atg_codons_data["atg_codon_nums"],
+                mask_all_first_10p=mask_all_first_10p,
+            )
+
+            mask = True if atg_mask is True else mask
+
             # create mutation object
-            mut_ = f"{RIGHT_SPLICE_CORR}->{right_splice_site}"
-            mut_id = f"SSM_{mut_counter}"
+            mut_ = f"{RIGHT_SPLICE_CORR}->{donor_splice_site}"
+            mut_id = f"{SSM_D}_{mut_counter}"
+            # print(mut_id)
             mut_counter += 1
             mut = Mutation(
                 gene=gene,
                 chain=chain,
                 exon=exon_num,
-                position=1,
-                mclass=SSM,
+                position=donor_codon_num,
+                mclass=SSM_D,
                 mut=mut_,
                 masked=mask,
                 mut_id=mut_id,
@@ -242,16 +294,22 @@ def analyse_splice_sites(ref, query, gene, chain, u12_data=None, v=None):
         curr = sps_report[i]
         curr_exon = curr.exon
         prev_exon = prev.exon
+
         if curr_exon != prev_exon + 1:
             # if current exon doesn't follow the previous immediately -> not the case
             # like prev mut exon is 3 and current is 6
             continue
+
         # if exons follow each other (like 3 and 4) then continue
         curr_pos = curr.position
         prev_pos = prev.position
+        curr_type = curr.mclass
+        prev_type = curr.mclass
+
         # they must belong to the same intron, check this
-        if not (curr_pos == 0 and prev_pos == 1):
+        if not (prev_type == SSM_D and curr_type == SSM_A):
             continue
+
         prev_to_what = prev.mut.split("->")[1]
         curr_to_what = curr.mut.split("->")[1]
         # if it was -- in both cases: this is intron deletion
@@ -323,15 +381,78 @@ def corr_exon_num_or_no_fs(codon, exon_num):
         return exon_num
 
 
+def _find_atg_codons(codon_table):
+    """Find reference codons aligned to ATG."""
+    atg_codon_nums = []
+    for num, codon in enumerate(codon_table, 1):
+        que_codon = codon["que_codon"]
+        que_codon_no_gap = que_codon.replace("-", "")
+        if not que_codon_no_gap:
+            # there are only gaps -> nothing to catch
+            continue
+        triplets = parts(que_codon_no_gap, n=3)
+        start_triplets = [x for x in triplets if x == "ATG"]
+        if len(start_triplets) > 0:
+            atg_codon_nums.append(num)
+    return atg_codon_nums
+
+
+def _get_next_bigger_num(num, lst):
+    for elem in lst:
+        if elem >= num:
+            return elem
+    return 999999999  # TODO: ideally, last codon position
+
+
+def _define_whether_mask(
+    num, left_t, right_t, atg_codon_nums, mask_all_first_10p=False
+):
+    """Check whether the mutation is going to be masked due to first/last 10% or not."""
+    # TODO: optimise this part, the only ATG position needed is the closest to 10%
+    # which is not above 10%, that's it.
+    if num >= right_t:
+        return True
+    elif left_t < num < right_t:
+        return False
+    if num <= left_t and mask_all_first_10p is True:
+        # automatically mask mut in first 10%
+        # don't account for ATG codons distribution
+        return True
+    # num in first 10%, need to find the next start
+    next_atg_pos = _get_next_bigger_num(num, atg_codon_nums)
+    return next_atg_pos <= left_t
+
+
+def make_atg_data(codon_table):
+    codons_num = len(codon_table)
+
+    # get first or last 10% if CDS: mask mutations in this region:
+    perc_10 = codons_num // 10
+    left_t = perc_10
+    right_t = codons_num - perc_10
+
+    atg_codon_nums = _find_atg_codons(codon_table)
+
+    # TODO: refactor this
+    atg_codon_nums_data = {
+        "left_t": left_t,
+        "right_t": right_t,
+        "atg_codon_nums": atg_codon_nums,
+    }
+    return atg_codon_nums_data
+
+
 def scan_rf(
     codon_table,
     gene,
     chain,
+    atg_codon_nums_data,
     exon_stat=None,
     v=False,
     big_indel_thrs=None,
     sec_codons=None,
     no_fpi=False,
+    mask_all_first_10p=False,
 ):
     """Scan codon table for inactivating mutations."""
     # sec_codons -> selenocysteine-coding codons in reference
@@ -339,13 +460,9 @@ def scan_rf(
     codons_num = len(codon_table)
     in_mut_report = []  # save mutations here
 
-    # get first or last 10% if CDS: mask mutations in this region:
-    perc_10 = codons_num // 10
-    left_t = perc_10
-    right_t = codons_num - perc_10
-
     # init mutation counters: for IDs
     mut_number_stop = 1
+    mut_number_atg = 1  # not inact, but need to track
     mut_number_fs = 1
     mut_number_big_indel = 1
     q_dels_in_a_row = 0  # number of deletions in a row: for big indel detection
@@ -353,7 +470,14 @@ def scan_rf(
     for num, codon in enumerate(codon_table, 1):
         # go codon-by-codon
         # if in first/last 10%: it will be masked
-        mask = True if num <= left_t or num >= right_t else False
+        # mask = True if num <= left_t or num >= right_t else False
+        mask = _define_whether_mask(
+            num,
+            atg_codon_nums_data["left_t"],
+            atg_codon_nums_data["right_t"],
+            atg_codon_nums_data["atg_codon_nums"],
+            mask_all_first_10p=mask_all_first_10p,
+        )
         # determine whether it's the first or last exon:
         last_codon = True if num == codons_num else False
         first_codon = True if num == 1 else False
@@ -407,7 +531,10 @@ def scan_rf(
                 position=1,
                 mclass=START_MISSING,
                 mut=que_codon_,
-                masked=mask,
+                # this mutation should not affect the classification
+                # so it's always masked, but saved to indicate that
+                # 1st ATG is missing:
+                masked=True,
                 mut_id=mut_id,
             )
             in_mut_report.append(mut)
@@ -487,6 +614,8 @@ def scan_rf(
         # need to split query sequence in triplets
         # check that any of them is a stop-codon
         stop_triplets = [x for x in triplets if x in STOPS]
+        start_triplets = [x for x in triplets if x == "ATG"]
+
         if len(stop_triplets) > 0 and not last_codon:
             # we have premature stop codon
             mut_ = f"{ref_codon.replace('-', '')}->{stop_triplets[0]}"
@@ -532,6 +661,27 @@ def scan_rf(
             if v:
                 eprint("Detected STOP")
                 eprint(codon)
+        if len(start_triplets) > 0:
+            # not an inactivating mutation but needs to be saved
+            mut_ = f"{ref_codon.replace('-', '')}->ATG"
+            mclass = ATG
+            mut_id = f"ATG_{mut_number_atg}"
+            st_ex_num = ex_num
+            mut_number_atg += 1
+            mut = Mutation(
+                gene=gene,
+                chain=chain,
+                exon=st_ex_num,
+                position=num,
+                mclass=mclass,
+                mut=mut_,
+                masked=True,
+                mut_id=mut_id,
+            )
+            in_mut_report.append(mut)
+            if v:
+                eprint("Detected ATG (non-inactivating)")
+                eprint(codon)
     # I can infer number of codons in each exon directly from codon table
     return in_mut_report
 
@@ -550,7 +700,7 @@ def detect_compensations(inact_mut, codon_table):
     fs_num = len(fs)
     if fs_num <= 1:
         # need at least 2 frameshifs, otherwise there is nothing to compensate
-        return answer
+        return answer, []
     # first iteration: detect potential compensatory events, based only
     # on their sizes
     potent_compensations = []
@@ -583,10 +733,12 @@ def detect_compensations(inact_mut, codon_table):
                 potent_compensations.append(fs_ids)
                 break
     if len(potent_compensations) == 0:
-        return []  # no potential compensations, skip this
+        return [], []  # no potential compensations, skip this
 
     # verify potential compensations, check for stop codons in alt frame
     what_is_compensated = set()  # to avoid twice compensated FS
+    alt_frame_codons = []  # lenghts of codons in alt frame
+
     for comp in potent_compensations:
         # comp -> a list of potentially compensated FS IDs
         if len(what_is_compensated.intersection(comp)) > 0:
@@ -610,7 +762,7 @@ def detect_compensations(inact_mut, codon_table):
         # add compensation track
         # no stop codons
         # to create a mut object we need gene name, chain id, exon num etc
-        # I just use the first mut in the row for that (ethalon)
+        alt_frame_codons.append((start_pos - 1, end_pos))
         ethalon_mut = comp_muts[0]
         gene = ethalon_mut.gene
         chain = ethalon_mut.chain
@@ -620,7 +772,11 @@ def detect_compensations(inact_mut, codon_table):
         mut_id = f"C_{m_counter}"
         # mutation -> comma-separated list of compensated mutation IDs
         fs_ids = [x.split("_")[1] for x in comp]
-        mut = "FS_{}".format(",".join(fs_ids))
+        # mut = "FS_{}".format(",".join(fs_ids))
+        # changed format FEB 2022: FS_{start_num}-{end_num}
+        # just a comma-separated list can be too long
+        _ids_range = f"{fs_ids[0]}-{fs_ids[-1]}"
+        mut = f"FS_{_ids_range}"
         comp_mut = Mutation(
             gene=gene,
             chain=chain,
@@ -632,11 +788,12 @@ def detect_compensations(inact_mut, codon_table):
             mut_id=mut_id,
         )
         answer.append(comp_mut)
+        # calculieren positions of first and last alt frame codons
         for c in comp:  # add compensated muts to comp muts set
             # to avoid adding comp mutations twice
             what_is_compensated.add(c)
         m_counter += 1
-    return answer
+    return answer, alt_frame_codons
 
 
 def mask_compensated_fs(mut_list):
@@ -648,7 +805,11 @@ def mask_compensated_fs(mut_list):
     comp_fs_ids = []  # there are compensatory events
     for cmp in comp_muts:
         # get list of comp FS IDs
-        fs_nums = cmp.mut.split("_")[1].split(",")
+        # fs_nums = cmp.mut.split("_")[1].split(",")
+        comp_ids_range_str = cmp.mut.split("_")[1].split("-")
+        _comp_start = int(comp_ids_range_str[0])
+        _comp_end = int(comp_ids_range_str[1])
+        fs_nums = list(range(_comp_start, _comp_end + 1))
         fs_ids = [f"FS_{x}" for x in fs_nums]
         comp_fs_ids.extend(fs_ids)
     comp_fs_ids = set(comp_fs_ids)
@@ -680,6 +841,13 @@ def compute_percent_id(seq_1, seq_2):
     return pid
 
 
+def _get_last_codon_for_each_exon(codon_table):
+    ret = {}
+    for num, elem in enumerate(codon_table, 1):
+        ret[elem["t_exon_num"] + 1] = num
+    return ret
+
+
 def classify_exons(
     gene,
     que,
@@ -690,16 +858,20 @@ def classify_exons(
     exon_blosum,
     missing_exons,
     ex_inc,
+    atg_codons_data,
+    mask_all_first_10p=False,
     v=False,
 ):
     """Classify exons as intact, deleted and missing."""
     del_num, miss_num = 1, 1  # counters for mutation IDs
     # get a list of exon numbers:
     exon_nums = list(range(codon_table[-1]["t_exon_num"] + 1))
+    exon_to_last_codon_of_exon = _get_last_codon_for_each_exon(codon_table)
     exons_report = []  # save data heve
     exon_stat = [
         "X",
     ]  # exon status, start with 1, X - placeholder
+
     del_miss_nums = []
 
     for exon_num in exon_nums:
@@ -734,7 +906,7 @@ def classify_exons(
         # classify whether it's deleted or not:
         # print(f"Exon {exon_num} classification with the following params: ") if v else None
         # print(ex_class, exon_excl, ex_pid, ex_blosum) if v else None
-        del_, q = classify_exon(ex_class, exon_excl, ex_pid, ex_blosum, v=v)
+        ex_non_del, q = classify_exon(ex_class, exon_excl, ex_pid, ex_blosum, v=v)
         # print(f"Results are: {del_} {q}") if v else None
 
         if ex_class == "M" or ex_gap:
@@ -755,8 +927,18 @@ def classify_exons(
             exon_stat.append("M")
             del_miss_nums.append(exon_num)
             continue
-        elif del_ is False:
+        elif ex_non_del is False:
             # exon is deleted: need to write about this
+            last_codon_num = exon_to_last_codon_of_exon.get(ex_num_, 0)
+
+            atg_mask = _define_whether_mask(
+                last_codon_num,
+                atg_codons_data["left_t"],
+                atg_codons_data["right_t"],
+                atg_codons_data["atg_codon_nums"],
+                mask_all_first_10p=mask_all_first_10p,
+            )
+
             mut = Mutation(
                 gene=gene,
                 chain=que,
@@ -764,7 +946,7 @@ def classify_exons(
                 position=0,
                 mut="-",
                 mclass=DEL_EXON,
-                masked=False,
+                masked=atg_mask,
                 mut_id=f"DEL_{del_num}",
             )
             del_num += 1
@@ -817,11 +999,11 @@ def muts_to_text(
         strings.append(out_of_ch_line)
     for q, val in m_80_i.items():
         val_str = "TRUE" if val is True else "FALSE"
-        m_80_line = f"# {gene}\t{q}\tMIDDLE_80%_INTACT {val_str}"
+        m_80_line = f"# {gene}\t{q}\tMIDDLE_IS_INTACT {val_str}"
         strings.append(m_80_line)
     for q, val in m_80_p.items():
         val_str = "TRUE" if val is True else "FALSE"
-        m_80_line = f"# {gene}\t{q}\tMIDDLE_80%_PRESENT {val_str}"
+        m_80_line = f"# {gene}\t{q}\tMIDDLE_IS_PRESENT {val_str}"
         strings.append(m_80_line)
     return "\n".join(strings) + "\n"
 
@@ -836,7 +1018,15 @@ def get_exon_num_corr(codons_data):
     return ans
 
 
-def compute_intact_perc(codon_table, mutations, q_name, v=False):
+def compute_intact_perc(
+    codon_table,
+    mutations,
+    q_name,
+    alt_frame_ranges,
+    alt_f_del=False,
+    v=False,
+    mask_all_first_10p=False,
+):
     """Compute intact %ID-related features."""
     # compute per query
     query_muts = [m for m in mutations if m.chain == q_name]
@@ -855,12 +1045,22 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
     del_codon_nums = [
         n for n, c in enumerate(codon_table) if c["t_exon_num"] in del_exons
     ]
+    # read codons in alt frame as deleted
+
     safe_del_codon_nums = [
         n for n, c in enumerate(codon_table) if c["t_exon_num"] in safe_del_exons
     ]
     miss_codon_nums = [
         n for n, c in enumerate(codon_table) if c["t_exon_num"] in miss_exons
     ]
+
+    if alt_f_del is True:
+        # if so, we consider codons in alternative frame deleted
+        # alt frame -> between compensated frameshifts
+        for elem in alt_frame_ranges:
+            s_, e_ = elem
+            for codon_num in range(s_, e_):
+                safe_del_codon_nums.append(codon_num)
 
     # update codons status -> what is Missing, Deleted or Lost (not-safely deleted exons)
     for del_codon in del_codon_nums:
@@ -871,9 +1071,26 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
         codon_status[miss_codon] = "M"
 
     # get IDs of compensated FS
-    compensations = [m.mut for m in query_muts if m.mclass == COMPENSATION]
-    comp_nums = ",".join([c.split("_")[1] for c in compensations]).split(",")
-    comp_fs = {f"FS_{c}" for c in comp_nums}
+    compensations = [m for m in query_muts if m.mclass == COMPENSATION]
+    comp_fs = []  # list to keep compensated frameshifts
+    for comp in compensations:
+        comp_field = comp.mut
+        comp_ids_range_str = comp_field.split("_")[1].split("-")
+        # # fmt: FS_{start}-{end}
+        _comp_start = int(comp_ids_range_str[0])
+        _comp_end = int(comp_ids_range_str[1])
+        comp_ids = list(range(_comp_start, _comp_end + 1))
+        comp_fs_strings = [f"FS_{i}" for i in comp_ids]
+        comp_fs.append(comp_fs_strings)
+
+    # comp_nums = ",".join([c.split("_")[1] for c in compensations]).split(",")
+    # comp_ids_range_str = comp_field.split("_")[1].split("-")
+    # # fmt: FS_{start}-{end}
+    # _comp_start = int(comp_ids_range_str[0])
+    # _comp_end = int(comp_ids_range_str[1])
+    # comp_ids = list(range(_comp_start, _comp_end + 1))
+    # comp_pairs = get_comp_pairs(comp_ids)
+    # comp_fs = {f"FS_{c}" for c in comp_nums}
 
     # put inactivating mutations coordinates in codon status table
     for m in query_muts:
@@ -890,7 +1107,7 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
             continue
         elif m.masked is True:
             continue
-        elif m.mclass == SSM:
+        elif m.mclass == SSM_A or m.mclass == SSM_D:
             # deal with splice site mutations
             if m.masked is True:
                 # U12 or N-containing splice site -> do not consider
@@ -972,8 +1189,14 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
     ten_perc = gene_len // 10
     # cut middle 80% codons states:
     middle = codon_status_string[ten_perc:-ten_perc]
-    middle_80_intact = False if "L" in middle else True
-    middle_80_present = False if "M" in middle else True
+    first_90 = codon_status_string[:-ten_perc]
+
+    if mask_all_first_10p is True:
+        middle_is_intact = False if "L" in middle else True
+    else:
+        middle_is_intact = False if "L" in first_90 else True
+    middle_is_present = False if "M" in middle else True
+
     # compute non-missing sequence
     not_m = len(codon_status) - codon_status.count("M")
     if not_m > 0:  # beware of zero division error
@@ -985,8 +1208,9 @@ def compute_intact_perc(codon_table, mutations, q_name, v=False):
         p_intact_ignore_m,
         p_intact_intact_m,
         num_of_I_codons,
-        middle_80_intact,
-        middle_80_present,
+        middle_is_intact,
+        # first_90_intact,
+        middle_is_present,
     )
 
 
@@ -1198,13 +1422,17 @@ def get_exon_pairs(exon_stat):
     return pairs
 
 
-def detect_split_stops(codon_table, gene, q_name, exon_stat):
+def detect_split_stops(
+    codon_table, gene, q_name, exon_stat, atg_codons_data, mask_all_first_10p=False
+):
     """Considering all exon deletions find all split stop codons."""
     # we need to get pairs of intact (not deleted or missing) exons
     # between what there is a row of Deleted exons (but not missing)
     # if there is a missing exon in between -> do not make any conclusions
     # split stop codons may occur between these pairs
     i_exon_pairs = get_exon_pairs(exon_stat)
+    exon_to_last_codon_of_exon = _get_last_codon_for_each_exon(codon_table)
+
     if len(i_exon_pairs) == 0:
         # no such pairs -> no way to detect split stop
         return []  # return nothing
@@ -1212,6 +1440,7 @@ def detect_split_stops(codon_table, gene, q_name, exon_stat):
     mut_num = 1
     muts = []
     for pair in i_exon_pairs:
+        # those are 1-based
         first_exon = pair[0]
         second_exon = pair[1]
         # in codon table numbers are 0-based, so correct
@@ -1248,14 +1477,23 @@ def detect_split_stops(codon_table, gene, q_name, exon_stat):
         # ex_num = second_exon if s_part_len > f_part_len else first_exon
         mut_id = f"SP_STOP_{mut_num}"
         mut_num += 1
+        position = exon_to_last_codon_of_exon[first_exon]
+        atg_mask = _define_whether_mask(
+            position,
+            atg_codons_data["left_t"],
+            atg_codons_data["right_t"],
+            atg_codons_data["atg_codon_nums"],
+            mask_all_first_10p=mask_all_first_10p,
+        )
+
         mut = Mutation(
             gene=gene,
             chain=q_name,
             exon=second_exon,
-            position=0,
+            position=position,
             mclass=STOP,
             mut=mut_,
-            masked=False,
+            masked=atg_mask,
             mut_id=mut_id,
         )
         muts.append(mut)
@@ -1285,6 +1523,8 @@ def inact_mut_check(
     ref_ss=None,
     sec_codons=None,
     no_fpi=False,
+    alt_f_del=False,
+    mask_all_first_10p=False,  # mask all inact mutations in 1st 10% regardless on ATGs
 ):
     """Detect inactivating mutations in the CESAR output."""
     # read cesar output
@@ -1304,12 +1544,11 @@ def inact_mut_check(
     # initiate lists/ dicts for them
     p_intact_ignore_M = {}
     p_intact_intact_M = {}
-    middle_80_intact = {}
-    middle_80_present = {}
+    middle_is_intact = {}
+    middle_is_present = {}
     i_codons_prop = {}
     out_of_b_vals = {}
     mutations = []
-    ex_prop_provided = ex_prop is not None
     del_miss_exons = {}
 
     for cesar_fraction in cesar_fractions:
@@ -1354,21 +1593,15 @@ def inact_mut_check(
             #     err_msg = f"Cannot find CESAR wrapper features for query {q_name}"
             #     raise ValueError(err_msg)
 
-        # now we extract inactivation mutations
-        # then add them to fraction_mutations list
-
-        # extract splice site mutations
-        sps_mutations = analyse_splice_sites(
-            ref, query, gene, q_name, u12_introns_data, v=v
-        )
-        fraction_mutations.extend(sps_mutations)
-        # create codon table to extract other mutations
+        #  create codon table to extract mutations
         # codon table: list of objects, describing a codon
         # such as sequence in reference and query, exon number and so on
         codon_table = parse_cesar_out(ref, query)
+        atg_codons_data = make_atg_data(codon_table)
 
-        # next loop -> for deleted/missed exons
+                # next loop -> for deleted/missed exons
         if ex_prop:  # if extra data provided by CESAR wrapper we can classify exons
+            # dm list -> list of 0-based exon nums which are del or missing
             exon_del_miss_, exon_stat_, dm_list = classify_exons(
                 gene,
                 q_name,
@@ -1379,6 +1612,8 @@ def inact_mut_check(
                 exon_blosum,
                 missing_exons,
                 ex_inc,
+                atg_codons_data,
+                mask_all_first_10p=mask_all_first_10p,
                 v=v,
             )
             # get lists of deleted/missing exons
@@ -1398,32 +1633,59 @@ def inact_mut_check(
         # big indels may be classified as inactivating mutations
         # but the bigger the exon: the bigger an indel should be
         # define the thresholds
-        big_indel_thrs = infer_big_indel_thresholds(ex_lens)
         del_miss_exons[q_name] = set(dm_list)
+        big_indel_thrs = infer_big_indel_thresholds(ex_lens)
 
         # scan reading frame (codon table) for the rest on inact mutations
         inact_muts = scan_rf(
             codon_table,
             gene,
             q_name,
+            atg_codons_data,
             exon_stat=exon_stat,
             v=v,
             big_indel_thrs=big_indel_thrs,
             sec_codons=sec_codons,
             no_fpi=no_fpi,
+            mask_all_first_10p=mask_all_first_10p,
         )
         # save this data
         fraction_mutations.extend(inact_muts)
+
+        # now we extract inactivation mutations
+        # then add them to fraction_mutations list
+        # extract splice site mutations
+        sps_mutations = analyse_splice_sites(
+            ref,
+            query,
+            gene,
+            q_name,
+            codon_table,
+            atg_codons_data,
+            mask_all_first_10p,
+            u12_introns_data,
+            v=v,
+        )
+        fraction_mutations.extend(sps_mutations)
+
+
 
         # get a list of split stop codons: stop codons that appear after exon deletions
         # such as:
         # GCAAACGCAGCt-------------[DELETED EXON]-------agTCCCATTTCCAACTGATC
         # exon deletion raises an inframe stop codon: t + ag
-        split_stop_codons = detect_split_stops(codon_table, gene, q_name, exon_stat)
+        split_stop_codons = detect_split_stops(
+            codon_table,
+            gene,
+            q_name,
+            exon_stat,
+            atg_codons_data,
+            mask_all_first_10p=mask_all_first_10p,
+        )
         fraction_mutations.extend(split_stop_codons)
 
         # detect compensated frameshifts
-        compensations = detect_compensations(inact_muts, codon_table)
+        compensations, alt_frame_ranges = detect_compensations(inact_muts, codon_table)
         fraction_mutations.extend(compensations)
         # also mask compensated frameshifts:
         fraction_mutations = mask_compensated_fs(fraction_mutations)
@@ -1434,13 +1696,19 @@ def inact_mut_check(
 
         # extract and save %intact-related features
         pintact_features = compute_intact_perc(
-            codon_table, fraction_mutations, q_name, v=v
+            codon_table,
+            fraction_mutations,
+            q_name,
+            alt_frame_ranges,
+            alt_f_del=alt_f_del,
+            v=v,
+            mask_all_first_10p=mask_all_first_10p,
         )
         p_intact_ignore_M[q_name] = pintact_features[0]
         p_intact_intact_M[q_name] = pintact_features[1]
         i_codons_prop[q_name] = pintact_features[2]
-        middle_80_intact[q_name] = pintact_features[3]
-        middle_80_present[q_name] = pintact_features[4]
+        middle_is_intact[q_name] = pintact_features[3]
+        middle_is_present[q_name] = pintact_features[4]
 
         # compute %of gene that lies outside chain borders
         out_of_borders_prop = get_out_of_borders_prop(codon_table, missing_exons)
@@ -1454,8 +1722,8 @@ def inact_mut_check(
         p_intact_intact_M,
         i_codons_prop,
         out_of_b_vals,
-        middle_80_intact,
-        middle_80_present,
+        middle_is_intact,
+        middle_is_present,
         gene,
     )
     return report, del_miss_exons

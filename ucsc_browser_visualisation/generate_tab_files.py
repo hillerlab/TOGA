@@ -16,8 +16,8 @@ INACT_FEATS = [
     "INTACT_PERC_INTACT_M",
     "INTACT_CODONS_PROP",
     "OUT_OF_CHAIN_PROP",
-    "MIDDLE_80%_INTACT",
-    "MIDDLE_80%_PRESENT",
+    "MIDDLE_IS_INTACT",
+    "MIDDLE_IS_PRESENT",
 ]
 # for assembled from fragments: we cannot get chain class features
 FRAGM_FEATS = (0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -61,6 +61,11 @@ def parse_args():
               "data from default output fasta files. Will be "
               "the default behaviour in the future"),
     )
+    app.add_argument("--no_plots",
+                    "--np",
+                    dest="no_plots",
+                    action="store_true",
+                    help="If inactivating mutation plots are already generated, do not recreate them")
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -449,7 +454,7 @@ def get_seq_data_from_fasta(wd, all_projections):
     return [], projection_to_prot_ali, projection_to_codon_ali
 
 
-def get_sequence_data(wd, all_projections):
+def get_sequence_data(wd, all_projections, exon_to_stat):
     """Parse nucleotide and protein sequence data."""
     print("Reading sequence data")
     gigafasta = os.path.join(wd, TEMP, CESAR_RESULTS)
@@ -525,6 +530,7 @@ def get_sequence_data(wd, all_projections):
                 ali_class = header_data[7]
                 exp_range = header_data[8]
                 in_exp = ONE_S if header_data[9] == "INC" else ZERO_S
+                is_del_or_no = exon_to_stat.get(exon_id, "I")
                 exon_data = (
                     location,
                     pid,
@@ -533,6 +539,7 @@ def get_sequence_data(wd, all_projections):
                     ali_class,
                     exp_range,
                     in_exp,
+                    is_del_or_no,  # added 26 Aug 2022
                     sequence,
                 )
                 query_exon_to_nucl_data[exon_id] = exon_data
@@ -604,6 +611,7 @@ def get_inact_data(wd, all_projections):
     projection_to_inact_muts = []
     proj_to_inact_features = defaultdict(dict)
     proj_to_inact_features_rows = []
+    exon_to_del_miss = {}
     f = open(inact_mut_file, "r")
     for line in f:
         if not line.startswith("#"):
@@ -614,25 +622,35 @@ def get_inact_data(wd, all_projections):
         projection = f"{trans}.{chain}"
         if projection not in all_projections:
             continue
+
         if len(line_data) == 8:
             # inactivating mutation data
+
+            # IF Deleted exon OR Missing exon -> also save the data
+            # needed in exon ali visualizations
             mask_field = line_data[6]
             is_inact = ZERO_S if mask_field == "masked" else ONE_S
             line_data[6] = is_inact
+            mut_trimmed = line_data[5][:20]
+            line_data[5] = mut_trimmed
             mut_track = line_data[2:]
             sql_row = (projection, *mut_track)
             projection_to_inact_muts.append(sql_row)
+            if line_data[4] == "Deleted exon":
+                exon_to_del_miss[(projection, int(line_data[2]))] = "D"
+            elif line_data[4] == "Missing exon":
+                exon_to_del_miss[(projection, int(line_data[2]))] = "M"
             continue
         else:
             # features
             feat, val_ = line_data[2].split()
             # boolean features to num (for SQL table)
-            if feat == "MIDDLE_80%_PRESENT":
+            if feat == "MIDDLE_IS_PRESENT":
                 if val_ == "TRUE":
                     val = ONE_S
                 else:
                     val = ZERO_S
-            elif feat == "MIDDLE_80%_INTACT":
+            elif feat == "MIDDLE_IS_INTACT":
                 if val_ == "TRUE":
                     val = ONE_S
                 else:
@@ -657,7 +675,7 @@ def get_inact_data(wd, all_projections):
             vals.append(val)
         sql_row = (proj, *vals)
         proj_to_inact_features_rows.append(sql_row)
-    return proj_to_inact_features_rows, projection_to_inact_muts
+    return proj_to_inact_features_rows, projection_to_inact_muts, exon_to_del_miss
 
 
 def save_toga_inact_mut_tab(out_dir, inact_mut_data):
@@ -694,16 +712,17 @@ def main():
     proj_to_chain_score = get_chain_scores(args.wd, all_projections)
     proj_to_chain_features = get_chain_features(args.wd, all_projections)
     projection_to_loss_class = get_projection_class(args.wd)
+    proj_to_inact_feat, proj_to_inact_mut, exon_to_stat = get_inact_data(args.wd, all_projections)
+
     if args.no_raw_cesar_output:
         raise NotImplementedError("Cancelled branch")
         seq_data = get_seq_data_from_fasta(args.wd, all_projections)
         exit()
     else:
-        seq_data = get_sequence_data(args.wd, all_projections)
+        seq_data = get_sequence_data(args.wd, all_projections, exon_to_stat)
     projection_exon_data = seq_data[0]
     projection_to_prot_ali = seq_data[1]
     projection_to_codon_ali = seq_data[2]
-    proj_to_inact_feat, proj_to_inact_mut = get_inact_data(args.wd, all_projections)
     save_toga_info_tab(
         args.output,
         all_projections,

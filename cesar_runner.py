@@ -12,6 +12,9 @@ __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 MAX_ATTEMPTS = 2
+ZERO_CODE = 0
+ERR_CODE = 1
+FRAGM_CHAIN_ISSUE_CODE = 2
 
 
 def parse_args():
@@ -23,6 +26,7 @@ def parse_args():
         "--check_loss", default=None, help="File to save gene loss data if requested"
     )
     app.add_argument("--rejected_log", default=None, help="Log gene rejection events")
+    app.add_argument("--unproc_log", "--ul", default=None, help="Log unprocessed genes")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -43,13 +47,22 @@ def call_job(cmd):
         rc = p.returncode
         cmd_out = b_stdout.decode("utf-8")
         err_msg = b_stderr.decode("utf-8").replace("\n", " ")
-        if rc == 0:
-            return cmd_out, 0
+        if rc == ZERO_CODE:
+            return cmd_out, ZERO_CODE
+        elif rc == FRAGM_CHAIN_ISSUE_CODE:
+            err_msg = f"CESAR_wrapper.py detected that fragments overlap for {cmd}, abort"
+            return err_msg, FRAGM_CHAIN_ISSUE_CODE
         else:
             eprint(err_msg)
             eprint(f"\n{cmd} FAILED")
             attempts += 1
-    return err_msg, 1  # send failure signal
+    return err_msg, ERR_CODE  # send failure signal
+
+
+def __job_to_transcript(job):
+    """Extract transcript ID from job."""
+    fields = job.split()
+    return fields[1]
 
 
 def main():
@@ -60,6 +73,7 @@ def main():
         # text file, a command per line
         jobs = [x.rstrip() for x in f.readlines()]
     jobs_num = len(jobs)
+    unprocessed_genes = []
 
     out = open(args.output, "w")  # handle output file
     gene_loss_data = []  # list to keep gene loss detector out
@@ -69,6 +83,12 @@ def main():
         eprint(f"Calling:\n{job}")
         # catch job stdout
         job_out, rc = call_job(job)
+        if rc == FRAGM_CHAIN_ISSUE_CODE:
+            # very special case -> nothig we can do
+            # mark as missnig, I guess
+            rejected.append(f"{job}\tfragment chains oevrlap\n")
+            unprocessed_genes.append(__job_to_transcript(job))
+            continue
         if rc == 1:
             # a job failed with code 1 -> send the signal upstream
             # abort execution, write what job exactly failed
@@ -136,6 +156,11 @@ def main():
         f.write("".join(rejected))
         f.close()
 
+    if args.unproc_log and len(unprocessed_genes) > 0:
+        f = open(args.unproc_log, "w")
+        for elem in unprocessed_genes:
+            f.write(f"{elem}\n")
+        f.close()
 
 if __name__ == "__main__":
     main()

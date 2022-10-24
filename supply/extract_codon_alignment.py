@@ -27,7 +27,6 @@ __version__ = "0.2.6"
 # actually, it was nearly random CESAR alignment for this exon
 # v2.2 fixed a bug: wrong handling of completely deleted exons
 
-
 SEQ_NUMBER_LIMIT = 1500
 CESAR_RESULTS_FILE = "cesar_results.txt"
 EXON_SEQ_CLASSES = {"query_exon", "reference_exon"}
@@ -216,6 +215,22 @@ def parse_args():
         dest="exclude_UL",
         action="store_true",
         help="Do not consider UL projections as orthologous (NOT IMPLEMENTED YET)",
+    )
+    app.add_argument(
+        "--force_repair",
+        "--fr",
+        dest="force_repair",
+        action="store_true",
+        help=("Force repair missing parts of the alignment. "
+              "Please use in case the script continuously fails to produce "
+              "the result. Can be needed in case of massive alignments with "
+              "abundant missing/corrupted sequence.")
+    )
+    app.add_argument(
+        "--save_aligner_commands",
+        default=None,
+        help="Save a sequence of MACSE commands to the specified location. "
+             "Temporary files will not be deleted!"
     )
 
     # if no args: print help message
@@ -610,13 +625,16 @@ def macse_alignment(in_fasta, temp_dir, macse_caller, v=False):
         )
         cmd = f"{macse_caller} -prog alignSequences -seq {STDIN} -out_NT {out_file} -out_AA {to_del_file}"
         if v:
-            print_stderr("Aligning:")
-            print_stderr(in_fasta)
+            print_stderr("Calling:\n")
+            print_stderr(cmd)
+            # print_stderr("Aligning:")
+            # print_stderr(in_fasta)
         p = subprocess.Popen(cmd, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
         _, stderr_ = p.communicate(input=in_fasta.encode())
         rc = p.returncode
         if rc != 0:  # MACSE crashed
             print_stderr("# Error! Macse CRASHED")
+            # print_stderr(f"Input file: {in_fasta}")
             err_msg = stderr_.decode(UTF_8)
             print_stderr(err_msg)
             sys.exit(1)
@@ -742,19 +760,20 @@ def split_into_exons(sp_to_codon_alis, codon_to_exon, codon_to_seq, debug=False)
     ret = {}
     ali_id_to_seqs = defaultdict(dict)
     codon_tot_num_ = len(codon_to_exon)
-    if debug:
-        print_stderr("Codon to exon_dict")
-        print_stderr(codon_to_exon)
-        print_stderr(f"In total {codon_tot_num_} codons")
+    # if debug:
+        # TODO: add to level 2 verbosity
+        # print_stderr("Codon to exon_dict")
+        # print_stderr(codon_to_exon)
+        # print_stderr(f"In total {codon_tot_num_} codons")
 
-        print_stderr(f"Codon sequences:\n{codon_to_seq}")
+        # print_stderr(f"Codon sequences:\n{codon_to_seq}")
     for seq_id, seq in sp_to_codon_alis.items():
         sp, proj_id, is_ref = seq_id
         key_ = (sp, proj_id)
         ali_id_to_seqs[key_][is_ref] = seq
 
     for k, v in ali_id_to_seqs.items():
-        print_stderr(f"processing {k}") if debug else None
+        # print_stderr(f"processing {k}") if debug else None
         ref_codons = v[True].split()
         que_codons = v[False].split()
         codon_num = len(ref_codons)
@@ -767,13 +786,13 @@ def split_into_exons(sp_to_codon_alis, codon_to_exon, codon_to_seq, debug=False)
         for i_num, (r_c, q_c) in enumerate(zip(ref_codons, que_codons)):
             exon_num = codon_to_exon[ref_codon_num]
             debug_line = f"{k}: extracting codon {ref_codon_num} out of {codon_tot_num_} | exon {exon_num}"
-            print_stderr(debug_line) if debug else None
+            # print_stderr(debug_line) if debug else None
 
             expected_ref_codon = codon_to_seq[ref_codon_num]
             debug_line = (
                 f"{r_c} -> {expected_ref_codon} {q_c} {ref_codon_num} {exon_num}"
             )
-            print_stderr(debug_line) if debug else None
+            # print_stderr(debug_line) if debug else None
             ref_is_gap = r_c == CODON_GAP
             ref_is_XXX = r_c == CODON_XXX
             ref_has_N = "N" in r_c
@@ -781,7 +800,7 @@ def split_into_exons(sp_to_codon_alis, codon_to_exon, codon_to_seq, debug=False)
             ref_is_undefined = ref_is_gap or ref_is_XXX or ref_has_N
 
             debug_line = f"# ref gap: {ref_is_gap} ref unknown: {ref_is_XXX} ref expected: {ref_is_exp}"
-            print_stderr(debug_line) if debug else None
+            # print_stderr(debug_line) if debug else None
 
             if not ref_is_gap:
                 ref_codon_num += 1
@@ -790,12 +809,12 @@ def split_into_exons(sp_to_codon_alis, codon_to_exon, codon_to_seq, debug=False)
                 and ref_is_undefined is False
                 and exp_codon_lock is False
             ):
-                print_stderr(f"Warning! {k}: Fixing ref codon_num..")
+                # print_stderr(f"Warning! {k}: Fixing ref codon_num..")
                 wrong_codon_num = ref_codon_num
                 ref_codon_num = fix_codon_num(
                     wrong_codon_num, expected_ref_codon, codon_to_seq
                 )
-                print_stderr(f"Corrected from {wrong_codon_num} to {ref_codon_num}")
+                # print_stderr(f"Corrected from {wrong_codon_num} to {ref_codon_num}")
 
             codon_pair = (r_c, q_c)
             exon_to_sequences[exon_num].append(codon_pair)
@@ -804,7 +823,7 @@ def split_into_exons(sp_to_codon_alis, codon_to_exon, codon_to_seq, debug=False)
                 # this will cause an index error
                 # need to handle this overflow correctrly
                 exp_codon_lock = True
-                print_stderr(f"Warning! {k}: Codon sequence overflow...")
+                # print_stderr(f"Warning! {k}: Codon sequence overflow...")
                 ref_codon_num = codon_tot_num_ - 1
 
         ret[k] = exon_to_sequences
@@ -816,19 +835,28 @@ def reformat_codon_alis(sp_to_exon_codon_alis, all_exons):
     ret = defaultdict(dict)
     for (sp, proj_id), v in sp_to_exon_codon_alis.items():
         for exon in all_exons:
-            exon_related_seq = v[exon]
-            ref_codons = [x[0] for x in exon_related_seq]
-            que_codons = [x[1] for x in exon_related_seq]
-            ref_seq = "".join(ref_codons)
-            que_seq = "".join(que_codons)
+            exon_related_seq = v.get(exon, None)
             ref_seq_key = (sp, proj_id, True)
             que_seq_key = (sp, proj_id, False)
-            ret[exon][ref_seq_key] = ref_seq
-            ret[exon][que_seq_key] = que_seq
+
+            if exon_related_seq:
+                ref_codons = [x[0] for x in exon_related_seq]
+                que_codons = [x[1] for x in exon_related_seq]
+                ref_seq = "".join(ref_codons)
+                que_seq = "".join(que_codons)
+                ret[exon][ref_seq_key] = ref_seq
+                ret[exon][que_seq_key] = que_seq
+            else:
+                # print(sp_to_exon_codon_alis)
+                # print(f"Error here, cannot find key: {exon}")
+                # print(v)
+                # sys.exit(1)
+                ret[exon][ref_seq_key] = "NNN"
+                ret[exon][que_seq_key] = "NNN"
     return ret
 
 
-def merge_exon_fastas(fastas_list, fasta_headers):
+def merge_exon_fastas(fastas_list, fasta_headers, force_repair=False):
     """Merge per-exon fastas."""
     id_to_chunks = defaultdict(list)
     fasta_lines = []
@@ -1221,6 +1249,7 @@ def main():
             )
     # ALIGNING EXON-BY-EXON
     else:
+        commands_sequence = []
         fasta_headers_all = set([f"{x[0]}\t{x[1]}" for x in sp_to_codon_alis.keys()])
         # we like to align exons separately, first of all get
         # codon number -> exon number mapping
@@ -1260,7 +1289,9 @@ def main():
                 aligned_fasta_exon, f"aligned_exon_{exon}", args.intermediate_data
             )
             aligned_fastas.append(aligned_fasta_exon)
-        aligned_fasta = merge_exon_fastas(aligned_fastas, fasta_headers_all)
+        aligned_fasta = merge_exon_fastas(aligned_fastas,
+                                          fasta_headers_all,
+                                          force_repair=args.force_repair)
 
     f = open(args.output, "w") if args.output else sys.stdout
     f.write(aligned_fasta)

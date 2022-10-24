@@ -31,7 +31,7 @@ WRAPPER_ABSPATH = os.path.abspath(os.path.join(LOCATION, "CESAR_wrapper.py"))
 WRAPPER_TEMPLATE = (
     WRAPPER_ABSPATH
     + " {0} {1} {2} {3} {4} {5} --cesar_binary {6}"
-    + " --uhq_flank {7} --memlim {8}"
+    + " --uhq_flank {7}"
 )
 CESAR_RUNNER = os.path.abspath(
     os.path.join(LOCATION, "cesar_runner.py")
@@ -40,7 +40,7 @@ LONG_LOCI_FIELDS = {
     "GGLOB",
     "TRANS",
 }  # chain classes that could lead to very long query loci
-BIGMEM_LIM = 1000  # mem limit for bigmem partition
+BIGMEM_LIM = 500  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 1000000
 EXTRA_MEM = 100000  # extra memory "just in case"
@@ -58,6 +58,10 @@ PARALOG = "PARA"
 TRANS = "TRANS"
 PROJECTION = "PROJECTION"
 TRANSCRIPT = "TRANSCRIPT"
+
+MEM_FIT = "MEM_FIT"
+MEM_BIGMEM = "MEM_BIGMEM"
+MEM_DONTFIT = "MEM_DONTFIT"
 
 # connect shared lib; define input and output data types
 chain_coords_conv_lib_path = os.path.join(
@@ -192,11 +196,39 @@ def parse_args():
         help="Memory consumption was already precomputed",
     )
     app.add_argument(
+        "--precomp_regions_data_dir",
+        default=None,
+        help=("Directory containing files with precomputed regions. "
+              "Likely is not needed for standalone script scenario. ")
+    )
+    app.add_argument(
         "--predefined_glp_class_path",
         default=None,
         help="Save preliminary projection classification for: "
         "(i) Projections with too short query region (L or M) and "
         "(ii) Projections with very long query region (M)",
+    )
+    app.add_argument(
+        "--unprocessed_log",
+        "--unp",
+        default=None,
+        help="Store unprocessed genes in a separate file."
+    )
+    app.add_argument(
+        "--debug",
+        "-d",
+        action="store_true",
+        dest="debug",
+        help="Log debugging data"
+    )
+    app.add_argument(
+        "--mask_all_first_10p",
+        "--m_f10p",
+        action="store_true",
+        dest="mask_all_first_10p",
+        help="Automatically mask all inactivating mutations in first 10% of "
+             "the reading frame, ignoring ATG codons distribution. "
+             "(Default mode in V1.0, not recommended to use in later versions)"
     )
     # print help if there are no args
     if len(sys.argv) < 2:
@@ -495,7 +527,8 @@ def fill_buckets(buckets, all_jobs):
         # memlim[5] -> jobs that require <= 5Gb
         # memlim[10] -> jobs that require > 5Gb AND <= 10Gb
         buckets[memlim] = [
-            job for job, job_mem in all_jobs.items() if prev_lim < job_mem <= memlim
+            f"{job} --memlim {memlim}" for job, job_mem in all_jobs.items()
+            if prev_lim < job_mem <= memlim
         ]
         prev_lim = memlim
     # remove empty
@@ -507,10 +540,17 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
     """Save cesar calls in the dir assigned."""
     os.mkdir(jobs_dir) if not os.path.isdir(jobs_dir) else None
     file_num, to_combine = 0, []
+    bucket_saved = {k: True for k in filled_buckets.keys()}
+
     for bucket_id, jobs in filled_buckets.items():
         num_of_files = bucket_jobs_num[bucket_id]
         # just in case
         num_of_files = len(jobs) if num_of_files >= len(jobs) else num_of_files
+        if num_of_files == 0:
+            # avoiding zero division error
+            bucket_saved[bucket_id] = False
+            print(f"Warning! No files to save jobs for bucket {bucket_id}")
+            continue
         size_of_file = len(jobs) // num_of_files
         # size_of_file = size_of_file + 1 if len(jobs) % num_of_files != 0 else size_of_file
         jobs_split = parts(jobs, n=size_of_file)
@@ -522,6 +562,11 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
             f.write("\n".join(part) + "\n")
             f.close()
             to_combine.append(file_path)
+    # check if anything saved
+    if all(x is False for x in bucket_saved.values()):
+        print("Could not create any CESAR job. Probably, ALL genes require much more memory than the available.")
+        print("If this result is unexpected, please contact the developers.")
+        sys.exit(1)
     return to_combine
 
 
@@ -551,7 +596,13 @@ def save_bigmem_jobs(bigmem_joblist, jobs_dir):
 
 
 def save_combined_joblist(
-    to_combine, combined_file, results_dir, inact_mut_dat, rejected_log, name=""
+    to_combine,
+    combined_file,
+    results_dir,
+    inact_mut_dat,
+    rejected_log,
+    unproc_log,
+    name=""
 ):
     """Save joblist of joblists (combined joblist)."""
     f = open(combined_file, "w")
@@ -565,6 +616,9 @@ def save_combined_joblist(
         if rejected_log:
             log_path = os.path.join(rejected_log, f"{basename}.txt")
             combined_command += f" --rejected_log {log_path}"
+        if unproc_log:
+            log_path = os.path.join(unproc_log, f"{basename}.txt")
+            combined_command += f" --unproc_log {log_path}"
         f.write(combined_command + "\n")
     f.close()
 
@@ -603,6 +657,133 @@ def read_precomp_mem(precomp_file):
     return ret
 
 
+def get_trans_to_regions_file(precomp_regions_data_dir):
+    ret = {}
+    if precomp_regions_data_dir is None:
+        return ret
+    files_in = os.listdir(precomp_regions_data_dir)
+    for filename in files_in:
+        path = os.path.abspath(os.path.join(precomp_regions_data_dir, filename))
+        f = open(path, "r")
+        transcripts_in_file = set(x.split("\t")[0] for x in f)
+        f.close()
+        for t in transcripts_in_file:
+            ret[t] = path
+    return ret
+
+
+def build_job(gene, chains_arg, args, gene_fragments, trans_to_reg_precomp_file, u12_this_gene, mask_all_first_10p=False):
+    """Build CESAR job."""
+    # # 0 gene; 1 chains; 2 bed_file; 3 bdb chain_file; 4 tDB; 5 qDB; 6 output; 7 cesar_bin
+    job = WRAPPER_TEMPLATE.format(
+        gene,
+        chains_arg,
+        os.path.abspath(args.bdb_bed_file),
+        os.path.abspath(args.bdb_chain_file),
+        os.path.abspath(args.tDB),
+        os.path.abspath(args.qDB),
+        os.path.abspath(args.cesar_binary),
+        args.uhq_flank,
+        # gig,
+    )
+    # add some flags if required
+    job = job + " --mask_stops" if args.mask_stops else job
+    job = job + " --check_loss" if args.check_loss else job
+    job = job + " --no_fpi" if args.no_fpi else job
+    job = job + " --fragments" if gene_fragments else job
+    job = job + " --opt_cesar" if args.opt_cesar else job
+    job = job + " --alt_frame_del"  # TODO: toga master script parameter
+
+    precomp_file = trans_to_reg_precomp_file.get(gene)
+    job = job + f" --predefined_regions {precomp_file}" if precomp_file else job
+
+    # add U12 introns data if this gene has them:
+    job = job + f" --u12 {os.path.abspath(args.u12)}" if u12_this_gene else job
+
+    # add mask_all_first_10p flag if needed
+    job = job + f" --mask_all_first_10p" if mask_all_first_10p else job
+    return job
+
+
+def compute_ref_part_of_mem(block_sizes):
+    """Compute num_states and r_length."""
+    num_states, r_length = 0, 0
+    for block_size in block_sizes:
+        # num_states += 6 + 6 * reference->num_codons + 1 + 2 + 2 + 22 + 6;
+        #  /* 22 and 6 for acc and donor states */
+        num_codons = block_size // 3
+        num_states += 6 + 6 * num_codons + 1 + 2 + 2 + 22 + 6
+        # r_length += 11 + 6 * fasta.references[i]->length
+        # + donors[i]->length + acceptors[i]->length;
+        r_length += block_size
+    return num_states, r_length
+
+
+def compute_memory_gig_for_qlen(num_states, r_length, q_length_max):
+    memory = (
+        (num_states * 4 * 8)
+        + (num_states * q_length_max * 4)
+        + (num_states * 304)
+        + (2 * q_length_max + r_length) * 8
+        + (q_length_max + r_length) * 2 * 1
+        + EXTRA_MEM
+    )
+    gig = math.ceil(memory / 1000000000) + 0.25
+    return gig
+
+
+def _get_chain_arg_and_gig_arg(chains_list, chain_to_mem):
+    gig_arg = max([chain_to_mem[c] for c in chains_list])
+    return gig_arg
+
+
+def compute_memory(chains, precomp_gig, block_sizes, gene_chains_data, gene_fragments, mem_limit):
+    """Compute memory requirements for different chains."""
+    if precomp_gig:
+        # chains arg: just all chains, everything is precomputed
+        return {tuple(chains): (precomp_gig, MEM_FIT)}
+    # proceed to memory estimation
+    # the same procedure as inside CESAR2.0 code
+    # required memory depends on numerous params
+    # first, we need reference transcript-related parameters
+    # query-related parameters will be later
+    num_states, r_length = compute_ref_part_of_mem(block_sizes)
+
+    # branch 2: fragmented gene, here we have to use sum of query lengts
+    if gene_fragments: 
+        # in case of fragmented genome: we stitch queries together
+        # so query length = sum of all queries
+        q_length_max = sum([v for v in gene_chains_data.values()])
+        gig = compute_memory_gig_for_qlen(num_states, r_length, q_length_max)
+        return {tuple(chains): (gig, MEM_FIT)}
+
+    # branch 3, maybe the most common one
+    ret = {}
+    chain_to_mem_consumption = {}
+    for chain_id, q_length in gene_chains_data.items():
+        chain_gig = compute_memory_gig_for_qlen(num_states, q_length, q_length)
+        chain_to_mem_consumption[chain_id] = chain_gig
+    # for every chain, we have the memory consumption
+    chains_that_fit = [c_id for c_id, gig in chain_to_mem_consumption.items() if gig <= mem_limit]
+    chain_that_goto_bigmem = [c_id for c_id, gig in chain_to_mem_consumption.items() if mem_limit < gig <= BIGMEM_LIM]
+    chains_that_dont_fit = [c_id for c_id, gig in chain_to_mem_consumption.items() if gig > BIGMEM_LIM]
+
+    # process each bucket of chains individually
+    if len(chains_that_fit) > 0:
+        # good, there are some chains that can be easily processed
+        mem = _get_chain_arg_and_gig_arg(chains_that_fit, chain_to_mem_consumption)
+        ret[tuple(chains_that_fit)] = (mem, MEM_FIT)
+    if len(chain_that_goto_bigmem) > 0:
+        # there are some bigmem jobs -> to be executed separately
+        # Deprecated branch, TODO: check whether it makes sense nowadays
+        mem = _get_chain_arg_and_gig_arg(chain_that_goto_bigmem, chain_to_mem_consumption)
+        ret[tuple(chain_that_goto_bigmem)] = (mem, MEM_BIGMEM)
+    if len(chains_that_dont_fit) > 0:
+        mem = _get_chain_arg_and_gig_arg(chains_that_dont_fit, chain_to_mem_consumption)
+        ret[tuple(chains_that_dont_fit)] = (mem, MEM_DONTFIT)
+    return ret
+
+
 def main():
     """Entry point."""
     t0 = dt.now()
@@ -618,6 +799,10 @@ def main():
 
     # if memory is precomputed: use it
     precomp_mem = read_precomp_mem(args.precomp_memory_data)
+    # precomp_regions = read_precomp_reg(args.precomp_regions_data)
+
+    # TODO: to optimize later
+    trans_to_reg_precomp_file = get_trans_to_regions_file(args.precomp_regions_data_dir)
     # get lists of orthologous chains per each gene
     # skipped_1 - no chains found -> log them
     predefined_glp_class = {}  # for projections which are M and L without CESAR
@@ -658,6 +843,7 @@ def main():
         args.qDB,
     )
     predefined_glp_class.update(predef_glp)
+    predef_glp_class__chains_step = {}
 
     # start making the jobs
     all_jobs = {}
@@ -667,8 +853,8 @@ def main():
     for gene in batch.keys():
         u12_this_gene = u12_data.get(gene)
         block_sizes = bed_data[gene][3]
-
         gene_chains_data = regions.get(gene)
+
         # check that there is something for this gene
         if not gene_chains_data:
             continue
@@ -681,94 +867,47 @@ def main():
             gene_chains_data = {
                 k: v for k, v in gene_chains_data.items() if k in gene_fragments
             }
+
         chains = gene_chains_data.keys()
         if len(chains) == 0:
             continue
-        chains_arg = ",".join(chains)  # chain ids -> one of the cmd args
-
-        # if memory is precomputed then use it
         precomp_gig = precomp_mem.get(gene, None)
-        if precomp_gig is None:
-            # proceed to memory estimation
-            # the same procedure as inside CESAR2.0 code
-            num_states, r_length = 0, 0
+        chain_arg_to_gig = compute_memory(chains,
+                                          precomp_gig,
+                                          block_sizes,
+                                          gene_chains_data,
+                                          gene_fragments,
+                                          mem_limit)
+        for chains_tup, (gig, stat) in chain_arg_to_gig.items():
+            chains_arg = ",".join(chains_tup)
+            job = build_job(gene,
+                            chains_arg,
+                            args,
+                            gene_fragments,
+                            trans_to_reg_precomp_file,
+                            u12_this_gene,
+                            mask_all_first_10p=args.mask_all_first_10p)
 
-            # required memory depends on numerous params
-            # first, we need reference transcript-related parameters
-            # query-related parameters will be later
-            for block_size in block_sizes:
-                # num_states += 6 + 6 * reference->num_codons + 1 + 2 + 2 + 22 + 6;
-                #  /* 22 and 6 for acc and donor states */
-                num_codons = block_size // 3
-                num_states += 6 + 6 * num_codons + 1 + 2 + 2 + 22 + 6
-                # r_length += 11 + 6 * fasta.references[i]->length
-                # + donors[i]->length + acceptors[i]->length;
-                r_length += block_size
-
-            # now compute query sequence-related parameters
-            query_lens = [v for v in gene_chains_data.values()]
-            if (
-                gene_fragments
-            ):  # in case of fragmented genome: we stitch queries together
-                # so query length = sum of all queries
-                q_length_max = sum(query_lens)
-            else:  # not fragmented genome: processins queries separately
-                # thus we need only the max length
-                q_length_max = max(query_lens)
-            # and now compute the amount of required memory
-            memory = (
-                (num_states * 4 * 8)
-                + (num_states * q_length_max * 4)
-                + (num_states * 304)
-                + (2 * q_length_max + r_length) * 8
-                + (q_length_max + r_length) * 2 * 1
-                + EXTRA_MEM
-            )
-            gig = math.ceil(memory / 1000000000) + 0.25
-        else:
-            # memory was precomputed
-            gig = precomp_gig
-
-        # gig = compute_amount_of_memory(block_sizes, q_length_max, args.opt_cesar)
-        # # 0 gene; 1 chains; 2 bed_file; 3 bdb chain_file; 4 tDB; 5 qDB; 6 output; 7 cesar_bin
-        job = WRAPPER_TEMPLATE.format(
-            gene,
-            chains_arg,
-            os.path.abspath(args.bdb_bed_file),
-            os.path.abspath(args.bdb_chain_file),
-            os.path.abspath(args.tDB),
-            os.path.abspath(args.qDB),
-            os.path.abspath(args.cesar_binary),
-            args.uhq_flank,
-            gig,
-        )
-        # add some flags if required
-        job = job + " --mask_stops" if args.mask_stops else job
-        job = job + " --check_loss" if args.check_loss else job
-        job = job + " --no_fpi" if args.no_fpi else job
-        job = job + " --fragments" if gene_fragments else job
-        job = job + " --opt_cesar" if args.opt_cesar else job
-
-        # add U12 introns data if this gene has them:
-        job = job + f" --u12 {os.path.abspath(args.u12)}" if u12_this_gene else job
-
-        # define whether it's an ordinary or a bigmem job
-        # depending on the memory requirements
-        if gig <= mem_limit:  # ordinary job
-            all_jobs[job] = gig
-        elif gig <= BIGMEM_LIM:
-            skipped_3.append((gene, ",".join(chains), f"requires {gig}) -> bigmem job"))
-            predef_glp[gene] = f"{TRANSCRIPT}\tM"
-            bigmem_jobs.append(job)
-        else:
-            skipped_3.append(
-                (
-                    gene,
-                    ",".join(chains),
-                    f"big mem limit ({BIGMEM_LIM} gig) exceeded (needs {gig})",
-                )
-            )
-            predef_glp[gene] = f"{TRANSCRIPT}\tM"
+            # define whether it's an ordinary or a bigmem job
+            # depending on the memory requirements
+            if stat == MEM_FIT:  # ordinary job
+                all_jobs[job] = gig
+            elif stat == MEM_BIGMEM:
+                to_app = (gene, chains_arg, f"requires {gig}) -> bigmem job")
+                skipped_3.append(to_app)
+                bigmem_jobs.append(job)
+                for chain_id in chains_tup:
+                    proj_id = f"{gene}.{chain_id}"
+                    predef_glp_class__chains_step[proj_id] = f"{PROJECTION}\tM"
+            else:
+                to_app = (gene, chains_arg, f"big mem limit ({BIGMEM_LIM} gig) exceeded (needs {gig})",)
+                skipped_3.append(to_app)
+                for chain_id in chains_tup:
+                    proj_id = f"{gene}.{chain_id}"
+                    predef_glp_class__chains_step[proj_id] = f"{PROJECTION}\tM"
+    
+    # TODO: predefined GLP classes to be refactored 
+    predefined_glp_class.update(predef_glp_class__chains_step)
 
     eprint(f"\nThere are {len(all_jobs.keys())} jobs in total.")
     eprint("Splitting the jobs.")
@@ -796,7 +935,12 @@ def main():
 
     # save joblist of joblists
     save_combined_joblist(
-        to_combine, args.combined, args.results, args.check_loss, args.rejected_log
+        to_combine,
+        args.combined,
+        args.results,
+        args.check_loss,
+        args.rejected_log,
+        args.unprocessed_log
     )
 
     # save bigmem jobs, a bit different logic
@@ -808,6 +952,7 @@ def main():
             args.results,
             args.check_loss,
             args.rejected_log,
+            None,  # TODO: decide what we do with this branch
             name="bigmem",
         )
 

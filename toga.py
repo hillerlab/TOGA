@@ -23,8 +23,8 @@ from modules.chain_bst_index import chain_bst_index
 from modules.merge_chains_output import merge_chains_output
 from modules.make_pr_pseudogenes_anno import create_ppgene_track
 from modules.merge_cesar_output import merge_cesar_output
-from modules.gene_losses_summary import I, gene_losses_summary
-from modules.orthology_type_map import orthology_type_map, trim_prefix
+from modules.gene_losses_summary import gene_losses_summary
+from modules.orthology_type_map import orthology_type_map
 from modules.classify_chains import classify_chains
 from modules.get_transcripts_quality import classify_transcripts
 from modules.make_query_isoforms import get_query_isoforms_data
@@ -57,10 +57,19 @@ CESAR_RUNNER = os.path.abspath(
 CESAR_RUNNER_TMP = "{0} {1} {2} --check_loss {3} --rejected_log {4}"
 CESAR_PRECOMPUTED_REGIONS_DIRNAME = "cesar_precomputed_regions"
 CESAR_PRECOMPUTED_MEMORY_DIRNAME = "cesar_precomputed_memory"
+CESAR_PRECOMPUTED_ORTHO_LOCI_DIRNAME = "cesar_precomputed_orthologous_loci"
+
 CESAR_PRECOMPUTED_MEMORY_DATA = "cesar_precomputed_memory.tsv"
+CESAR_PRECOMPUTED_REGIONS_DATA = "cesar_precomputed_regions.tsv"
+CESAR_PRECOMPUTED_ORTHO_LOCI_DATA = "cesar_precomputed_orthologous_loci.tsv"
+
+NUM_CESAR_MEM_PRECOMP_JUBS = 500
+
+
 TEMP_CHAIN_CLASS = "temp_chain_trans_class"
 MODULES_DIR = "modules"
 RUNNING = "RUNNING"
+CRASHED = "CRASHED"
 TEMP = "temp"
 
 # automatically enable flush
@@ -92,10 +101,11 @@ class Toga:
         else:  # if none: we cannot call os.path.abspath method
             self.nextflow_bigmem_config = None
         self.__check_nf_config()
+
         # to avoid crash on filesystem without locks:
-        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
+        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
         # temporary fix for DSL error in recent NF versions
-        os.environ["NXF_DEFAULT_DSL"] = "1"  
+        os.environ["NXF_DEFAULT_DSL"] = "1"
 
         chain_basename = os.path.basename(args.chain_input)
 
@@ -184,7 +194,11 @@ class Toga:
         self.cesar_binary = (
             self.DEFAULT_CESAR if not args.cesar_binary else args.cesar_binary
         )
+        self.opt_cesar_binary = os.path.abspath(
+            os.path.join(LOCATION, "cesar_input_optimiser.py")
+        )
         self.cesar_is_opt = args.using_optimized_cesar
+        self.output_opt_cesar_regions = args.output_opt_cesar_regions
         self.time_log = args.time_marks
         self.stop_at_chain_class = args.stop_at_chain_class
         self.rejected_log = os.path.join(self.wd, "genes_rejection_reason.tsv")
@@ -207,6 +221,7 @@ class Toga:
         self.keep_nf_logs = args.do_not_del_nf_logs
         self.exec_cesar_parts_sequentially = args.cesar_exec_seq
         self.ld_model_arg = args.ld_model
+        self.mask_all_first_10p = args.mask_all_first_10p
 
         self.cesar_ok_merged = (
             None  # Flag: indicates whether any cesar job BATCHES crashed
@@ -237,12 +252,20 @@ class Toga:
         self.gene_loss_data = os.path.join(self.temp_wd, "inact_mut_data")
         self.query_annotation = os.path.join(self.wd, "query_annotation.bed")
         self.loss_summ = os.path.join(self.wd, "loss_summ_data.tsv")
+        # directory to store intermediate files with technically unprocessable transcripts:
+        self.technical_cesar_err = os.path.join(self.temp_wd, "technical_cesar_err")
+        # unprocessed transcripts to be considered Missing:
+        self.technical_cesar_err_merged = os.path.join(
+            self.temp_wd, "technical_cesar_err.txt"
+        )
+
         self.bed_fragm_exons_data = os.path.join(
             self.temp_wd, "bed_fragments_to_exons.tsv"
         )
         self.precomp_mem_cesar = os.path.join(
             self.temp_wd, CESAR_PRECOMPUTED_MEMORY_DATA
         )
+        self.precomp_reg_dir = None
         self.cesar_mem_was_precomputed = False
         self.u12_arg = args.u12
         self.u12 = None  # assign after U12 file check
@@ -517,14 +540,14 @@ class Toga:
             f.write(f"{gene}\t{trans}\n")
         print("Isoforms file is OK")
 
-    @staticmethod
-    def die(msg, rc=1):
+    def die(self, msg, rc=1):
         """Show msg in stderr, exit with the rc given."""
         print(msg)
         print(f"Program finished with exit code {rc}\n")
         # for t_file in self.temp_files:  # remove temp files if required
         #     os.remove(t_file) if os.path.isfile(t_file) and not self.keep_temp else None
         #     shutil.rmtree(t_file) if os.path.isdir(t_file) and not self.keep_temp else None
+        self.__mark_crashed()
         sys.exit(rc)
 
     def __modules_addr(self):
@@ -695,7 +718,7 @@ class Toga:
         rc = subprocess.call(cmd, shell=True)
         if rc != 0:
             print(extra_msg) if extra_msg else None
-            self.die(f"Error! Process {cmd} died! Abort.")
+            self.die(f"Error! Process:\n{cmd}\ndied! Abort.")
         print(f"{cmd} done with code 0")
 
     def __find_two_bit(self, db):
@@ -770,7 +793,7 @@ class Toga:
         # 9) classify projections/genes as lost/intact
         # also measure projections confidence levels
         print("#### STEP 9: Gene loss pipeline classification\n")
-        self.__transcript_quality()
+        self.__transcript_quality()  # maybe remove -> not used anywhere
         self.__gene_loss_summary()
         self.__time_mark("Got gene loss summary")
 
@@ -793,7 +816,6 @@ class Toga:
             print(f"{self.cesar_crashed_batches_log}\n")
         print(f"Saved results to {self.wd}")
         self.__left_done_mark()
-        self.die(f"Done! Estimated time: {dt.now() - self.t0}", rc=0)
 
     def __mark_start(self):
         """Indicate that TOGA process have started."""
@@ -801,6 +823,16 @@ class Toga:
         f = open(p_, "w")
         now_ = str(dt.now())
         f.write(f"TOGA process started at {now_}\n")
+        f.close()
+
+    def __mark_crashed(self):
+        """Indicate that TOGA process died."""
+        running_f = os.path.join(self.wd, RUNNING)
+        crashed_f = os.path.join(self.wd, CRASHED)
+        os.remove(running_f) if os.path.isfile(running_f) else None
+        f = open(crashed_f, "w")
+        now_ = str(dt.now())
+        f.write(f"TOGA CRASHED AT {now_}\n")
         f.close()
 
     def __make_indexed_chain(self):
@@ -920,7 +952,9 @@ class Toga:
         self.pred_scores = os.path.join(self.temp_wd, "orthology_scores.tsv")
         self.se_model = os.path.join(self.LOCATION, "models", "se_model.dat")
         self.me_model = os.path.join(self.LOCATION, "models", "me_model.dat")
-        self.ld_model = os.path.join(self.LOCATION, "long_distance_model", "long_dist_model.dat")
+        self.ld_model = os.path.join(
+            self.LOCATION, "long_distance_model", "long_dist_model.dat"
+        )
         cl_rej_log = os.path.join(self.rejected_dir, "classify_chains_rejected.txt")
         ld_arg_ = self.ld_model if self.ld_model_arg else None
         if not os.path.isfile(self.se_model) or not os.path.isfile(self.me_model):
@@ -933,7 +967,7 @@ class Toga:
             rejected=cl_rej_log,
             raw_out=self.pred_scores,
             annot_threshold=self.orth_score_threshold,
-            ld_model=ld_arg_
+            ld_model=ld_arg_,
         )
         # extract not classified transcripts
         # first column in the rejected log
@@ -968,6 +1002,128 @@ class Toga:
             f.write("".join(piece))
             f.close()
         return paths_to_pieces
+    
+    def __get_transcript_to_strand(self):
+        """Get """
+        ret = {}
+        f = open(self.ref_bed, 'r')
+        for line in f:
+            ld = line.rstrip().split("\t")
+            trans = ld[3]
+            direction = ld[5]
+            ret[trans] = direction
+        f.close()
+        return ret
+
+    def __get_chain_to_qstrand(self):
+        ret = {}
+        f = open(self.chain_file, "r")
+        for line in f:
+            if not line.startswith("chain"):
+                continue
+            fields = line.rstrip().split()
+            chain_id = int(fields[-1])
+            q_strand = fields[9]
+            ret[chain_id] = q_strand
+        f.close()
+        return ret
+
+    def __fold_exon_data(self, exons_data, out_bed):
+        """Convert exon data into bed12."""
+        projection_to_exons = defaultdict(list)
+        # 1: make projection:
+        f = open(exons_data, "r")
+        for line in f:
+            ld = line.rstrip().split("\t")
+            transcript, _chain, _start, _end = ld
+            chain = int(_chain)
+            start = int(_start)
+            end = int(_end)
+            region = (start, end)
+            projection_to_exons[(transcript, chain)].append(region)
+        # 2 - get search loci for each projection
+        projection_to_search_loc = {}
+
+        # CESAR_PRECOMPUTED_ORTHO_LOCI_DATA = "cesar_precomputed_orthologous_loci.tsv"
+        f = open(self.precomp_query_loci_path, "r")
+        for elem in f:
+            elem_data = elem.split("\t")
+            transcript = elem_data[1]
+            chain = int(elem_data[2])
+            projection = f"{transcript}.{chain}"
+            search_locus = elem_data[3]
+            chrom, s_e = search_locus.split(":")
+            s_e_split = s_e.split("-")
+            start, end = int(s_e_split[0]), int(s_e_split[1])
+            projection_to_search_loc[(transcript, chain)] = (chrom, start, end)
+        f.close()
+        trans_to_strand = self.__get_transcript_to_strand()
+        chain_to_qstrand = self.__get_chain_to_qstrand()
+        # 3 - save bed 12
+        f = open(out_bed, "w")
+        # print(projection_to_search_loc)
+        for (transcript, chain), exons in projection_to_exons.items():
+            # print(transcript, chain)
+            projection = f"{transcript}.{chain}"
+            trans_strand = trans_to_strand[transcript]
+            chain_strand = chain_to_qstrand[chain]
+            to_invert = trans_strand != chain_strand
+
+            exons_sort = sorted(exons, key=lambda x: x[0])
+            if to_invert:
+                exons_sort = exons_sort[::-1]
+
+            # crash here
+            search_locus = projection_to_search_loc[(transcript, chain)]
+            chrom = search_locus[0]
+            search_start = search_locus[1]
+            search_end = search_locus[2]
+
+            if to_invert:
+                bed_start = search_end - exons_sort[0][1]
+                bed_end = search_end - exons_sort[-1][0]
+            else:
+                bed_start = exons_sort[0][0] + search_start
+                bed_end = exons_sort[-1][1] + search_start
+
+            block_sizes, block_starts = [], []
+            for exon in exons_sort:
+                abs_start_in_s, abs_end_in_s = exon
+                # print(exon)
+
+                if to_invert:
+                    abs_start = search_end - abs_end_in_s
+                    abs_end = search_end - abs_start_in_s
+                else:
+                    abs_start = abs_start_in_s + search_start
+                    abs_end = abs_end_in_s + search_start
+
+                # print(abs_start, abs_end)
+
+                rel_start = abs_start - bed_start
+                block_size = abs_end - abs_start
+                block_sizes.append(block_size)
+                block_starts.append(rel_start)
+            block_sizes_field = ",".join(map(str, block_sizes))
+            block_starts_field = ",".join(map(str, block_starts))
+            all_fields = (
+                chrom,
+                bed_start,
+                bed_end,
+                projection,
+                0,
+                0,
+                bed_start,
+                bed_end,
+                "0,0,0",
+                len(exons),
+                block_sizes_field,
+                block_starts_field,
+            )
+            f.write("\t".join(map(str, all_fields)))
+            f.write("\n")
+        f.close()
+        f.close()
 
     def __precompute_data_for_opt_cesar(self):
         """Precompute memory data for optimised CESAR.
@@ -977,28 +1133,56 @@ class Toga:
         """
         if not self.cesar_is_opt:
             return  # in case we use standard CESAR this procedure is not needed
+
+        # need gene: chains
+        # artificial bed file with all possible exons per gene, maybe the longest if intersection... or not?
+        # what if there is a giant exon that does not align but smaller versions do?
         print("COMPUTING MEMORY REQUIREMENTS FOR OPTIMISED CESAR")
         mem_dir = os.path.join(self.wd, CESAR_PRECOMPUTED_MEMORY_DIRNAME)
+        self.precomp_reg_dir = os.path.join(self.wd, CESAR_PRECOMPUTED_REGIONS_DIRNAME)
 
         chain_class_temp_dir = os.path.join(self.wd, TEMP_CHAIN_CLASS)
+        self.precomp_query_loci_dir = os.path.join(
+            self.wd, CESAR_PRECOMPUTED_ORTHO_LOCI_DIRNAME
+        )
+        self.precomp_query_loci_path = os.path.join(
+            self.temp_wd, CESAR_PRECOMPUTED_ORTHO_LOCI_DATA
+        )
+
         os.mkdir(mem_dir) if not os.path.isdir(mem_dir) else None
         os.mkdir(chain_class_temp_dir) if not os.path.isdir(
             chain_class_temp_dir
         ) else None
+        os.mkdir(self.precomp_reg_dir) if not os.path.isdir(
+            self.precomp_reg_dir
+        ) else None
+        os.mkdir(self.precomp_query_loci_dir) if not os.path.isdir(
+            self.precomp_query_loci_dir
+        ) else None
+
         self.temp_files.append(mem_dir)
         self.temp_files.append(chain_class_temp_dir)
+        self.temp_files.append(self.precomp_reg_dir)
+        self.temp_files.append(self.precomp_query_loci_dir)
+
         # split file containing gene: orthologous/paralogous chains into 100 pieces
-        class_pieces = self.__split_file(self.orthologs, chain_class_temp_dir, 100)
+        class_pieces = self.__split_file(
+            self.orthologs, chain_class_temp_dir, NUM_CESAR_MEM_PRECOMP_JUBS
+        )
         precompute_jobs = []
         # for nextflow abspath is better:
         precomp_abspath = os.path.abspath(self.PRECOMPUTE_OPT_CESAR_DATA)
-        cesar_bin_abspath = os.path.abspath(self.cesar_binary)
+        # cesar_bin_abspath = os.path.abspath(self.cesar_binary)
+
         # create joblist: one job per piece
         for num, class_piece in enumerate(class_pieces, 1):
-            out_path = os.path.join(mem_dir, f"part_{num}")
+            out_m_path = os.path.join(mem_dir, f"part_{num}")
+            out_reg_path = os.path.join(self.precomp_reg_dir, f"part_{num}")
+            out_ol_path = os.path.join(self.precomp_query_loci_dir, f"path_{num}")
+
             cmd = (
-                f"{precomp_abspath} {class_piece} {self.wd} {cesar_bin_abspath} "
-                f"{self.t_2bit} {self.q_2bit} {out_path}"
+                f"{precomp_abspath} {class_piece} {self.wd} {self.opt_cesar_binary} "
+                f"{self.t_2bit} {self.q_2bit} {out_m_path} --ro {out_reg_path} --ol {out_ol_path}"
             )
             precompute_jobs.append(cmd)
         # save joblist
@@ -1016,7 +1200,7 @@ class Toga:
         print(f"Project path: {project_path}")
 
         if self.para:  # run jobs with para, skip nextflow
-            cmd = f'para make {project_name} {precomp_mem_joblist} -q="short"'
+            cmd = f'para make {project_name} {precomp_mem_joblist} -q="shortmed"'
             print(f"Calling {cmd}")
             rc = subprocess.call(cmd, shell=True)
         else:  # calling jobs with nextflow
@@ -1038,7 +1222,17 @@ class Toga:
             shutil.rmtree(project_path) if os.path.isdir(project_path) else None
         # merge files and quit
         self.__merge_dir(mem_dir, self.precomp_mem_cesar)
+        # self.__merge_dir(precomp_reg_dir, self.precomp_reg_cesar)
         self.cesar_mem_was_precomputed = True
+
+        if self.output_opt_cesar_regions:
+            save_to = os.path.join(self.wd, "precomp_regions_for_cesar.bed")
+            exon_regions_df = os.path.join(self.wd, "precomp_regions_exons.tsv")
+            self.__merge_dir(self.precomp_reg_dir, exon_regions_df)
+            self.__merge_dir(self.precomp_query_loci_dir, self.precomp_query_loci_path)
+            self.__fold_exon_data(exon_regions_df, save_to)
+            print(f"Bed file containing precomputed regions is saved to: {save_to}")
+            sys.exit(0)
 
     def __split_cesar_jobs(self):
         """Call split_exon_realign_jobs.py."""
@@ -1073,9 +1267,14 @@ class Toga:
         self.cesar_combined = os.path.join(self.temp_wd, "cesar_combined")
         self.cesar_results = os.path.join(self.temp_wd, "cesar_results")
         self.cesar_bigmem_jobs = os.path.join(self.temp_wd, "cesar_bigmem")
+
         self.temp_files.append(self.cesar_jobs_dir)
         self.temp_files.append(self.cesar_combined)
         self.temp_files.append(self.predefined_glp_cesar_split)
+        self.temp_files.append(self.technical_cesar_err)
+        os.mkdir(self.technical_cesar_err) if not os.path.isdir(
+            self.technical_cesar_err
+        ) else None
 
         # different field names depending on --ml flag
 
@@ -1083,6 +1282,9 @@ class Toga:
         self.temp_files.append(self.gene_loss_data)
         skipped_path = os.path.join(self.rejected_dir, "SPLIT_CESAR.txt")
         self.paralogs_log = os.path.join(self.temp_wd, "paralogs.txt")
+        cesar_binary_to_use = (
+            self.opt_cesar_binary if self.cesar_is_opt else self.cesar_binary
+        )
 
         split_cesar_cmd = (
             f"{self.SPLIT_EXON_REALIGN_JOBS} "
@@ -1099,15 +1301,17 @@ class Toga:
             f"--chains_limit {self.cesar_chain_limit} "
             f"--skipped_genes {skipped_path} "
             f"--rejected_log {self.rejected_dir} "
-            f"--cesar_binary {self.cesar_binary} "
+            f"--cesar_binary {cesar_binary_to_use} "
             f"--paralogs_log {self.paralogs_log} "
             f"--uhq_flank {self.uhq_flank} "
-            f"--predefined_glp_class_path {self.predefined_glp_cesar_split}"
+            f"--predefined_glp_class_path {self.predefined_glp_cesar_split} "
+            f"--unprocessed_log {self.technical_cesar_err}"
         )
 
         if self.annotate_paralogs:  # very rare occasion
             split_cesar_cmd += f" --annotate_paralogs"
-
+        if self.mask_all_first_10p:
+            split_cesar_cmd += f" --mask_all_first_10p"
         # split_cesar_cmd = split_cesar_cmd + f" --cesar_binary {self.cesar_binary}" \
         #     if self.cesar_binary else split_cesar_cmd
         split_cesar_cmd = (
@@ -1131,6 +1335,7 @@ class Toga:
             split_cesar_cmd += f" --fragments_data {fragm_dict_file}"
         if self.cesar_mem_was_precomputed:
             split_cesar_cmd += f" --precomp_memory_data {self.precomp_mem_cesar}"
+            split_cesar_cmd += f" --precomp_regions_data_dir {self.precomp_reg_dir}"
         self.__call_proc(split_cesar_cmd, "Could not split CESAR jobs!")
 
     def __get_cesar_jobs_for_bucket(self, comb_file, bucket_req):
@@ -1255,7 +1460,7 @@ class Toga:
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
 
-             # create subprocess object
+            # create subprocess object
             if not self.para:  # create nextflow cmd
                 os.mkdir(nf_project_path) if not os.path.isdir(
                     nf_project_path
@@ -1271,7 +1476,7 @@ class Toga:
                 if memory_mb > 0:
                     cmd += f" --memoryMb={memory_mb}"
                 p = subprocess.Popen(cmd, shell=True)
-           
+
             sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
 
             # wait for the process if calling processes sequentially
@@ -1389,8 +1594,11 @@ class Toga:
             chain_ids = self.__read_chain_arg(chains_arg)
             if chain_ids is None:
                 continue
-            memlim_arg_ind = elem_args.index(MEMLIM_ARG) + 1
-            mem_val = float(elem_args[memlim_arg_ind])
+            try:
+                memlim_arg_ind = elem_args.index(MEMLIM_ARG) + 1
+                mem_val = float(elem_args[memlim_arg_ind])
+            except ValueError:
+                mem_val = self.cesar_mem_limit
             bucket_lim = self.__get_bucket_val(mem_val, buckets)
 
             if FRAGM_ARG in elem_args:
@@ -1502,6 +1710,8 @@ class Toga:
             p_objects.append(p)
             time.sleep(CESAR_PUSH_INTERVAL)
         self.__monitor_jobs(p_objects, project_paths, die_if_sc_1=True)
+        # TODO: maybe some extra sanity check
+
         # need to check whether anything crashed again
         crashed_twice = []
         for elem in err_log_files:
@@ -1521,6 +1731,19 @@ class Toga:
         err_msg = f"Some CESAR jobs crashed twice, please check {crashed_log}; Abort"
         self.die(err_msg, 1)
 
+    def __append_technicall_err_to_predef_class(self, transcripts_path, out_path):
+        """Append file with predefined clasifications."""
+        if not os.path.isfile(transcripts_path):
+            # in this case, we don't have transcripts with tech error
+            # can simply quit the function
+            return
+        with open(transcripts_path, "r") as f:
+            transcripts_list = [x.rstrip() for x in f]
+        f = open(out_path, "a")
+        for elem in transcripts_list:
+            f.write(f"TRANSCRIPT\t{elem}\tM\n")
+        f.close()
+
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
         print("Merging CESAR output to make fasta and bed files.")
@@ -1538,6 +1761,17 @@ class Toga:
             self.trash_exons,
             fragm_data=self.bed_fragm_exons_data,
         )
+
+        # need to merge files containing transcripts that were not processed
+        # for some technical reason, such as intersecting fragments in the query
+        self.__merge_dir(
+            self.technical_cesar_err, self.technical_cesar_err_merged, ignore_empty=True
+        )
+
+        self.__append_technicall_err_to_predef_class(
+            self.technical_cesar_err_merged, self.predefined_glp_cesar_split
+        )
+
         if len(all_ok) == 0:
             # there are no empty output files -> parsed without errors
             print("CESAR results merged")
@@ -1617,11 +1851,16 @@ class Toga:
         )
 
     @staticmethod
-    def __merge_dir(dir_name, output):
+    def __merge_dir(dir_name, output, ignore_empty=False):
         """Merge all files in a directory into one."""
         files_list = os.listdir(dir_name)
-        if len(files_list) == 0:
+        if len(files_list) == 0 and ignore_empty is False:
             sys.exit(f"Error! {dir_name} is empty")
+        elif len(files_list) == 0 and ignore_empty is True:
+            # in this case we allow empty directories
+            # just remove the directory and return
+            shutil.rmtree(dir_name)
+            return
         buffer = open(output, "w")
         for filename in files_list:
             path = os.path.join(dir_name, filename)
@@ -1632,7 +1871,7 @@ class Toga:
             # buffer.write(lines)
             buffer.write(content)
         buffer.close()
-        shutil.rmtree(dir_name)
+        # shutil.rmtree(dir_name)
 
     def __check_crashed_cesar_jobs(self):
         """Check whether any CESAR jobs crashed.
@@ -1648,6 +1887,11 @@ class Toga:
         for line in f:
             if "CESAR" not in line:
                 # not related to CESAR
+                continue
+            if "fragment chains oevrlap" in line:
+                # they are not really "crashed"
+                # those jobs could not produce a meaningful result
+                # only intersecting exons
                 continue
             # extract cesar wrapper command from the log
             cesar_cmd = line.split("\t")[0]
@@ -1771,9 +2015,6 @@ def parse_args():
         default=None,
         help="Find orthologs " "for a single reference chromosome only",
     )
-    # app.add_argument("--limit_to_query_chrom", default=None, help="Annotate "
-    #                  "a particular query scaffold/chromosome only")
-    # nextflow related
     app.add_argument(
         "--nextflow_dir",
         "--nd",
@@ -1858,6 +2099,14 @@ def parse_args():
         help="Instead of CESAR, use lastz-based optimized version",
     )
     app.add_argument(
+        "--output_opt_cesar_regions",
+        "--oocr",
+        action="store_true",
+        dest="output_opt_cesar_regions",
+        help="If optimised CESAR is used, save the included regions, "
+        "and quit. The parameter is defined for debugging purposes only.",
+    )
+    app.add_argument(
         "--mask_stops",
         "--ms",
         action="store_true",
@@ -1880,7 +2129,7 @@ def parse_args():
         action="store_true",
         dest="cesar_exec_seq",
         help="Execute different CESAR jobs partitions sequentially, "
-             "not in parallel."
+        "not in parallel.",
     )
     app.add_argument(
         "--cesar_chain_limit",
@@ -1946,13 +2195,30 @@ def parse_args():
         dest="annotate_paralogs",
         action="store_true",
         help="Annotate paralogs instead of orthologs. "
-             "(experimental feature for very specific needs)",
+        "(experimental feature for very specific needs)",
+    )
+    app.add_argument(
+        "--mask_all_first_10p",
+        "--m_f10p",
+        action="store_true",
+        dest="mask_all_first_10p",
+        help="Automatically mask all inactivating mutations in first 10 percent of "
+        "the reading frame, ignoring ATG codons distribution. "
+        "(Default mode in V1.0, not recommended to use in later versions)",
     )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
         sys.exit(0)
     args = app.parse_args()
+
+    # some sanity checks
+    if args.output_opt_cesar_regions and not args.using_optimized_cesar:
+        err_msg = (
+            "Error! Please use --output_opt_cesar_regions parameter "
+            " with --using_optimized_cesar flag only"
+        )
+        sys.exit(err_msg)
     return args
 
 
