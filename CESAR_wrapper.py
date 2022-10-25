@@ -2253,28 +2253,14 @@ def invert_complement(seq):
     return reverse_complement
 
 
-def save_prot(gene_name, prot_seq, prot_out, del_mis_exons_):
+def save_prot(prot_seq, prot_out):
     """Save protein sequences."""
-    if prot_out is None:
-        return
-    del_mis_exons = set() if del_mis_exons_ is None else set(del_mis_exons_)
-
     f = open(prot_out, "w") if prot_out != "stdout" else sys.stdout
-    for chain_id, seq_collection in prot_seq.items():
-        proj_name = f"{gene_name}.{chain_id}"
+    for proj_name, seq_collection in prot_seq.items():
         exons = sorted(seq_collection.keys())
-        ref_seqs = []
-        que_seqs = []
-        for exon in exons:
-            ref_part = seq_collection[exon]["ref"]
-            ref_seqs.append(ref_part)
-            if exon in del_mis_exons:
-                que_part = ["-" for _ in ref_part]
-            else:
-                que_part = seq_collection[exon]["que"]
-            que_seqs.append(que_part)
-        ref_aa_seq = "".join(ref_seqs)
-        que_aa_seq = "".join(que_seqs)
+
+        ref_aa_seq = seq_collection["ref"]
+        que_aa_seq = seq_collection["que"]
         # do not allow 0-length sequences, otherwise it will ruin everything
         que_aa_seq = que_aa_seq if len(que_aa_seq) > 0 else "X"
         f.write(f">{proj_name} | PROT | REFERENCE\n")
@@ -2491,9 +2477,17 @@ def redo_codon_sequences(codon_tables, del_mis_exons):
     return codon_ret
 
 
-def extract_prot_sequences_from_codon(codon_s):
+def extract_prot_sequences_from_codon(gene_name, codon_s):
     """Extract protein sequences from codon"""
-    return []
+    ret = {}
+    for chain_id, cds_data in codon_s.items():
+        proj_name = f"{gene_name}.{chain_id}"
+        ref_codons = cds_data["ref"]
+        que_codons = cds_data["que"]
+        ref_aa_seq = "".join([AA_CODE.get(x, "X") for x in ref_codons])
+        que_aa_seq = "".join([AA_CODE.get(x, "X") for x in que_codons])
+        ret[proj_name] = {"ref": ref_aa_seq, "que": que_aa_seq}
+    return ret
 
 
 def realign_exons(args):
@@ -2919,10 +2913,10 @@ def realign_exons(args):
         # chain id is numeric in "codon_table"
         codon_s = redo_codon_sequences(codon_tables, del_mis_exons)
 
-    prot_s = extract_prot_sequences_from_codon(codon_s)
+    prot_s = extract_prot_sequences_from_codon(args["gene"], codon_s)
 
     # save protein/codon ali and text output
-    # save_prot(args["gene"], prot_s, args["prot_out"], del_mis_exons)
+    save_prot(prot_s, args["prot_out"])
     save_codons(args["gene"], codon_s, args["codon_out"])
     save(final_output, args["output"], t0, loss_report)
     sys.exit(0)
