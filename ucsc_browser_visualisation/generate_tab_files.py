@@ -668,9 +668,9 @@ def get_inact_data(wd, all_projections):
             val = feat_val_d.get(f, 0.0)
             # 0.0 - means not found, but not for booleans
             # where 0 is False
-            if val == 0.0 and f == "MIDDLE_80%_INTACT":
+            if val == 0.0 and f == "MIDDLE_IS_INTACT":
                 val = NINE_S
-            elif val == 0.0 and f == "MIDDLE_80%_PRESENT":
+            elif val == 0.0 and f == "MIDDLE_IS_PRESENT":
                 val = NINE_S
             vals.append(val)
         sql_row = (proj, *vals)
