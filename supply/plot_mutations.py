@@ -25,6 +25,11 @@ INS = {FS_INS, BIG_INS}
 DELS = {FS_DEL, BIG_DEL}
 STOP = "STOP"
 SSM = "SSM"
+# (ag)acceptor-EXON-donor(gt)
+SSM_D = "SSMD"  # Donor, right, GT,GC
+SSM_A = "SSMA"  # Acceptor, left, AG 
+SSM_TYPES = {SSM_D, SSM_A}
+
 COMP = "COMPENSATION"
 
 TEMPLATE_PATH_1 = "svg_template.txt"
@@ -804,14 +809,18 @@ def get_rel_pos(abs_pos, ex_num, rel_starts):
 def get_comp_pairs(mut_ids):
     """Get pairs of compensated IDs."""
     ans = []
+    # cannot be < 2
     if len(mut_ids) == 2:
         pair = (mut_ids[0], mut_ids[1])
         ans.append(pair)
-    else:
-        pair_1 = (mut_ids[0], mut_ids[1])
-        pair_2 = (mut_ids[1], mut_ids[2])
-        ans.append(pair_1)
-        ans.append(pair_2)
+        return ans
+    # if 4: need 3 pairs:
+    # (1-2) (2-3) (3-4)
+    for i in range(len(mut_ids) - 1):
+        curr_id = mut_ids[i]
+        next_id = mut_ids[i+1]
+        pair = (curr_id, next_id)
+        ans.append(pair)
     return ans
 
 
@@ -854,7 +863,18 @@ def prepare_mut_data(mut_lines, sp, rel_starts, chain_lim=None):
         elif mclass == COMP:
             # split compensations if required
             comp_field = line_data[5]
-            comp_ids = comp_field.split("_")[1].split(",")
+            try:
+                # comp_ids = comp_field.split("_")[1].split(",")
+                comp_ids_range_str = comp_field.split("_")[1].split("-")
+                # fmt: FS_{start}-{end}
+                _comp_start = int(comp_ids_range_str[0])
+                _comp_end = int(comp_ids_range_str[1])
+            except ValueError:
+                # old-style formatting
+                comp_ids_range_str = comp_field.split("_")[1].split(",")
+                _comp_start = int(comp_ids_range_str[0])
+                _comp_end = int(comp_ids_range_str[-1])
+            comp_ids = list(range(_comp_start, _comp_end + 1))
             comp_pairs = get_comp_pairs(comp_ids)
             for pair in comp_pairs:
                 upd_mark = f"FS_{pair[0]},{pair[1]}"
@@ -1091,9 +1111,9 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y, drawing_mode=DEFAULT_M
                 # still there?
                 pass
             continue
-        # add some stuff
-        # deal with SSM
-        if defect_class == SSM:
+
+        # deal with splice site mutations
+        if defect_class in SSM_TYPES:
             mouseover = None
             to_what = mut.split("->")[1]
 
@@ -1103,7 +1123,8 @@ def generate_filebuffer(mut_lines, human_exons_dct, x, y, drawing_mode=DEFAULT_M
             else:  # mode: default or non-affecting this mutation type
                 color_ = MASKED_MUT_COLOR if is_masked else INACT_MUT_COLOR
 
-            if pos == 1:  # donor
+            # if pos == 1:  # donor
+            if defect_class == SSM_D:
                 labels.append(
                     Textstack(
                         (exon.pos[0] + exon.width, exon.pos[1]),
