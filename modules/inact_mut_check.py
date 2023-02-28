@@ -286,6 +286,7 @@ def analyse_splice_sites(
 
     # if more than 1 -> exclude intron deletions
     sps_report = sorted(sps_report, key=lambda x: (x.exon, x.position))
+
     # sort mutations from the beginning to the end
     for i in range(1, len(sps_report)):
         # iterate over pairs of mutations: current and previous
@@ -299,12 +300,13 @@ def analyse_splice_sites(
             # if current exon doesn't follow the previous immediately -> not the case
             # like prev mut exon is 3 and current is 6
             continue
+        
 
         # if exons follow each other (like 3 and 4) then continue
         curr_pos = curr.position
         prev_pos = prev.position
         curr_type = curr.mclass
-        prev_type = curr.mclass
+        prev_type = prev.mclass
 
         # they must belong to the same intron, check this
         if not (prev_type == SSM_D and curr_type == SSM_A):
