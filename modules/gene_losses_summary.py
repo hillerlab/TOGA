@@ -150,8 +150,20 @@ def read_loss_data(loss_dir):
                 val = True if raw_val == "TRUE" else False
                 proj_to_80_p_intact[projection_id] = val
                 continue
+            elif line_data[2].startswith("MIDDLE_80%_INTACT"):
+                # BACKWARDS COMPATIBILITY
+                raw_val = line_data[2].split()[1]
+                val = True if raw_val == "TRUE" else False
+                proj_to_80_p_intact[projection_id] = val
+                continue
             elif line_data[2].startswith("MIDDLE_IS_PRESENT"):
                 # flag: any missing fragment in the middle 80% if CDS?
+                raw_val = line_data[2].split()[1]
+                val = True if raw_val == "TRUE" else False
+                proj_to_80_p_present[projection_id] = val
+                continue
+            elif line_data[2].startswith("MIDDLE_80%_PRESENT"):
+                # BACKWARDS COMPATIBILITY
                 raw_val = line_data[2].split()[1]
                 val = True if raw_val == "TRUE" else False
                 proj_to_80_p_present[projection_id] = val
@@ -294,9 +306,15 @@ def get_projection_classes(
             # too small fraction of CDS is presented
             if tracing_:
                 print(f"In this projection only {p_i_codons} codons remain intact")
-                print(f"Threshold is {REM_T_L} codons")
-                print(f"-> class L")
-            projection_class[projection] = L
+                print(f"Threshold is {REM_T_L} codons; decide between L and M")
+                # print(f"-> class L")
+            if frame_oub > 0.65:
+                print(f"Out of chain prob > 0.65: {frame_oub}")
+                print(f"-> class M")
+                projection_class[projection] = M
+            else:
+                print("-> class L")
+                projection_class[projection] = L
             continue
 
         # initiate exon -> status dict, exon could be intact, deleted, missing or have inact mut
