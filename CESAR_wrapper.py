@@ -412,7 +412,7 @@ def parse_args():
         "--m_f10p",
         action="store_true",
         dest="mask_all_first_10p",
-        help="Automatically mask all inactivating mutations in first 10% of "
+        help="Automatically mask all inactivating mutations in first 10 percent of "
              "the reading frame, ignoring ATG codons distribution."
     )
 
@@ -1848,8 +1848,8 @@ def extract_codon_data(codon_table, excl_exons=None):
             else:
                 # something strange
                 ref_int = check_codon(ref_codon[-3:])
-                t_codons.extend(ref_int)
-                q_codons.extend(GAP_CODON)
+                t_codons.append(ref_int)
+                q_codons.append(GAP_CODON)
 
             if this_exon_to_del:
                 prev_exon_was_del = True
