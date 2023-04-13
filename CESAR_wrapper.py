@@ -1845,6 +1845,10 @@ def extract_codon_data(codon_table, excl_exons=None):
                 que_subcodons = [GAP_CODON for x in range(len(ref_subcodons))]
                 t_codons.extend(ref_subcodons)
                 q_codons.extend(que_subcodons)
+            elif ref_codon == "-" or ref_codon == "--":
+                # special case to be captured Apr 2023
+                t_codons.append(GAP_CODON)
+                q_codons.append(XXX_CODON)
             else:
                 # something strange
                 ref_int = check_codon(ref_codon[-3:])
