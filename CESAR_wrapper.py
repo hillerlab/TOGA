@@ -1845,9 +1845,15 @@ def extract_codon_data(codon_table, excl_exons=None):
                 que_subcodons = [GAP_CODON for x in range(len(ref_subcodons))]
                 t_codons.extend(ref_subcodons)
                 q_codons.extend(que_subcodons)
+            elif len(ref_codon) < 3:
+                t_codons.append(XXX_CODON)
+                q_codons.append(GAP_CODON)
             elif ref_codon == "-" or ref_codon == "--":
                 # special case to be captured Apr 2023
                 t_codons.append(GAP_CODON)
+                q_codons.append(XXX_CODON)
+            elif len(ref_codon) < 3:
+                t_codons.append(XXX_CODON)
                 q_codons.append(XXX_CODON)
             else:
                 # something strange
@@ -1890,6 +1896,9 @@ def extract_codon_data(codon_table, excl_exons=None):
             t_codons.extend(ref_subcodons)
             q_codons.extend(que_subcodons)
             continue
+        elif len(ref_codon) < 3:
+            t_codons.append(XXX_CODON)
+            q_codons.append(XXX_CODON)
         else:
             ref_int = check_codon(ref_codon[-3:])
             que_int = check_codon(que_codon[-3:])
