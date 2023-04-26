@@ -239,8 +239,8 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
         # query, ref and prot sequence headers are explicitly marked
         query_headers = [h for h in order if h.endswith("query_exon")]
         ref_headers = [h for h in order if h.endswith("reference_exon")]
-        prot_ids = [h for h in order if "PROT" in h]
-        codon_ids = [h for h in order if "CODON" in h]
+        prot_ids = [h for h in order if "| PROT |" in h]
+        codon_ids = [h for h in order if "| CODON |" in h]
 
         # parse reference exons, quite simple
         for header in ref_headers:
