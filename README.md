@@ -96,9 +96,9 @@ This repository also contains sample data to perform a wide-scale test.
 To do so, please download genome sequences for human (GRCh38/hg38) and mouse (GRCm38) in the 2bit format.
 You can download these 2bit files using the following links:
 
-[Human 2bit](ftp://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/hg38.2bit)
+Human 2bit: wget https://hgdownload.cse.ucsc.edu/goldenpath/hg38/bigZips/hg38.2bit
 
-[Mouse 2bit](ftp://hgdownload.cse.ucsc.edu/goldenPath/mm10/bigZips/mm10.2bit)
+Mouse 2bit: wget https://hgdownload.cse.ucsc.edu/goldenpath/mm10/bigZips/mm10.2bit
 
 Then call the following:
 
