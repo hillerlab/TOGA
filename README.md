@@ -569,4 +569,4 @@ provide the chain of interest with --chain parameter:
 
 ## Citation
 
-Kirilenko BM, Munegowda C, Osipova E, Jebb D, Sharma V, Blumer M, Morales A, Ahmed AW, Kontopoulos DG, Hilgers L, Zoonomia Consortium, Hiller M. Integrating gene annotation with orthology inference at scale. Under Review
+Bogdan M Kirilenko, Chetan Munegowda, Ekaterina Osipova, David Jebb, Virag Sharma, Moritz Blumer, Ariadna E Morales, Alexis-Walid Ahmed, Dimitrios-Georgios Kontopoulos, Leon Hilgers, Kerstin Lindblad-Toh, Elinor K Karlsson, Zoonomia Consortium, Michael Hiller. Integrating gene annotation with orthology inference at scale. Science 380 (6643), eabn3107.
