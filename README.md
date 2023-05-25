@@ -567,6 +567,61 @@ provide the chain of interest with --chain parameter:
 /supply/plot_mutations.py ${REFERENCE_BED_FILE} ${PROJECT_DIR}/inact_mut_data.hdf5 ENST0000011111 test.svg --chain 222
 ```
 
+## Getting summary statistics for a list of TOGA runs
+
+To get a TSV file with a summary of the number of genes that are intact (classified as I), 
+with missing sequence (PI, M, PM, PG, or absent), and with inactivating mutations (L and UL), you will need a text file
+listing the names of the TOGA directories containing the loss_summ_data.tsv outputs, then use the "./TOGA_assemblyStats.py" script like this:
+
+```shell
+./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m stats
+```
+
+You can restrict the statistics to a subset of genes (for example, the Placental ancestral gene set in 
+"./TOGAInput/human_hg38/Ancestral_placental.txt") by providing the -ances/--ancestral parameter with the path to the file listing them like this:
+
+```shell
+./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m stats -ances ./TOGAInput/human_hg38/Ancestral_placental.txt
+```
+
+The script will also generate a PDF image of a stacked plot of the statistics.
+The two output files will be named respectively ${TOGA_DIRS_FILE}\_stats.tsv and ${TOGA_DIRS_FILE}\_statsplot.pdf
+
+If you want the script to provide the details of all the classes, without grouping for example L and UL under 
+"genes with inactivating mutations", simply add the -d/--detailed flag.
+
+If you want to change the names of the TOGA runs in the outputs from e.g. "vs_speNam" to something more evocative, you can provide 
+a TSV file mapping the names listed in the ${TOGA_DIRS_FILE} to new ones with the -aN/--assemblyNames parameter like this:
+
+```shell
+./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m stats -ances ./TOGAInput/human_hg38/Ancestral_placental.txt -aN ${NAME_MAP_FILE}
+```
+
+## Creating combined statistics for multiple runs
+
+If you have Haplotype resolved assemblies and ran TOGA for both haplotypes independently, or you have multiple assemblies of the same species,
+you may want to combine the results to get a more accurate view. 
+For example, X-linked genes will be deemed missing (M) by TOGA in the Haplotype with Y-chromosome, and a gene that happened to be deemed lost (L)
+due to a sequencing error may be correctly inferred as intact (I) when you get a better resequencing of your sample.
+Using a precedence map: I>PI>UL>L>M>PM>PG>abs we can keep the "best" class for a given gene out of a range of TOGA runs like so:
+
+```shell
+./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m merge
+```
+
+This will ouput a file named ${TOGA_DIRS_FILE}\_merge.tsv with the same structure as a loss_summ_data.tsv file for genes and transcripts
+(but not projections of course, which are run-specific).
+
+If for some reason you want to change the precedence map (for example, to focus on how many genes are ever part of an assembly gap), 
+you can set the parameter -pre/--precedence like so:
+
+```shell
+./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m merge -pre M#PM#PG#abs#I#PI#UL#L
+```
+
+Note that the ouputs, with the suffix \_merge.tsv, can be renamed loss_summ_data.tsv and put in a directory, to act as the output of a fictional TOGA run.
+This can be useful when using the same script as outlined in the previous section to get summary statistics.
+
 ## Citation
 
 Kirilenko BM, Munegowda C, Osipova E, Jebb D, Sharma V, Blumer M, Morales AE, Ahmed AW, Kontopoulos DG, Hilgers L, Lindblad-Toh K, Karlsson EK, Zoonomia Consortium, Hiller M. [Integrating gene annotation with orthology inference at scale.](https://www.science.org/stoken/author-tokens/ST-1161/full) Science, 380(6643), eabn3107, 2023
