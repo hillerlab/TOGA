@@ -592,19 +592,18 @@ If you want to change the names of the TOGA directories to something more meanin
 ./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m stats -ances ./TOGAInput/human_hg38/Ancestral_placental.txt -aN ${NAME_MAP_FILE}
 ```
 
-### Assembly statistics for haplotype resolved assemblies
+#### Assembly statistics for haplotype resolved assemblies
 
-If you have Haplotype resolved assemblies and ran TOGA for both haplotypes independently, or you have multiple assemblies of the same species,
-you may want to combine the results to get a more accurate view. 
-For example, X-linked genes will be deemed missing (M) by TOGA in the Haplotype with Y-chromosome, and a gene that happened to be deemed lost (L)
-due to a sequencing error may be correctly inferred as intact (I) when you get a better resequencing of your sample.
-Using a precedence map: I>PI>UL>L>M>PM>PG>abs we can keep the "best" class for a given gene out of a range of TOGA runs like so:
+If you have multiple assemblies of the same species, or you have haplotype-resolved assemblies, where e.g. sex chromosomes are only contained in one assembly, 
+you may want to combine the results to get a more accurate view. For example, X-linked genes will be deemed missing (M) by TOGA in the Haplotype with Y-chromosome.
+Similarly, in case of a polymorphic frameshift or a base error, a gene may be classified as 'uncertain loss' (UL) in haplotype 1 but Intact in haplotype 2.
 
+TOGA_assemblyStats.py, can merge different assemblies, using a precedence map: I>PI>UL>L>M>PM>PG>abs, to keep the "best" class for a given gene out of a range of TOGA runs:
 ```shell
 ./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m merge
 ```
 
-This will ouput a file named ${TOGA_DIRS_FILE}\_merge.tsv with the same structure as a loss_summ_data.tsv file for genes and transcripts
+This will output a file named ${TOGA_DIRS_FILE}\_merge.tsv with the same structure as a loss_summ_data.tsv file for genes and transcripts
 (but not projections of course, which are run-specific).
 
 If for some reason you want to change the precedence map (for example, to focus on how many genes are ever part of an assembly gap), 
