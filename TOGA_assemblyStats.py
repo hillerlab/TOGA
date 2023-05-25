@@ -64,6 +64,7 @@ with open(ARGS.file,"r") as f:
         else:
             ASSEMBLIES.append("vs_"+line.rstrip())
 
+#creating the final names of the assemblies for the ouput
 NAMES={x:x for x in ASSEMBLIES}
 if ARGS.assemblyNames!=False:
     with open(ARGS.assemblyNames,"r") as f:
@@ -72,23 +73,23 @@ if ARGS.assemblyNames!=False:
             NAMES[line[0]]=line[1]
 
 
-labels=set()
+labels=set() #all the labels given by TOGA
 def get_classes(X,typ):
     new={}
 
-    for x in tqdm.tqdm(X):
+    for x in tqdm.tqdm(X): #iterating over assemblies
         temp={}
         try:
             df=pd.read_csv(x+"/loss_summ_data.tsv",sep="\t",header=0,index_col=0).loc[typ.upper()]
             for l in range(len(df.iloc[:,0])):
-                temp[df.iloc[l,0]]=df.iloc[l,1]
+                temp[df.iloc[l,0]]=df.iloc[l,1] #stores each gene or transcript and its TOGA class
                 labels.add(df.iloc[l,1])
             new[x]=temp
         except:
             print("no "+typ+"s in "+x)
 
     new=pd.DataFrame(new)
-    new=new.fillna("abs")
+    new=new.fillna("abs") #labels all genes that are part of some runs but not all as "absent" when no class is given
     for x in new.index:
         for m in new.columns:
             labels.add(new.loc[x,m])
@@ -106,7 +107,7 @@ if ARGS.ancestral!=False:
         for line in f:
             if line.rstrip() in CLASSES.index:
                 ANCESTRAL.append(line.rstrip())
-    CLASSES=CLASSES.loc[ANCESTRAL]
+    CLASSES=CLASSES.loc[ANCESTRAL] #restricts analyses downstream if a gene set was provided
 
 ####process dataframe
 def merge(df,typ):
