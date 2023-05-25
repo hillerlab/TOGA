@@ -567,37 +567,32 @@ provide the chain of interest with --chain parameter:
 /supply/plot_mutations.py ${REFERENCE_BED_FILE} ${PROJECT_DIR}/inact_mut_data.hdf5 ENST0000011111 test.svg --chain 222
 ```
 
-## Getting summary statistics for a list of TOGA runs
+## Getting assembly quality statistics
 
-To get a TSV file with a summary of the number of genes that are intact (classified as I), 
-with missing sequence (PI, M, PM, PG, or absent), and with inactivating mutations (L and UL), you will need a text file
-listing the names of the TOGA directories containing the loss_summ_data.tsv outputs, then use the "./TOGA_assemblyStats.py" script like this:
+TOGA also provides a powerful way to benchmark assembly completeness and quality. TOGA’s gene classification explicitly distinguishes between genes with missing sequences (indicative of assembly incompleteness) and genes with inactivating mutations (an excess of genes with inactivating mutations indicates a higher base error rate). We used a set of 18430 ancestral placental mammal genes (file is [here](https://github.com/hillerlab/TOGA/blob/master/TOGAInput/human_hg38/Ancestral_placental.txt) to compute assembly quality statistics, as illustrated previously for the [vampire bat](https://www.science.org/doi/10.1126/sciadv.abm6494) or [Rhinolophid bat](https://europepmc.org/article/ppr/ppr616538) genomes.  
 
+To use TOGA to benchmark assembly quality, use the "supply/TOGA_assemblyStats.py" script. This script produces a TSV file with a summary of the number of genes that are intact (classified as I), having missing sequence (TOGA status PI, M, PM, PG, or absent) or inactivating mutations (L and UL). The script will also generate a PDF image of a stacked plot of the statistics (used in Figure 1 in our previous studies). The two output files will be named respectively ${TOGA_DIRS_FILE}\_stats.tsv and ${TOGA_DIRS_FILE}\_statsplot.pdf
+
+The input is a text file listing the names of the TOGA directories. Each directory must contain the loss_summ_data.tsv output file. 
+
+Use this command to consider all genes.
 ```shell
 ./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m stats
 ```
 
-You can restrict the statistics to a subset of genes (for example, the Placental ancestral gene set in 
-"./TOGAInput/human_hg38/Ancestral_placental.txt") by providing the -ances/--ancestral parameter with the path to the file listing them like this:
-
+You can restrict the statistics to a subset of genes (for example, the Placental ancestral gene set in "./TOGAInput/human_hg38/Ancestral_placental.txt") by providing the -ances/--ancestral parameter with the path to the file listing them like this:
 ```shell
 ./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m stats -ances ./TOGAInput/human_hg38/Ancestral_placental.txt
 ```
 
-The script will also generate a PDF image of a stacked plot of the statistics.
-The two output files will be named respectively ${TOGA_DIRS_FILE}\_stats.tsv and ${TOGA_DIRS_FILE}\_statsplot.pdf
+If you want the script to provide the details of all the classes, without grouping for example L and UL under "genes with inactivating mutations", simply add the -d/--detailed flag.
 
-If you want the script to provide the details of all the classes, without grouping for example L and UL under 
-"genes with inactivating mutations", simply add the -d/--detailed flag.
-
-If you want to change the names of the TOGA runs in the outputs from e.g. "vs_speNam" to something more evocative, you can provide 
-a TSV file mapping the names listed in the ${TOGA_DIRS_FILE} to new ones with the -aN/--assemblyNames parameter like this:
-
+If you want to change the names of the TOGA directories to something more meaningful (e.g. instead of "vs_speNam" listing the species common or latin name), you can provide a TSV file mapping the names listed in the ${TOGA_DIRS_FILE} to new ones with the -aN/--assemblyNames parameter like this:
 ```shell
 ./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m stats -ances ./TOGAInput/human_hg38/Ancestral_placental.txt -aN ${NAME_MAP_FILE}
 ```
 
-## Creating combined statistics for multiple runs
+### Assembly statistics for haplotype resolved assemblies
 
 If you have Haplotype resolved assemblies and ran TOGA for both haplotypes independently, or you have multiple assemblies of the same species,
 you may want to combine the results to get a more accurate view. 
