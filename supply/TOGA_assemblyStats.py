@@ -142,20 +142,19 @@ def stats(df):
     #stats={NAMES[x]:stats[x] for x in stats}
     stats=pd.DataFrame(stats).T
     stats=stats.loc[ASSEMBLIES]
-    stats.rename(index=NAMES,inplace=True)
 
     if ARGS.detailed:
-        stats.to_csv(filename+"_stats.tsv",sep="\t")
-        stats.loc[:,["I","PI","UL","L","M","PM","PG","abs"]].plot.barh(stacked=True,color={"I":"#0247FE","PI":"#7ABFFF","UL":"#FF823B","M":"#B2BEB5","L":"#CE1E16","PM":"#A2A2D0","PG":"#000000","abs":"#FEFEFA"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")
+        stats.rename(index=NAMES).to_csv(filename+"_stats.tsv",sep="\t")
+        stats.loc[list(stats.index)[::-1],["I","PI","UL","L","M","PM","PG","abs"]].rename(index=NAMES).plot.barh(stacked=True,color={"I":"#0247FE","PI":"#7ABFFF","UL":"#FF823B","M":"#B2BEB5","L":"#CE1E16","PM":"#A2A2D0","PG":"#000000","abs":"#FEFEFA"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")
     else:
         stats["genes with missing sequence"]=stats.loc[:,["PI","M","PM","PG","abs"]].sum(axis=1)
         stats["intact genes"]=stats["I"]
         stats["genes with inactivating mutations"]=stats.loc[:,["L","UL"]].sum(axis=1)
 
         stats=stats.loc[:,["intact genes","genes with inactivating mutations","genes with missing sequence"]]
-        stats.to_csv(filename+"_stats.tsv",sep="\t")
+        stats.rename(index=NAMES).to_csv(filename+"_stats.tsv",sep="\t")
 
-        stats.plot.barh(stacked=True,color={"intact genes":"#0247FE","genes with inactivating mutations":"#FE7B15","genes with missing sequence":"#BFBFBF"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")
+        stats.loc[list(stats.index)[::-1]].rename(index=NAMES).plot.barh(stacked=True,color={"intact genes":"#0247FE","genes with inactivating mutations":"#FE7B15","genes with missing sequence":"#BFBFBF"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")
 
 
 if ARGS.mode=="stats":
