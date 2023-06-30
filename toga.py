@@ -36,9 +36,9 @@ from modules.stitch_fragments import stitch_scaffolds
 from modules.common import read_isoforms_file
 
 
-__author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.1"
-__email__ = "bogdan.kirilenko@senckenberg.de"
+__author__ = "Bogdan Kirilenko, 2023."
+__version__ = "1.1.3"
+__email__ = "kirilenkobm [at] gmail"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 U12_FILE_COLS = 3
@@ -96,18 +96,6 @@ class Toga:
         self.para_bigmem = args.para_bigmem
         self.nextflow_dir = self.__get_nf_dir(args.nextflow_dir)
         self.nextflow_config_dir = args.nextflow_config_dir
-        if args.cesar_bigmem_config:
-            self.nextflow_bigmem_config = os.path.abspath(args.cesar_bigmem_config)
-        else:  # if none: we cannot call os.path.abspath method
-            self.nextflow_bigmem_config = None
-        self.__check_nf_config()
-
-        # to avoid crash on filesystem without locks:
-        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
-        # temporary fix for DSL error in recent NF versions
-        os.environ["NXF_DEFAULT_DSL"] = "1"
-
-        chain_basename = os.path.basename(args.chain_input)
 
         # define project name
         if args.project_name:
@@ -124,12 +112,23 @@ class Toga:
             else os.path.join(os.getcwd(), self.project_name)
         )
         self.temp_wd = os.path.join(self.wd, TEMP)
-        # for safety; need this to make paths later
         self.project_name = self.project_name.replace("/", "")
         os.mkdir(self.wd) if not os.path.isdir(self.wd) else None
         os.mkdir(self.temp_wd) if not os.path.isdir(self.temp_wd) else None
         print(f"Output directory: {self.wd}")
 
+        if args.cesar_bigmem_config:
+            self.nextflow_bigmem_config = os.path.abspath(args.cesar_bigmem_config)
+        else:  # if none: we cannot call os.path.abspath method
+            self.nextflow_bigmem_config = None
+        self.__check_nf_config()
+
+        # to avoid crash on filesystem without locks:
+        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+        # temporary fix for DSL error in recent NF versions
+        # os.environ["NXF_DEFAULT_DSL"] = "1"
+
+        chain_basename = os.path.basename(args.chain_input)
         # dir to collect log files with rejected reference genes:
         self.rejected_dir = os.path.join(self.temp_wd, "rejected")
         os.mkdir(self.rejected_dir) if not os.path.isdir(self.rejected_dir) else None
@@ -233,7 +232,7 @@ class Toga:
         self.cesar_crashed_jobs_log = os.path.join(
             self.temp_wd, "_cesar_crashed_jobs.txt"
         )
-        self.fragmented_genome = args.fragmented_genome
+        self.fragmented_genome = False if args.disable_fragments_joining else True
         self.orth_score_threshold = args.orth_score_threshold
         if self.orth_score_threshold < 0.0 or args.orth_score_threshold > 1.0:
             self.die(
@@ -777,8 +776,8 @@ class Toga:
         self.__time_mark("Split cesar jobs done")
 
         # 6) Create bed track for processed pseudogenes
-        print("# STEP 6: RESERVED (PLACEHOLDER)\n")
-        # self.__get_proc_pseudogenes_track()
+        print("# STEP 6: Create processed pseudogenes track\n")
+        self.__get_proc_pseudogenes_track()
 
         # 7) call CESAR jobs: parallel step
         print(
@@ -1063,7 +1062,10 @@ class Toga:
         trans_to_strand = self.__get_transcript_to_strand()
         chain_to_qstrand = self.__get_chain_to_qstrand()
         # 3 - save bed 12
+
+        # WARNING DOING BED4
         f = open(out_bed, "w")
+        f2 = open(f"{out_bed}4", "w")
         # print(projection_to_search_loc)
         for (transcript, chain), exons in projection_to_exons.items():
             # print(transcript, chain)
@@ -1101,6 +1103,7 @@ class Toga:
                     abs_start = abs_start_in_s + search_start
                     abs_end = abs_end_in_s + search_start
 
+                f2.write(f"{chrom}\t{abs_start}\t{abs_end}\t{projection}\n")
                 # print(abs_start, abs_end)
 
                 rel_start = abs_start - bed_start
@@ -1126,7 +1129,7 @@ class Toga:
             f.write("\t".join(map(str, all_fields)))
             f.write("\n")
         f.close()
-        f.close()
+        f2.close()
 
     def __precompute_data_for_opt_cesar(self):
         """Precompute memory data for optimised CESAR.
@@ -1225,7 +1228,6 @@ class Toga:
             shutil.rmtree(project_path) if os.path.isdir(project_path) else None
         # merge files and quit
         self.__merge_dir(mem_dir, self.precomp_mem_cesar)
-        # self.__merge_dir(precomp_reg_dir, self.precomp_reg_cesar)
         self.cesar_mem_was_precomputed = True
 
         if self.output_opt_cesar_regions:
@@ -2180,12 +2182,11 @@ def parse_args():
         "See documentation for details.",
     )
     app.add_argument(
-        "--fragmented_genome",
-        "-f",
-        dest="fragmented_genome",
+        "--disable_fragments_joining",
+        "--dfj",
+        dest="disable_fragments_joining",
         action="store_true",
-        help="Annotation of a fragmented genome: need to assemble query genes "
-        "from pieces",
+        help="Disable assembling query genes from pieces",
     )
     app.add_argument(
         "--ld_model",

@@ -309,11 +309,11 @@ def get_projection_classes(
                 print(f"Threshold is {REM_T_L} codons; decide between L and M")
                 # print(f"-> class L")
             if frame_oub > 0.65:
-                print(f"Out of chain prob > 0.65: {frame_oub}")
-                print(f"-> class M")
+                # print(f"Out of chain prob > 0.65: {frame_oub}")
+                # print(f"-> class M")
                 projection_class[projection] = M
             else:
-                print("-> class L")
+                # print("-> class L")
                 projection_class[projection] = L
             continue
 

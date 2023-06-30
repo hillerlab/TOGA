@@ -7,18 +7,14 @@ then
     exit 0
 fi
 
-eval ./configure.sh
-if [[ $? -ne 0 ]]
-then
-    echo "Configure + build failed"
-    exit 1
-else
-    echo "Configure successful!"
-fi
-
-test_out="test_out"
-eval rm -rf ${test_out}
-eval mkdir -p ${test_out}
+ eval ./configure.sh
+ if [[ $? -ne 0 ]]
+ then
+     echo "Configure + build failed"
+     exit 1
+ else
+     echo "Configure successful!"
+ fi
 
 if [ $1 = "micro" ];
 then
@@ -36,6 +32,7 @@ then
 elif [ $1 = "normal" ];
 then
     echo "Running widescale test"
+    eval "rm -rf test_out"
 
     hg38_2bit=$2
     mm10_2bit=$3
@@ -49,7 +46,7 @@ then
 
     cmd="./toga.py  ${test_chain} ${test_bed} \
          ${hg38_2bit} ${mm10_2bit} \
-         --chn 10 --project_name ${test_out} \
+         --chn 10 --project_name test_out \
          --kt -i supply/hg38.wgEncodeGencodeCompV34.isoforms.txt \
          --cjn 200 --ms --cb 2,4 \
          "

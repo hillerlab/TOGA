@@ -127,9 +127,33 @@ def get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v=Fal
     return proj_to_q_reg
 
 
+def merge_intervals(intervals):
+    # Sort the intervals by start position
+    intervals.sort(key=lambda x: (x[0], x[1], x[2]))
+
+    # Initialize the merged list with the first interval
+    merged = [intervals[0]]
+
+    for current in intervals[1:]:
+        # Get the last interval in the merged list
+        last = merged[-1]
+
+        # If the current interval overlaps with the last one and they are on the same chromosome and strand,
+        # merge them by extending the end of the last interval to the end of the current one
+        if current[0] == last[0] and current[5] == last[5] and current[1] <= last[2]:
+            last = list(last)
+            last[2] = max(last[2], current[2])
+            merged[-1] = tuple(last)
+        else:
+            # Otherwise, just add the current interval to the list
+            merged.append(current)
+
+    return merged
+
+
 def make_bed_lines(proj_to_reg):
     """Create bed9 lines."""
-    bed_lines = []
+    intervals = []
     for name, region in proj_to_reg.items():
         # just parse the region
         chrom = region[0]
@@ -144,15 +168,21 @@ def make_bed_lines(proj_to_reg):
             chrom,
             chrom_start,
             chrom_end,
-            name,
+            f"{name}-like",
             DEF_SCORE,
             strand,
             thick_start,
             thick_end,
             PINK_COLOR,
         )
-        line = "\t".join(str(x) for x in line_data)
-        bed_lines.append(line)
+        intervals.append(line_data)
+
+    # Merge overlapping intervals
+    intervals = merge_intervals(intervals)
+
+    # Convert the merged intervals back into bed lines
+    bed_lines = ["\t".join(str(x) for x in interval) for interval in intervals]
+
     return bed_lines
 
 
@@ -173,6 +203,10 @@ def create_ppgene_track(chain_class_file, chain_file, bed_bdb, output, v=None):
     chain_dict = load_chain_dict(index_file)
     verbose("Extracting pr pseudogene chains") if v else None
     gene_to_pp_chains = get_pp_gene_chains(chain_class_file, v)
+    if len(gene_to_pp_chains) == 0:
+        # no proc pseudogenes
+        verbose("No processed pseudogenes found, skip.")
+        return
     # for each gene-chain pair get corresponding region in query
     verbose("Extracting corresponding regions") if v else None
     projection_to_reg = get_corr_q_regions(
