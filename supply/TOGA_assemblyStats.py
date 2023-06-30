@@ -27,7 +27,7 @@ HELP=f"""USAGE: ONE of the following
 
     To keep the best class found for each gene or transcript
             {sys.argv[0]} <assemblies_file> -m merge  (optional: -ances <ancestral_gene_file>, -pre <TOGAclass1#TOGAclass2#TOGAclass3...> )
-    
+
     To make the summary statistics of TOGA classification
             {sys.argv[0]} <assemblies_file> -m stats -ances <ancestral_gene_file>  (optional: -aN <assembly_names_file>, -d)
 
@@ -35,15 +35,15 @@ HELP=f"""USAGE: ONE of the following
             -ances is a file where each line is a gene you want to keep
             -aN is to specify the names of the assemblies, otherwise TOGA directory names will be used
             -d is to display the statistics for each class TOGA recognizes
-            
+
           """
 
 parser = argparse.ArgumentParser(usage=HELP)
 parser.add_argument('file')
-parser.add_argument('-m', '--mode')  
-parser.add_argument('-ances', '--ancestral',default=False)     
-parser.add_argument('-pre', '--precedence',default="I#PI#UL#L#M#PM#PG#abs") 
-parser.add_argument('-aN', '--assemblyNames',default=False) 
+parser.add_argument('-m', '--mode')
+parser.add_argument('-ances', '--ancestral',default=False)
+parser.add_argument('-pre', '--precedence',default="I#PI#UL#L#M#PM#PG#abs")
+parser.add_argument('-aN', '--assemblyNames',default=False)
 parser.add_argument('-d', '--detailed',action='store_true')  # on/off flag
 ARGS = parser.parse_args()
 
@@ -64,32 +64,31 @@ with open(ARGS.file,"r") as f:
         else:
             ASSEMBLIES.append("vs_"+line.rstrip())
 
-#creating the final names of the assemblies for the ouput
 NAMES={x:x for x in ASSEMBLIES}
 if ARGS.assemblyNames!=False:
     with open(ARGS.assemblyNames,"r") as f:
         for line in f:
             line=line.rstrip().split("\t")
-            NAMES[line[0]]=line[1]
+            NAMES["vs_"+line[0]]=line[1]
 
 
-labels=set() #all the labels given by TOGA
+labels=set()
 def get_classes(X,typ):
     new={}
 
-    for x in tqdm.tqdm(X): #iterating over assemblies
+    for x in tqdm.tqdm(X):
         temp={}
         try:
             df=pd.read_csv(x+"/loss_summ_data.tsv",sep="\t",header=0,index_col=0).loc[typ.upper()]
             for l in range(len(df.iloc[:,0])):
-                temp[df.iloc[l,0]]=df.iloc[l,1] #stores each gene or transcript and its TOGA class
+                temp[df.iloc[l,0]]=df.iloc[l,1]
                 labels.add(df.iloc[l,1])
             new[x]=temp
         except:
             print("no "+typ+"s in "+x)
 
     new=pd.DataFrame(new)
-    new=new.fillna("abs") #labels all genes that are part of some runs but not all as "absent" when no class is given
+    new=new.fillna("abs")
     for x in new.index:
         for m in new.columns:
             labels.add(new.loc[x,m])
@@ -107,14 +106,14 @@ if ARGS.ancestral!=False:
         for line in f:
             if line.rstrip() in CLASSES.index:
                 ANCESTRAL.append(line.rstrip())
-    CLASSES=CLASSES.loc[ANCESTRAL] #restricts analyses downstream if a gene set was provided
+    CLASSES=CLASSES.loc[ANCESTRAL]
 
 ####process dataframe
 def merge(df,typ):
     l=ARGS.precedence.split("#")
     l={x:l[x] for x in range(len(l))}
     l[len(l)]="abs"
-    
+
     order={l[x]:x for x in range(len(l))}
 
     inner={x:{"status":len(order)+1} for x in df.index}
@@ -140,22 +139,22 @@ def stats(df):
     for x in df.index:
         for m in df.columns:
             stats[m][df.loc[x,m]]+=1
-    stats={NAMES[x]:stats[x] for x in stats}
+    #stats={NAMES[x]:stats[x] for x in stats}
     stats=pd.DataFrame(stats).T
-    #stats=stats.loc[df.columns[::-1]]
-    
-    if ARGS.detailed:  
-        stats.to_csv(filename+"_stats.tsv",sep="\t")
-        stats.loc[:,["I","PI","UL","L","M","PM","PG","abs"]].plot.barh(stacked=True,color={"I":"#0247FE","PI":"#7ABFFF","UL":"#FF823B","M":"#B2BEB5","L":"#CE1E16","PM":"#A2A2D0","PG":"#000000","abs":"#FEFEFA"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")    
+    stats=stats.loc[ASSEMBLIES]
+
+    if ARGS.detailed:
+        stats.rename(index=NAMES).to_csv(filename+"_stats.tsv",sep="\t")
+        stats.loc[list(stats.index)[::-1],["I","PI","UL","L","M","PM","PG","abs"]].rename(index=NAMES).plot.barh(stacked=True,color={"I":"#0247FE","PI":"#7ABFFF","UL":"#FF823B","M":"#B2BEB5","L":"#CE1E16","PM":"#A2A2D0","PG":"#000000","abs":"#FEFEFA"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")
     else:
         stats["genes with missing sequence"]=stats.loc[:,["PI","M","PM","PG","abs"]].sum(axis=1)
         stats["intact genes"]=stats["I"]
         stats["genes with inactivating mutations"]=stats.loc[:,["L","UL"]].sum(axis=1)
-        
+
         stats=stats.loc[:,["intact genes","genes with inactivating mutations","genes with missing sequence"]]
-        stats.to_csv(filename+"_stats.tsv",sep="\t")
-        
-        stats.plot.barh(stacked=True,color={"intact genes":"#0247FE","genes with inactivating mutations":"#FE7B15","genes with missing sequence":"#BFBFBF"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")
+        stats.rename(index=NAMES).to_csv(filename+"_stats.tsv",sep="\t")
+
+        stats.loc[list(stats.index)[::-1]].rename(index=NAMES).plot.barh(stacked=True,color={"intact genes":"#0247FE","genes with inactivating mutations":"#FE7B15","genes with missing sequence":"#BFBFBF"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")
 
 
 if ARGS.mode=="stats":
@@ -170,5 +169,6 @@ elif ARGS.mode=="merge":
             f.write("\t".join(["GENE",n,genes.loc[n,"status"]])+"\n")
         for n in transcripts.index:
             f.write("\t".join(["TRANSCRIPT",n,transcripts.loc[n,"status"]])+"\n")
+
         
 
