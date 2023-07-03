@@ -1,1 +1,6 @@
+At the time, we obtained the TOGA input annotation for chicken using Ensembl and NCBI, many transcripts were lacking a proper gene symbol (they were named reg_number). 
+This has now changed for many transcripts. 
+
+This directory provides updated files where more transcripts have a proper gene symbol. 
+Note that these files correspond to the unfiltered transcript set (meaning they still has short intron, NMD and other not-proper transcripts that we recommend to filter out).
 
