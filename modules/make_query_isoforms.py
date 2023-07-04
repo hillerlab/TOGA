@@ -10,6 +10,7 @@ import argparse
 import sys
 from collections import defaultdict
 import networkx as nx
+from version import __version__
 
 try:
     from modules.common import flatten

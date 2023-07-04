@@ -5,6 +5,7 @@ import os
 from collections import defaultdict
 import numpy as np
 import h5py
+from version import __version__
 
 MUT_LINE_FIELDS = 8
 

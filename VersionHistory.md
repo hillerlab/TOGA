@@ -63,3 +63,4 @@ Documentation improvements.
 * CESAR_wrapper.py does not create temporary input files for CESAR. Instead, passes the input directly to CESARs stdin.
 * Fixed GCC flags for ARM architecture.
 * A little improvement in the `run_test.sh` script.
+* Better versions management - added version.py

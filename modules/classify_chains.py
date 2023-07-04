@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import joblib
 import xgboost as xgb
+from version import __version__
 
 try:  # for robustness
     from modules.common import eprint
@@ -22,14 +23,13 @@ except ImportError:
 
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 # paths to single (SE) and multi-exon (ME) models
 SE_MODEL = "models/se_model.dat"
 ME_MODEL = "models/me_model.dat"
-LD_MODEL = "long_distance_model/long_dist_model.dat"
+LD_MODEL = "models/long_dist_model.dat"
 
 ORTH = "ORTH"
 PARA = "PARA"

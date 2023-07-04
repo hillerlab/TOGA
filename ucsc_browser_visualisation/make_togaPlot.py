@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 from collections import defaultdict
+from version import __version__
 
 TEMP = "temp"
 

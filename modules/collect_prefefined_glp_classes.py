@@ -5,6 +5,7 @@ For example, a transcript that was not intersected by any chain is classified as
 Missing, or if projection locus is very short (<5%CDS) it could be missing or lost.
 """
 import os
+from version import __version__
 
 PROJECTION = "PROJECTION"
 TRANSCRIPT = "TRANSCRIPT"

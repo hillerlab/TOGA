@@ -26,9 +26,9 @@ from modules.common import die
 from modules.common import flatten
 from modules.inact_mut_check import inact_mut_check
 from modules.parse_cesar_output import parse_cesar_out
+from version import __version__
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 

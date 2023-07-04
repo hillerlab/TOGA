@@ -15,9 +15,9 @@ from modules.chain_bed_intersect import chain_bed_intersect
 from modules.common import parts
 from modules.common import eprint
 from modules.common import die
+from version import __version__
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 

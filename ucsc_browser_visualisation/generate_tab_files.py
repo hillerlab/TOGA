@@ -8,6 +8,7 @@ import argparse
 import sys
 import os
 from collections import defaultdict
+from version import __version__
 
 SPACE = "&nbsp;"
 PLACE_HOLDER_EXON_MID = "".join([SPACE for _ in range(5)])
@@ -60,6 +61,14 @@ def parse_args():
         help=("If raw cesar output is not present, extract "
               "data from default output fasta files. Will be "
               "the default behaviour in the future"),
+    )
+    app.add_argument(
+        "--force_read_prot_fa",
+        dest="force_read_prot_fa",
+        action="store_true",
+        help=("For very special cases only: extract protein data "
+              "from prot.fasta instead of raw casar output (default). "
+              "This arg is implemented to fix TOGAs in Feb2023")
     )
     app.add_argument("--no_plots",
                     "--np",
@@ -454,6 +463,50 @@ def get_seq_data_from_fasta(wd, all_projections):
     return [], projection_to_prot_ali, projection_to_codon_ali
 
 
+def read_prot_fasta(wd):
+    prot_fasta = os.path.join(wd, PROT_FASTA)
+    # for each protein/codon ali: ref and que
+    proj_to_reference_seq = {}
+    proj_to_query_seq = {}
+    curr_projection = None
+    is_ref = None
+    skip_next = False
+
+    f = open(prot_fasta, "r")
+    for line in f:
+        if line.startswith(">"):
+            # this is header
+            header_data = line.rstrip().lstrip(">").split(" | ")
+            if header_data[1] != "PROT":
+                skip_next = True
+                continue
+            curr_projection = header_data[0]
+            is_ref = header_data[2] == "REFERENCE"
+        else:
+            # this is a sequence, must be related to the previously selected header
+            if skip_next is True:
+                skip_next = False
+                continue
+            seq = line.rstrip()
+            if is_ref:
+                proj_to_reference_seq[curr_projection] = seq
+            else:
+                proj_to_query_seq[curr_projection] = seq
+            # for safety: reset curr proj and isref
+            curr_projection = None
+            is_ref = None
+    f.close()
+
+    projection_to_ali = {}
+    for proj, que_prot_seq in proj_to_query_seq.items():
+        ref_prot_seq = proj_to_reference_seq.get(proj, None)
+        if not ref_prot_seq:
+            continue
+        prot_ali = format_as_ali(ref_prot_seq, que_prot_seq)
+        projection_to_ali[proj] = prot_ali
+    return projection_to_ali
+
+
 def get_sequence_data(wd, all_projections, exon_to_stat):
     """Parse nucleotide and protein sequence data."""
     print("Reading sequence data")
@@ -723,6 +776,11 @@ def main():
     projection_exon_data = seq_data[0]
     projection_to_prot_ali = seq_data[1]
     projection_to_codon_ali = seq_data[2]
+
+    if args.force_read_prot_fa:
+        # override default protein sequences source
+        print("Force reading protein alignments from prot.fasta")
+        projection_to_prot_ali = read_prot_fasta(args.wd)
     save_toga_info_tab(
         args.output,
         all_projections,

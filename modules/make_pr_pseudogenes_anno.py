@@ -4,6 +4,7 @@ import argparse
 import sys
 import os
 from collections import defaultdict
+from version import __version__
 
 try:
     from modules.common import chain_extract_id

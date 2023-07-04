@@ -7,6 +7,7 @@ import argparse
 import sys
 from datetime import datetime as dt
 from collections import defaultdict
+from version import __version__
 
 try:
     from modules.common import make_cds_track

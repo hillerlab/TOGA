@@ -2,7 +2,7 @@
 
 ![TOGA logo](https://github.com/hillerlab/TOGA/blob/master/supply/logo.png)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-![version](https://img.shields.io/badge/version-1.1.3-blue)
+![version](https://img.shields.io/badge/version-1.1.4-blue)
 [![DOI](https://zenodo.org/badge/277817661.svg)](https://zenodo.org/badge/latestdoi/277817661)
 
 TOGA is a new method that integrates gene annotation, inferring orthologs and classifying
@@ -68,7 +68,7 @@ JH567521 395878 449234 ENST00000259400.1169 942 + 395878 449234 0,0,200 7 123,66
 Success!
 ```
 
-If you experience any problems installing TOGA, please visit the troubleshooting section.
+If you experience any problems installing TOGA, please visit the [troubleshooting](https://github.com/hillerlab/TOGA/blob/master/TroubleShooting.md) section.
 
 ### Configuring TOGA for cluster
 

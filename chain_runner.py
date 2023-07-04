@@ -15,9 +15,9 @@ from modules.common import make_cds_track
 from modules.common import eprint
 from modules.common import die
 from modules.common import load_chain_dict
+from version import __version__
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 

@@ -9,6 +9,7 @@ import argparse
 import sys
 import re
 from collections import Counter
+from version import __version__
 
 try:
     from modules.common import die
@@ -18,7 +19,6 @@ except ImportError:
     from commom import eprint
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 

@@ -30,14 +30,12 @@ from modules.get_transcripts_quality import classify_transcripts
 from modules.make_query_isoforms import get_query_isoforms_data
 from modules.collect_prefefined_glp_classes import _collect_predefined_glp_cases
 from modules.collect_prefefined_glp_classes import _add_transcripts_to_missing
-
-# from modules.common import eprint
 from modules.stitch_fragments import stitch_scaffolds
 from modules.common import read_isoforms_file
+from version import __version__
 
 
 __author__ = "Bogdan Kirilenko, 2023."
-__version__ = "1.1.3"
 __email__ = "kirilenkobm [at] gmail"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 

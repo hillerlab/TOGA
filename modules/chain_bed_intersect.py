@@ -7,6 +7,7 @@ chain_id<tab>comma-separated list of overlapped genes.
 """
 import sys
 from collections import defaultdict
+from version import __version__
 
 try:  # for robustness
     from modules.common import flatten
@@ -14,7 +15,6 @@ except ImportError:
     from common import flatten
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 

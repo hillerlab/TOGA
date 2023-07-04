@@ -6,13 +6,11 @@ import xgboost as xgb
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import cross_val_score
-
-# from sklearn.metrics import mean_squared_error
 import joblib
+from version import __version__
 
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 

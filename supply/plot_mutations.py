@@ -11,6 +11,7 @@ import re
 from copy import copy
 from collections import defaultdict
 import h5py
+from version import __version__
 
 # Mutation classes
 EX_DEL = "Deleted exon"

@@ -1,4 +1,6 @@
 """Constants to be used in the gene loss detection modules."""
+from version import __version__
+
 
 # mut classes:
 MISS_EXON = "Missing exon"

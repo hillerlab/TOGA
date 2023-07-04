@@ -4,6 +4,7 @@ import sys
 import argparse
 from collections import defaultdict
 from collections import namedtuple
+from version import __version__
 
 try:  # for robustness
     from modules.parse_cesar_output import parse_cesar_out
@@ -21,7 +22,6 @@ except ImportError:
     from GLP_values import *
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 

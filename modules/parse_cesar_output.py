@@ -3,6 +3,7 @@
 import argparse
 import sys
 from copy import deepcopy
+from version import __version__
 
 try:  # for robustness
     from modules.common import eprint

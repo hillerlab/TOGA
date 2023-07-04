@@ -10,6 +10,7 @@ import os
 import sys
 from datetime import datetime as dt
 from collections import defaultdict
+from version import __version__
 
 try:  # for robustness
     from modules.common import make_cds_track
@@ -24,7 +25,6 @@ except ImportError:
 
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 

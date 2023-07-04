@@ -5,9 +5,9 @@ import sys
 import subprocess
 from subprocess import PIPE
 from modules.common import eprint
+from version import __version__
 
 __author__ = "Bogdan Kirilenko, 2020."
-__version__ = "1.0"
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
