@@ -1305,7 +1305,7 @@ def make_in_filename(cesar_in):
         temp_dir = f"/dev/shm/{whoami}"
         os.mkdir(temp_dir) if not os.path.isdir(temp_dir) else None
     except FileNotFoundError:  # /dev/shm not found
-        temp_dir = "/tmp/{0}".format(whoami)
+        temp_dir = f"/tmp/{whoami}"
         os.mkdir(temp_dir) if not os.path.isdir(temp_dir) else None
     filename = (
         "".join(
@@ -1355,9 +1355,11 @@ def make_exon_flanks_file(is_opt, flanks_dict, predefined_file=None):
     return filename
 
 
-def make_cesar_in(exons, queries, filename, u12_elems):
+def make_cesar_in(exons, queries, u12_elems, cesar_in_filename):
     """Make input for CESAR."""
+    cesar_in_filename, is_temp = make_in_filename(cesar_in_filename)
     input_line = ""  # init var
+
     # write exons first
     exons_num = len(exons.keys())
     exons_last_ind = exons_num - 1
@@ -1384,10 +1386,19 @@ def make_cesar_in(exons, queries, filename, u12_elems):
     # write queries
     for chain_id, chain_seq in queries.items():
         input_line += f">{chain_id}\n{chain_seq}\n"
+
     # save to the file
-    with open(filename, "w") as f:
+    # with open(cesar_in_filename, "w") as f:
+    #     f.write(input_line)
+    if is_temp is True:
+        # in TOGAs < 1.1.4 - we'd create a temp file in the /dev/shm
+        # now, we don't do it - just pass to the CESAR /dev/stdin
+        return input_line, None, True
+    
+    # user asked to create a specific file to store cesar's input
+    with open(cesar_in_filename, "w") as f:
         f.write(input_line)
-    verbose("Cesar input saved to {0}".format(filename))
+    return None, cesar_in_filename, False
 
 
 def get_exon_indexes(exon_sizes):
@@ -1430,8 +1441,8 @@ def memory_check(block_sizes, qlength_max, estimate_memory):
 
 def run_cesar(
     input_file,
+    input_data,
     memory_raw,
-    istemp,
     memlim,
     cesar_binary,
     force_incl_file,
@@ -1439,37 +1450,63 @@ def run_cesar(
     predef_regs,
     opt_precompute,
 ):
-    """Run CESAR for the input file."""
+    """Run CESAR for the input file or data.
+
+    Normally, runs using input_data -> a string representing the input data for CESAR
+    Alternatively, can be executed using input_file -> temp file created to call CESAR.
+    The second option may be useful if CESAR_wrapper.py is executed as a standalone tool.
+    """
     verbose(f"Running CESAR for {input_file}")
     x_param = math.ceil(memlim + 1) if memlim else math.ceil(memory_raw) + 1
     if memlim and memory_raw > memlim:
         eprint(
             f"Warning! Memory limit is {memlim} but {memory_raw} requested for this run."
         )
-    cesar_cmd = f"{cesar_binary} {input_file} -x {x_param}"
+
+    # check whether the function was called correctly
+    if input_file:
+        cesar_cmd = [cesar_binary, input_file, '-x', str(x_param)] 
+    elif input_data:
+        cesar_cmd = [cesar_binary, '/dev/stdin', '-x', str(x_param)] 
+    else:
+        raise ValueError("run_cesar: both input_file and input_data are missing!")
+
+    # additional parameters if calling optimised CESAR version instead of canonical one
     if force_incl_file:
         # 1) this is optimised cesar
         # 2) we need to add an argument
-        cesar_cmd += f" --regions_file {force_incl_file}"
+        cesar_cmd += ["--regions_file", force_incl_file]
     if flanks_file:
         # also for optimised cesar only
-        cesar_cmd += f" --exon_flanks {flanks_file}"
+        cesar_cmd += ["--exon_flanks", flanks_file]
     if predef_regs:
         # do not call lastz if there are predefined regions
-        cesar_cmd += " --no_lastz"
+        cesar_cmd += ["--no_lastz"]
     if opt_precompute:
-        cesar_cmd += " --memory_consumption"
-    
-    verbose(f"Calling CESAR command:\n{cesar_cmd}")
+        cesar_cmd += ["--memory_consumption"]
+
+    verbose(f"Calling CESAR command:\n{' '.join(cesar_cmd)}")
+
     p = subprocess.Popen(
-        cesar_cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE
+        cesar_cmd, 
+        shell=False,
+        stdin=subprocess.PIPE,  # use PIPE for stdin
+        stderr=subprocess.PIPE, 
+        stdout=subprocess.PIPE
     )
-    b_stdout, b_stderr = p.communicate()
+
+    if input_file:
+        # if a file was used to call CESAR -> just get the stdout and stderr
+        b_stdout, b_stderr = p.communicate()
+    elif input_data:
+        # otherwise, feed the input_data using stdin
+        b_stdout, b_stderr = p.communicate(input=input_data.encode())  
+
     rc = p.returncode
     if rc != 0:
         # CESAR job failed: die
         stderr = b_stderr.decode("utf-8")
-        os.remove(input_file) if istemp else None
+        # os.remove(input_file) if istemp else None
         eprint("CESAR wrapper command crashed: {0}".format(" ".join(sys.argv)))
         die(f"CESAR failed run for {cesar_cmd}: {stderr}", 1)
         return None  # to suppress linter
@@ -2790,7 +2827,6 @@ def realign_exons(args):
     verbose(f"\nExpecting a memory consumption of: {memory} GB")
     # arrange input for CESAR and save it
     # is_temp is True if /dev/shm is in use; flag to remove that
-    cesar_in_filename, is_temp = make_in_filename(args["cesar_input_save_to"])
     # create temp file for force-include regions, if required
     force_include_reg_file = make_reg_file(
         args["opt_cesar"],
@@ -2809,7 +2845,7 @@ def realign_exons(args):
     # 2) If splice site in reference is non canonical -> we also threat this as U12
     #    even if this splice site is not in the U12 data
     append_u12(args["u12"], args["gene"], ref_ss_data)
-    make_cesar_in(prepared_exons, query_sequences, cesar_in_filename, ref_ss_data)
+    cesar_in_data, cesar_in_filename, is_temp = make_cesar_in(prepared_exons, query_sequences, ref_ss_data, args["cesar_input_save_to"])
     # run cesar itself
     # TODO: exclude later
     # print(force_include_regions_opt_v)
@@ -2826,8 +2862,8 @@ def realign_exons(args):
     if not args["cesar_output"]:
         cesar_raw_out = run_cesar(
             cesar_in_filename,
+            cesar_in_data,
             memory,
-            is_temp,
             memlim,
             cesar_bin,
             force_include_reg_file,
@@ -2841,7 +2877,9 @@ def realign_exons(args):
     else:  # very specific case, load already saved CESAR output
         with open(args["cesar_output"], "r") as f:
             cesar_raw_out = f.read()
-    os.remove(cesar_in_filename) if is_temp else None  # wipe temp if temp
+    if cesar_in_filename:
+        # TODO: can be potentially simplified
+        os.remove(cesar_in_filename) if cesar_in_filename else None  # wipe temp if temp
     # save raw CESAR output and close if required
     save(cesar_raw_out, args["raw_output"], t0) if args["raw_output"] else None
     # process the output, extract different features per exon

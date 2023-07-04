@@ -12,7 +12,7 @@ printf "Compiling C code...\n"
 
 # Check machine architecture and set appropriate flags
 if [ $(uname -m) = "arm64" ]; then
-    CFLAGS="-Wall -Wextra -O2 -g -std=c99" # adjust flags for M1 if necessary
+    CFLAGS="-Wall -Wextra -O2 -g -std=c99 -arch arm64" # adjust flags for M1 if necessary
 else
     CFLAGS="-Wall -Wextra -O2 -g -std=c99" # original flags for x86
 fi

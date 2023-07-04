@@ -58,3 +58,8 @@ Documentation improvements.
 * Removed `-f/--fragmented_genome` flag from toga.py CLI - the "assemble transcript from fragments" feature is enabled by default. Please use `--disable_fragments_joining/--dfj` option to disable this feature.
 * Fixed package versions in the `requirements.txt`
 
+# TOGA 1.1.4  (in progress) #
+
+* CESAR_wrapper.py does not create temporary input files for CESAR. Instead, passes the input directly to CESARs stdin.
+* Fixed GCC flags for ARM architecture.
+* A little improvement in the `run_test.sh` script.

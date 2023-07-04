@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
-if [ "$#" -lt 1 ];
-then
+if [ "$#" -lt 1 ] || ( [ "$1" != "micro" ] && [ "$1" != "normal" ] ); then
     echo "Usage: $0 [MODE: micro/normal] [if normal: paths to human and mouse 2 bit files]"
     exit 0
 fi
+
 
  eval ./configure.sh
  if [[ $? -ne 0 ]]
