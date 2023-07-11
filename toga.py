@@ -155,6 +155,9 @@ class Toga:
                 f"gzip -dc {args.chain_input} | "
                 f"{self.CHAIN_SCORE_FILTER} stdin "
                 f"{args.min_score} > {self.chain_file}"
+                # Tried to replace C binary with AWK, something to think about
+                # f"awk -f {self.CHAIN_SCORE_FILTER_AWK} {args.min_score} "
+                # f"> {self.chain_file}"
             )
         elif args.no_chain_filter:  # it is .chain and score filter is not required
             chain_filter_cmd = f"rsync -a {args.chain_input} {self.chain_file}"
@@ -556,6 +559,9 @@ class Toga:
         self.CONFIGURE = os.path.join(self.LOCATION, "configure.sh")
         self.CHAIN_SCORE_FILTER = os.path.join(
             self.LOCATION, "modules", "chain_score_filter"
+        )
+        self.CHAIN_SCORE_FILTER_AWK = os.path.join(
+            self.LOCATION, "modules", "chain_score_filter.awk"
         )
         self.CHAIN_COORDS_CONVERT_LIB = os.path.join(
             self.LOCATION, "modules", "chain_coords_converter_slib.so"
@@ -1293,11 +1299,13 @@ class Toga:
             f"{self.SPLIT_EXON_REALIGN_JOBS} "
             f"{self.orthologs} {self.ref_bed} "
             f"{self.index_bed_file} {self.chain_index_file} "
-            f"{self.t_2bit} {self.q_2bit} "
+            f"{self.t_2bit} "
+            f"{self.q_2bit} "
+            f"{self.wd} "
             f"--jobs_dir {self.cesar_jobs_dir} "
             f"--jobs_num {self.cesar_jobs_num} "
             f"--combined {self.cesar_combined} "
-            f"--bigmem {self.cesar_bigmem_jobs} "
+            f"--bigmem {self.cesar_bigmem_jobs} "  # TODO: refactor this part
             f"--results {self.cesar_results} "
             f"--buckets {self.cesar_buckets} "
             f"--mem_limit {self.cesar_mem_limit} "

@@ -8,7 +8,7 @@ import os
 import sys
 import subprocess
 import string
-import random
+import uuid
 import math
 from datetime import datetime as dt
 from re import finditer, IGNORECASE
@@ -415,6 +415,14 @@ def parse_args():
         help="Automatically mask all inactivating mutations in first 10 percent of "
              "the reading frame, ignoring ATG codons distribution."
     )
+    app.add_argument(
+        "--temp_dir",
+        default=None,
+        help="Temp dir to store intermediate files.\n"
+             "In TOGA pipeline: $toga_output/temp/cesar_temp_files; "
+             "As a standalone script, by default: cesar_temp_files in the "
+             "directory where it was called"
+    )
 
     if len(sys.argv) == 1:
         app.print_help()
@@ -565,8 +573,8 @@ def get_exons(bed_data, t_db):
         left_brd_ = min_pos - EXON_SEQ_FLANK if min_pos - EXON_SEQ_FLANK > 0 else 0
         left_flank_coord = (left_brd_, min_pos)
         right_flank_coord = (max_pos, max_pos + EXON_SEQ_FLANK)
-        left_flank = chrom_seq[left_flank_coord[0] : left_flank_coord[1]].upper()
-        right_flank = chrom_seq[right_flank_coord[0] : right_flank_coord[1]].upper()
+        left_flank = chrom_seq[left_flank_coord[0]: left_flank_coord[1]].upper()
+        right_flank = chrom_seq[right_flank_coord[0]: right_flank_coord[1]].upper()
         # correct for strand:
         left_flank = left_flank if bed_data["strand"] else revert(left_flank)
         right_flank = right_flank if bed_data["strand"] else revert(right_flank)
@@ -641,7 +649,7 @@ def check_ref_exons(exon_seqs, mask_stops):
     prev_index = 0
     for num, exon_seq in exon_seqs.items():
         exon_len = len(exon_seq)
-        stop_masked[num] = safe_seq[prev_index : prev_index + exon_len]
+        stop_masked[num] = safe_seq[prev_index: prev_index + exon_len]
         prev_index += exon_len
     return stop_masked, sec_codons
 
@@ -1294,39 +1302,27 @@ def find_gaps(query_seq, search_locus, gap_size, directed):
     return gap_ranges
 
 
-def make_in_filename(cesar_in):
+def make_in_filename(cesar_in, temp_dir):
     """Make filename for the CESAR input."""
+    # TODO: refactor handling temp files
     if cesar_in:  # is defined by user
         # cesar in - file addr, False --> to mark it is not temp
         return cesar_in, False
-    # is not defined --> create a folder in dev shm and make random string
-    whoami = subprocess.check_output("whoami", shell=True).decode("utf-8")[:-1]
-    try:  # on MacOS one cannot access /dev/shm
-        temp_dir = f"/dev/shm/{whoami}"
-        os.mkdir(temp_dir) if not os.path.isdir(temp_dir) else None
-    except FileNotFoundError:  # /dev/shm not found
-        temp_dir = f"/tmp/{whoami}"
-        os.mkdir(temp_dir) if not os.path.isdir(temp_dir) else None
-    filename = (
-        "".join(
-            random.choice(string.ascii_uppercase + string.digits)
-            for _ in range(TMP_NAME_SIZE)
-        )
-        + ".fa"
-    )
+    os.mkdir(temp_dir) if not os.path.isdir(temp_dir) else None
+    filename = f"{uuid.uuid4()}.fa"
     cesar_in_path = os.path.join(temp_dir, filename)
     # mark that it is a temp file with True
     return cesar_in_path, True
 
 
-def make_reg_file(is_opt, incl_lines, predefined_file=None):
+def make_reg_file(is_opt, incl_lines, temp_dir, predefined_file=None):
     """Make temp file containing force-include regions."""
     if is_opt is False:
         # not optimized CESAR doesn't take this argument
         return None
     # create a file then
     if predefined_file is None:
-        filename, _ = make_in_filename(False)
+        filename, _ = make_in_filename(False, temp_dir)
     else:
         filename = predefined_file
     f = open(filename, "w")
@@ -1336,14 +1332,14 @@ def make_reg_file(is_opt, incl_lines, predefined_file=None):
     return filename
 
 
-def make_exon_flanks_file(is_opt, flanks_dict, predefined_file=None):
+def make_exon_flanks_file(is_opt, flanks_dict, temp_dir, predefined_file=None):
     """Make temp file containing force-include regions."""
     if is_opt is False:
         # not optimized CESAR doesn't take this argument
         return None
     # create a file then
     if predefined_file is None:
-        filename, _ = make_in_filename(False)
+        filename, _ = make_in_filename(False, temp_dir)
     else:
         filename = predefined_file
     f = open(filename, "w")
@@ -1355,9 +1351,9 @@ def make_exon_flanks_file(is_opt, flanks_dict, predefined_file=None):
     return filename
 
 
-def make_cesar_in(exons, queries, u12_elems, cesar_in_filename):
+def make_cesar_in(exons, queries, u12_elems, cesar_in_filename, cesar_temp_dir):
     """Make input for CESAR."""
-    cesar_in_filename, is_temp = make_in_filename(cesar_in_filename)
+    cesar_in_filename, is_temp = make_in_filename(cesar_in_filename, cesar_temp_dir)
     input_line = ""  # init var
 
     # write exons first
@@ -1387,9 +1383,6 @@ def make_cesar_in(exons, queries, u12_elems, cesar_in_filename):
     for chain_id, chain_seq in queries.items():
         input_line += f">{chain_id}\n{chain_seq}\n"
 
-    # save to the file
-    # with open(cesar_in_filename, "w") as f:
-    #     f.write(input_line)
     if is_temp is True:
         # in TOGAs < 1.1.4 - we'd create a temp file in the /dev/shm
         # now, we don't do it - just pass to the CESAR /dev/stdin
@@ -2586,8 +2579,6 @@ def realign_exons(args):
     # cesar versions as regions within ortholoogus regions that must be included
     # in the CESAR run itself
     force_include_regions_opt_v = []
-    
-
     verbose("Reading query regions")
     chain_to_predefined_regions = read_predefined_regions(args["predefined_regions"], args["gene"])
 
@@ -2637,7 +2628,6 @@ def realign_exons(args):
             g_ = args["gene"]
             line = f"{ORTH_LOC_LINE_SUFFIX}\t{g_}\t{chain_id}\t{search_locus}\t{subch_locus}\n"
             sys.stdout.write(line)
-
 
         # chain data: t_strand, t_size, q_strand, q_size
         chain_qStrand = chain_data[2]
@@ -2831,21 +2821,27 @@ def realign_exons(args):
     force_include_reg_file = make_reg_file(
         args["opt_cesar"],
         force_include_regions_opt_v,
+        args["temp_dir"],
         predefined_file=args["opt_regions_save"],
     )
     # for LASTZ-optimised CESAR we may also add +/-10 bp exon flanks
-    exon_flanks_file = make_exon_flanks_file(
-        args["opt_cesar"], exon_flanks, predefined_file=args["exon_flanks_file"]
-    )
+    exon_flanks_file = make_exon_flanks_file(args["opt_cesar"],
+                                             exon_flanks,
+                                             args["temp_dir"],
+                                             predefined_file=args["exon_flanks_file"])
     # check whether some reference splice sites are non-canonical
     # doesn't apply to single-exon genes
     ref_ss_data = analyse_ref_ss(s_sites) if len(exon_sequences) != 1 else None
     # there are two sources of U12 introns data:
     # 1) U12 file provided at the very beginning
-    # 2) If splice site in reference is non canonical -> we also threat this as U12
+    # 2) If splice site in reference is non-canonical -> we also treat this as U12
     #    even if this splice site is not in the U12 data
     append_u12(args["u12"], args["gene"], ref_ss_data)
-    cesar_in_data, cesar_in_filename, is_temp = make_cesar_in(prepared_exons, query_sequences, ref_ss_data, args["cesar_input_save_to"])
+    cesar_in_data, cesar_in_filename, is_temp = make_cesar_in(prepared_exons,
+                                                              query_sequences,
+                                                              ref_ss_data,
+                                                              args["cesar_input_save_to"],
+                                                              args["temp_dir"])
     # run cesar itself
     # TODO: exclude later
     # print(force_include_regions_opt_v)

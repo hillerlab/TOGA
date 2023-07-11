@@ -162,5 +162,6 @@ def main():
             f.write(f"{elem}\n")
         f.close()
 
+
 if __name__ == "__main__":
     main()

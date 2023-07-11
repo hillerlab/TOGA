@@ -64,3 +64,9 @@ Documentation improvements.
 * Fixed GCC flags for ARM architecture.
 * A little improvement in the `run_test.sh` script.
 * Better versions management - added version.py
+
+# TOGA 1.1.5 (in progress) #
+
+* CESAR_wrapper.py -> does not use `/dev/shm/` or `/tmp/` partitions anymore.
+* (planned) Significantly improved logging - all logs are automatically stored in the output directory.
+* (planned) Step management - now user can rerun TOGA from any desired step.

@@ -13,7 +13,6 @@ class Version:
             self.version_repr += f" (self.metadata)"
 
     def update_readme(self, filename="README.md"):
-        """To make sure that README.md contains a correct version tag."""
         with open(filename, "r") as f:
             lines = f.readlines()
 
@@ -24,10 +23,9 @@ class Version:
                 f.write(line)
 
     def check_changelog(self, filename="VersionHistory.md"):
-        """Check whether the current version is mentioned in the changelog."""
         with open(filename, "r") as f:
             header_lines = [x for x in f if x.startswith("# ") and x.endswith(" #\n")]
-        header_lines_with_this_v = [x for x in header_lines if f"TOGA {self.version_repr} " in x]
+        header_lines_with_this_v = [x for x in header_lines if f" {self.version_repr} " in x]
         if len(header_lines_with_this_v) == 0:
             print(f"Warning! The version {self.version_repr} is absent in the {filename}")
 
@@ -35,7 +33,7 @@ class Version:
         return self.version_repr
 
 
-__version__ = Version(1, 1, 4)
+__version__ = Version(1, 1, 5)
 
 if __name__ == "__main__":
     print(f"TOGA version: {__version__}")

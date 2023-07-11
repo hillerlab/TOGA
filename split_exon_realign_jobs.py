@@ -31,7 +31,7 @@ WRAPPER_ABSPATH = os.path.abspath(os.path.join(LOCATION, "CESAR_wrapper.py"))
 WRAPPER_TEMPLATE = (
     WRAPPER_ABSPATH
     + " {0} {1} {2} {3} {4} {5} --cesar_binary {6}"
-    + " --uhq_flank {7}"
+    + " --uhq_flank {7} --temp_dir {8}"
 )
 CESAR_RUNNER = os.path.abspath(
     os.path.join(LOCATION, "cesar_runner.py")
@@ -87,6 +87,7 @@ def parse_args():
     app.add_argument("bdb_chain_file", type=str, help="BDB CHAIN FILE")
     app.add_argument("tDB", type=str, help="target 2 bit")
     app.add_argument("qDB", type=str, help="query 2 bit")
+    app.add_argument("toga_out_dir", type=str, help="Toga output directory")
 
     app.add_argument(
         "--cesar_binary",
@@ -672,7 +673,15 @@ def get_trans_to_regions_file(precomp_regions_data_dir):
     return ret
 
 
-def build_job(gene, chains_arg, args, gene_fragments, trans_to_reg_precomp_file, u12_this_gene, mask_all_first_10p=False):
+def build_job(gene,
+              chains_arg,
+              args,
+              gene_fragments,
+              trans_to_reg_precomp_file,
+              u12_this_gene,
+              cesar_temp_dir,
+              mask_all_first_10p=False
+              ):
     """Build CESAR job."""
     # # 0 gene; 1 chains; 2 bed_file; 3 bdb chain_file; 4 tDB; 5 qDB; 6 output; 7 cesar_bin
     job = WRAPPER_TEMPLATE.format(
@@ -684,6 +693,7 @@ def build_job(gene, chains_arg, args, gene_fragments, trans_to_reg_precomp_file,
         os.path.abspath(args.qDB),
         os.path.abspath(args.cesar_binary),
         args.uhq_flank,
+        cesar_temp_dir
         # gig,
     )
     # add some flags if required
@@ -789,8 +799,9 @@ def main():
     t0 = dt.now()
     args = parse_args()
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
-
-    # as default we create CESAR jobs for chains with "orth" or "trans" class
+    cesar_temp_dir = os.path.join(args.toga_out_dir, "temp", "cesar_temp_files")
+    os.mkdir(cesar_temp_dir) if not os.path.isdir(cesar_temp_dir) else None
+    # by default, we create CESAR jobs for chains with "orth" or "trans" class
     # but user could select another set of chain classes
 
     # read U12 introns: to create a list of U12-containing genes
@@ -799,7 +810,6 @@ def main():
 
     # if memory is precomputed: use it
     precomp_mem = read_precomp_mem(args.precomp_memory_data)
-    # precomp_regions = read_precomp_reg(args.precomp_regions_data)
 
     # TODO: to optimize later
     trans_to_reg_precomp_file = get_trans_to_regions_file(args.precomp_regions_data_dir)
@@ -886,6 +896,7 @@ def main():
                             gene_fragments,
                             trans_to_reg_precomp_file,
                             u12_this_gene,
+                            cesar_temp_dir,
                             mask_all_first_10p=args.mask_all_first_10p)
 
             # define whether it's an ordinary or a bigmem job
