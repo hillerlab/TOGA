@@ -31,7 +31,19 @@ def die(msg, rc=1):
     sys.exit(rc)
 
 
-def log_and_print(msg):
+def setup_logger(log_file):
+    # Set up logging
+    logger = logging.getLogger('toga')
+    logger.setLevel(logging.INFO)
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+
+def to_log(msg):
     # Get the 'toga' logger
     logger = logging.getLogger('toga')
     # Log to both file and console

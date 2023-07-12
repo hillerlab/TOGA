@@ -8,11 +8,10 @@ import sys
 import os
 import numpy as np
 import h5py
+from modules.common import to_log
 from version import __version__
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 
 def bed_hdf5_index(in_bed, out_db):
@@ -20,7 +19,6 @@ def bed_hdf5_index(in_bed, out_db):
     f = open(in_bed, "r")  # assume each bed line has unique name (field 3)
     h = h5py.File(out_db, "w")
     lines_counter = 0
-    sys.stderr.write("Making gene_id: bed_data dict...\n")
     for line in f:
         gene_id = line.split("\t")[3]
         h.create_dataset(gene_id, data=np.string_(line))
@@ -30,10 +28,10 @@ def bed_hdf5_index(in_bed, out_db):
 
     if lines_counter == 0:  # meaning bed file was empty
         # this should not happen: halt TOGA
-        sys.stderr.write(
-            f"(bed_hdf5_index.py) Error! Input file {in_bed} is empty! Aborted.\n"
-        )
+        to_log(f"bed_hdf5_index: Error! Input file {in_bed} is empty! Aborted.\n")
         sys.exit(1)
+
+    to_log(f"bed_hdf5_index: indexed {lines_counter} transcripts")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ PROJECTION = "PROJECTION"
 TRANSCRIPT = "TRANSCRIPT"
 
 
-def _add_transcripts_to_missing(*lists):
+def add_transcripts_to_missing(*lists):
     """Generate a list of missing entries."""
     ret = []
     for lst in lists:
@@ -21,7 +21,7 @@ def _add_transcripts_to_missing(*lists):
     return ret
 
 
-def _collect_predefined_glp_cases(glp_class_file):
+def collect_predefined_glp_cases(glp_class_file):
     """Read table produced by split exon realing jobs script."""
     ret = []
     if not os.path.isfile(glp_class_file):
