@@ -4,6 +4,7 @@ import sys
 import ctypes
 from collections import defaultdict
 import functools
+import logging
 import h5py
 import networkx as nx
 from version import __version__
@@ -30,10 +31,12 @@ def die(msg, rc=1):
     sys.exit(rc)
 
 
-def print_and_log(logfile, msg):
-    functools.partial(print, flush=True)(msg)
-    with open(logfile, "a") as f:
-        f.write(f"{msg}\n")
+def log_and_print(msg):
+    # Get the 'toga' logger
+    logger = logging.getLogger('toga')
+    # Log to both file and console
+    logger.info(msg)
+
 
 def bed_extract_id(index_file, gene_ids):
     """Extract a bed track from a BDB file."""
