@@ -31,16 +31,20 @@ def die(msg, rc=1):
     sys.exit(rc)
 
 
-def setup_logger(log_file):
+def setup_logger(log_file, write_to_console=True):
     # Set up logging
     logger = logging.getLogger('toga')
     logger.setLevel(logging.INFO)
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.INFO)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+
+    if write_to_console:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        logger.addHandler(console_handler)
+
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.INFO)
+        logger.addHandler(file_handler)
 
 
 def to_log(msg):

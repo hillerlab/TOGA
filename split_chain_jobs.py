@@ -37,6 +37,7 @@ def parse_args():
     app.add_argument("bed_file", type=str, help="Bed file, gene annotations.")
     app.add_argument("bed_index", type=str, help="Indexed bed")
     app.add_argument("--log_file", type=str, help="Path to logfile")
+    app.add_argument("--parallel_logs_dir", type=str, help="Path to dir storing logs from each cluster job")
     app.add_argument(
         "--jobs_num",
         "--jn",
@@ -262,7 +263,7 @@ def save_rejected_genes(skipped, filename):
     f.close()
 
 
-def save(template, batch):
+def save(template, batch, logs_dir=None):
     """Save the cluster jobs, create jobs_file file."""
     filenames = {}  # collect filenames of cluster jobs
     for num, jobs in enumerate(batch):
@@ -280,15 +281,12 @@ def save(template, batch):
     for num, path in filenames.items():
         cmd = template.format(path)
         stdout_part = f"> {WORK_DATA['results_dir']}/{num}.txt"
-        stderr_part = (
-            "2> {WORK_DATA['errors_dir']}/{num}.txt" if WORK_DATA["errors_dir"] else ""
-        )
-        jobs_file_line = "{0} {1} {2}\n".format(cmd, stdout_part, stderr_part)
+        if logs_dir:
+            logs_part = f" --log_file {logs_dir}/chain_runner_{num}.log"
+        else:
+            logs_part = ""
+        jobs_file_line = f"{cmd} {logs_part} {stdout_part}\n"
         f.write(jobs_file_line)
-    # make executable
-    # rc = subprocess.call(f"chmod +x {WORK_DATA['jobs_file']}", shell=True)
-    # if rc != 0:  # just in case
-    #     die(f"Error! chmod +x {WORK_DATA['jobs_file']} failed")
     f.close()
 
 
@@ -307,7 +305,7 @@ def main():
     commands = make_commands(intersections)  # shuffle and create set of commands
     batch = split_commands(commands)  # split the commands into cluster jobs
     template = get_template()
-    save(template, batch)  # save jobs and a jobs_file file
+    save(template, batch, logs_dir=args.parallel_logs_dir)  # save jobs and a jobs_file file
     to_log("split_chain_jobs: estimated time: {0}".format(dt.now() - t0))
     sys.exit(0)
 

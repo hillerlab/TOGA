@@ -772,6 +772,7 @@ class Toga:
         to_log("\n\n#### STEP 2: Extract chain features: parallel step\n")
         self.__extract_chain_features()
         self.__time_mark("Chain jobs done")
+        self.__collapse_logs("chain_runner_")
 
         # 3) create chain features dataset
         to_log("\n\n#### STEP 3: Merge step 2 output\n")
@@ -819,6 +820,7 @@ class Toga:
         # 11) merge logs containing information about skipped genes,transcripts, etc.
         to_log("\n\n#### STEP 11: Cleanup: merge parallel steps output files")
         self.__merge_split_files()
+        shutil.rmtree(self.log_dir)
         self.__check_crashed_cesar_jobs()
         # Everything is done
 
@@ -830,12 +832,19 @@ class Toga:
             )
             to_log(cesar_not_ok_message)
         self.__left_done_mark()
-        self.__collapse_logs()
 
-    def __collapse_logs(self):
-        """Merge logfiles into a single log."""
-        shutil.rmtree(self.log_dir)
-        pass
+    def __collapse_logs(self, prefix):
+        """Merge logfiles starting with prefix into a single log."""
+        log_filenames_with_prefix = [x for x in os.listdir(self.log_dir) if x.startswith(prefix)]
+        log_f = open(self.log_file, "a")
+        for log_filename in log_filenames_with_prefix:
+            full_path = os.path.join(self.log_dir, log_filename)
+            clipped_filename = log_filename.split(".")[0]  # remove .log
+            in_f = open(full_path, "r")
+            for line in in_f:
+                log_f.write(f"{clipped_filename}: {line}")
+            in_f.close()
+        log_f.close()
 
     def __mark_start(self):
         """Indicate that TOGA process have started."""
@@ -906,9 +915,12 @@ class Toga:
         self.temp_files.append(self.chain_cl_jobs_combined)
 
         split_jobs_cmd = (
-            f"{self.SPLIT_CHAIN_JOBS} {self.chain_file} "
-            f"{self.ref_bed} {self.index_bed_file} "
+            f"{self.SPLIT_CHAIN_JOBS} "
+            f"{self.chain_file} "
+            f"{self.ref_bed} "
+            f"{self.index_bed_file} "
             f"--log_file {self.log_file} "
+            f"--parallel_logs_dir {self.log_dir} "
             f"--jobs_num {self.chain_jobs} "
             f"--jobs {self.ch_cl_jobs} "
             f"--jobs_file {self.chain_cl_jobs_combined} "
@@ -958,7 +970,6 @@ class Toga:
     def __merge_chains_output(self):
         """Call parse results."""
         # define where to save intermediate table
-        to_log("Merging chain output...")
         merge_chains_output(
             self.ref_bed, self.isoforms, self.chain_class_results, self.chain_results_df
         )

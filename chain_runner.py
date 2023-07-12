@@ -12,24 +12,17 @@ from datetime import datetime as dt
 from modules.overlap_select import overlap_select
 from modules.common import bed_extract_id
 from modules.common import make_cds_track
-from modules.common import eprint
 from modules.common import die
 from modules.common import load_chain_dict
+from modules.common import setup_logger
+from modules.common import to_log
 from version import __version__
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 FLANK_SIZE = 10000  # gene flank size -> for flank ali feature
 COMBINED_BED_ID = "COMBINED"  # placeholder gene name for intermediate tracks
 ALL_EXONS_COMBINED = "ALL_EXONS_COMBINED"
-VERBOSE = False
-
-
-def verbose(msg):
-    """Eprint for verbose messages."""
-    eprint(msg + "\n") if VERBOSE else None
 
 
 def parse_args():
@@ -45,6 +38,7 @@ def parse_args():
         "bed_file", type=str, help="BDB file containing annotation tracks."
     )
     app.add_argument("chain_file", type=str, help="Chain file.")
+    app.add_argument("--log_file", type=str, help="Log file")
     app.add_argument(
         "--verbose", "-v", action="store_true", dest="verbose", help="Verbose messages."
     )
@@ -90,15 +84,8 @@ def extract_chain(chain_file, chain_dict, chain):
 def check_args(
     chain_id, genes, chain_file, chain_dict, bed_file, verbose_level, work_data, result
 ):
-    # print(chain_index, chain_file)
     """Check if arguments are correct, extract initial data if so."""
-    global VERBOSE  # set verbosity level
-    VERBOSE = True if verbose_level else False
-    verbose("# unit.py called for chain {} and genes {}".format(chain_id, genes))
-    # another minor things
-    verbose(f"Using {bed_file} and {chain_file}")
     work_data["chain_id"] = chain_id
-
     # check genes
     raw_genes = [x for x in genes.split(",") if x != ""]
     # bed_lines = bedExtractSqlite(raw_genes, bed_index, bed_file)
@@ -108,19 +95,18 @@ def check_args(
 
     # check if numbers of genes are equal
     if len(raw_genes) != len(bed_lines.split("\n")[:-1]):
-        eprint("Warning. Not all the genes you set were found!\n")
+        to_log("Warning. Not all the transcripts were found!\n")
         need_ = len(raw_genes)
         extracted_ = len(bed_lines.split("\n")[:-1])
-        eprint(f"You set {need_} genes, {extracted_}")
+        to_log(f"Expected {need_} transcripts, extracted {extracted_}")
         missing_genes = ",".join([x for x in raw_genes if x not in work_data["genes"]])
-        eprint(f"Missing genes:\n{missing_genes}")
+        to_log(f"Missing transcripts:\n{missing_genes}")
 
     # extract chain body from the file
     work_data["chain"] = extract_chain(chain_file, chain_dict, chain_id)
 
     # parse chain header
     chain_header = work_data["chain"].split("\n")[0].split()
-    verbose("Chain header is:\n{0}".format(chain_header))
     q_start = int(chain_header[10])
     q_end = int(chain_header[11])
     q_len = abs(q_end - q_start)
@@ -208,10 +194,8 @@ def bedcov_ranges(ranges, chrom):
 
 def check_nest(work_data, cds_bed):
     """Return True if genes are nested."""
-    verbose("Check if genes are nested")
     chrom, ranges = bed12_to_ranges(cds_bed)
     exons, nested = bedcov_ranges(ranges, chrom)
-    verbose(f"Nested variable is:\n{nested}")
     work_data["exons"] = exons
     return nested
 
@@ -247,6 +231,7 @@ def collapse_exons(work_data):
     blocks_uns = [
         (int(x.split("\t")[1]), int(x.split("\t")[2])) for x in work_data["exons"]
     ]
+    # TODO: fix duplicated code fragment
     blocks = sorted(
         blocks_uns, key=lambda x: x[0]
     )  # no guarantee that it is sorted initially
@@ -334,8 +319,6 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
     ENSG00000167232 chr17   0.112   1       399     0.201   3576    399
     ENSG00000167232_grange    chr17   0.0111  1       399     0.022   35952   399
     """
-    verbose("Computing local overlap score, getting genomic regions...")
-
     # call overlap select
     chain_glob_bases, local_exo_dict, bed_cov_times = overlap_select(
         bed_lines_extended, work_data["chain"]
@@ -346,13 +329,6 @@ def get_features(work_data, result, bed_lines_extended, nested=False):
     max_num_of_cds_exons_covered = (
         max(nums_of_cds_exons_covered) if len(nums_of_cds_exons_covered) > 0 else 0
     )
-
-    verbose(
-        "OverlapSelect output in get_features is:\n{0}".format(
-            "\n".join([f"{k} - {v}" for k, v in local_exo_dict.items()])
-        )
-    )
-    verbose(f"Chain block bases: {chain_glob_bases}")
     # compute for each gene finally
     chain_cds_bases = 0  # summarize global set here
 
@@ -480,11 +456,12 @@ def extended_output(result, t0):
 
 
 def chain_feat_extractor(
-    chain_id, genes, chain_file, bed_file, chain_dict, verbose_arg=None, extended=False
+    chain_id, transcripts, chain_file, bed_file, chain_dict, verbose_arg=None, extended=False
 ):
     """Chain features extractor entry point."""
     # global vars
     t0 = dt.now()
+    to_log(f"Processing chain_id: {chain_id} transcripts: {transcripts}")
     # global work_data: bed, chain, etc
     work_data = {
         "bed": "",
@@ -512,7 +489,7 @@ def chain_feat_extractor(
     # check if all the files, dependencies etc are correct
     check_args(
         chain_id,
-        genes,
+        transcripts,
         chain_file,
         chain_dict,
         bed_file,
@@ -553,6 +530,7 @@ def main():
     """Entry point."""
     t0 = dt.now()
     args = parse_args()
+    setup_logger(args.log_file, write_to_console=False)
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
     # read input: meaning chain ids and gene names
     # there are 2 ways how they could be provided:
@@ -560,6 +538,7 @@ def main():
     # 2) an argument: "chain ,-sep list of genes"
     batch = read_input(args.input_file)
     task_size = len(batch)
+    to_log(f"processing {task_size} chains")
     # TODO: check whether I don't need .bst
     # load chains dict; it would be much faster to load chain_ID: (start_byte, offset)
     # python dict once than ask HDF5 database each time TOGA needs another chain
@@ -568,12 +547,12 @@ def main():
 
     # call main processing tool
     # TODO: rename genes to transcripts where appropropriate
-    for job_num, (chain, genes) in enumerate(batch.items(), 1):
+    for job_num, (chain, transcripts) in enumerate(batch.items(), 1):
         # one unit: one chain + intersected genes
         # call routine that extracts chain feature
         unit_output = chain_feat_extractor(
             chain,
-            genes,
+            transcripts,
             args.chain_file,
             args.bed_file,
             chain_dict,
@@ -581,13 +560,12 @@ def main():
             extended=args.extended,
         )
         chain_output, genes_output, time_output = unit_output
-        # save output:
+        # stdout is used by subsequent TOGA commands
         sys.stdout.write(chain_output)
         sys.stdout.write(genes_output)
         sys.stdout.write(time_output)
-        sys.stderr.write(f"Job {job_num}/{task_size} done\r") if args.verbose else None
-    sys.stderr.write(f"Total job time: {dt.now() - t0}\n") if args.verbose else None
-    sys.exit(0)
+        # sys.stderr.write(f"Job {job_num}/{task_size} done\r") if args.verbose else None
+    to_log(f"Total job time: {dt.now() - t0}\n")
 
 
 if __name__ == "__main__":
