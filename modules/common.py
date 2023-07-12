@@ -3,13 +3,12 @@ import os
 import sys
 import ctypes
 from collections import defaultdict
+import functools
 import h5py
 import networkx as nx
 from version import __version__
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 SLIB_NAME = "chain_bst_lib.so"
 ISOFORMS_FILE_COLS = 2
@@ -30,6 +29,11 @@ def die(msg, rc=1):
     sys.stderr.write(msg + "\n")
     sys.exit(rc)
 
+
+def print_and_log(logfile, msg):
+    functools.partial(print, flush=True)(msg)
+    with open(logfile, "a") as f:
+        f.write(f"{msg}\n")
 
 def bed_extract_id(index_file, gene_ids):
     """Extract a bed track from a BDB file."""
