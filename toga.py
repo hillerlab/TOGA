@@ -2054,6 +2054,16 @@ def parse_args():
         "jobs will not run (but list of them saved)/ NOT IMPLEMENTED YET",
     )
     app.add_argument(
+        "--parallelisation_strategy",
+        "--ps",
+        choices=["nextflow", "para", "custom"],
+        default="nextflow",
+        help=(
+            "The parallelization strategy to use. If custom -> please provide "
+            "a custom strategy implementation in the parallel_jobs_manager.py "
+        )
+    )
+    app.add_argument(
         "--para",
         "-p",
         action="store_true",
