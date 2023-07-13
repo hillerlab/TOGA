@@ -70,5 +70,4 @@ Documentation improvements.
 * CESAR_wrapper.py -> does not use `/dev/shm/` or `/tmp/` partitions anymore.
 * (planned) Significantly improved logging - all logs are automatically stored in the output directory.
 * (planned) Step management - now user can rerun TOGA from any desired step.
-* (planned) Improved parallelisation strategy
-* 
+* (in progress) Improved parallelization strategy

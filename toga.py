@@ -32,6 +32,10 @@ from modules.collect_prefefined_glp_classes import _collect_predefined_glp_cases
 from modules.collect_prefefined_glp_classes import _add_transcripts_to_missing
 from modules.stitch_fragments import stitch_scaffolds
 from modules.common import read_isoforms_file
+from parallel_jobs_manager import ParallelJobsManager
+from parallel_jobs_manager import NextflowStrategy
+from parallel_jobs_manager import ParaStrategy
+from parallel_jobs_manager import CustomStrategy
 from version import __version__
 
 
