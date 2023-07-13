@@ -7,6 +7,7 @@ neither nextflow nor para satisfy your needs.
 """
 from abc import ABC, abstractmethod
 import subprocess
+import os
 
 
 class ParallelizationStrategy(ABC):
@@ -15,7 +16,7 @@ class ParallelizationStrategy(ABC):
     """
 
     @abstractmethod
-    def execute(self, joblist_path, manager_data, label):
+    def execute(self, joblist_path, manager_data, label, **kwargs):
         """
         Execute the jobs in parallel.
 
@@ -40,7 +41,7 @@ class NextflowStrategy(ParallelizationStrategy):
     Concrete strategy for parallelization using Nextflow.
     """
 
-    def execute(self, joblist_path, manager_data, label):
+    def execute(self, joblist_path, manager_data, label, **kwargs):
         """Implementation for Nextflow."""
         pass
 
@@ -54,13 +55,30 @@ class ParaStrategy(ParallelizationStrategy):
     Concrete strategy for parallelization using Para.
     """
 
-    def execute(self, joblist_path, manager_data, label):
+    def __init__(self):
+        self._process = None
+
+    def execute(self, joblist_path, manager_data, label, **kwargs):
         """Implementation for Para."""
-        pass
+        cmd = f"para make {label} {joblist_path} "
+        if "queue_name" in kwargs:
+            queue_name = kwargs["queue_name"]
+            cmd += f" -q={queue_name} "
+        if "memory_mb" in kwargs:
+            memory_mb = kwargs["memory_mb"]
+            cmd += f" --memoryMb={memory_mb}"
+
+        log_file_path = os.path.join(manager_data["logs_dir"], f"{label}.log")
+        with open(log_file_path, "w") as log_file:
+            self._process = subprocess.Popen(cmd, shell=True, stdout=log_file, stderr=subprocess.STDOUT)
 
     def check_status(self):
         """Check if Para jobs are done."""
-        pass
+        running = self._process.poll() is None
+        if not running:
+            return self._process.returncode
+        else:
+            return None
 
 
 class CustomStrategy(ParallelizationStrategy):
@@ -68,7 +86,7 @@ class CustomStrategy(ParallelizationStrategy):
     Custom parallel jobs execution strategy.
     """
 
-    def execute(self, joblist_path, manager_data, label):
+    def execute(self, joblist_path, manager_data, label, **kwargs):
         """Custom implementation.
 
         Please provide your implementation of parallel jobs executor.
@@ -96,7 +114,7 @@ class ParallelJobsManager:
         """
         self.strategy = strategy
 
-    def execute_jobs(self, joblist_path, manager_data, label):
+    def execute_jobs(self, joblist_path, manager_data, label, **kwargs):
         """
         Execute jobs in parallel using the specified strategy.
 
@@ -104,7 +122,7 @@ class ParallelJobsManager:
         :param manager_data: Data from the manager class.
         :param label: Label for the run.
         """
-        self.strategy.execute(joblist_path, manager_data, label)
+        self.strategy.execute(joblist_path, manager_data, label, kwargs)
 
     def check_jobs_status(self):
         """
