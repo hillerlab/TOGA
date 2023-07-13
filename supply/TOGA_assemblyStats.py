@@ -42,7 +42,7 @@ parser = argparse.ArgumentParser(usage=HELP)
 parser.add_argument('file')
 parser.add_argument('-m', '--mode')
 parser.add_argument('-ances', '--ancestral',default=False)
-parser.add_argument('-pre', '--precedence',default="I#PI#UL#L#M#PM#PG#abs")
+parser.add_argument('-pre', '--precedence',default="I#PI#UL#L#M#PM#PG#N#abs")
 parser.add_argument('-aN', '--assemblyNames',default=False)
 parser.add_argument('-d', '--detailed',action='store_true')  # on/off flag
 ARGS = parser.parse_args()
@@ -135,7 +135,7 @@ def merge(df,typ):
 
 
 def stats(df):
-    stats={x:{"L":0,"UL":0,"M":0,"PM":0,"I":0,"PI":0,"abs":0,"PG":0} for x in df.columns}
+    stats={x:{"L":0,"UL":0,"M":0,"PM":0,"I":0,"PI":0,"abs":0,"PG":0,"N":0} for x in df.columns}
     for x in df.index:
         for m in df.columns:
             stats[m][df.loc[x,m]]+=1
@@ -145,9 +145,9 @@ def stats(df):
 
     if ARGS.detailed:
         stats.rename(index=NAMES).to_csv(filename+"_stats.tsv",sep="\t")
-        stats.loc[list(stats.index)[::-1],["I","PI","UL","L","M","PM","PG","abs"]].rename(index=NAMES).plot.barh(stacked=True,color={"I":"#0247FE","PI":"#7ABFFF","UL":"#FF823B","M":"#B2BEB5","L":"#CE1E16","PM":"#A2A2D0","PG":"#000000","abs":"#FEFEFA"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")
+        stats.loc[list(stats.index)[::-1],["I","PI","UL","L","M","PM","PG","N","abs"]].rename(index=NAMES).plot.barh(stacked=True,color={"I":"#0247FE","PI":"#7ABFFF","UL":"#FF823B","M":"#B2BEB5","L":"#CE1E16","PM":"#A2A2D0","PG":"#000000","N":"#CCD3CE","abs":"#FEFEFA"},rot=0).get_figure().savefig(filename+"_statsplot.pdf", bbox_inches="tight")
     else:
-        stats["genes with missing sequence"]=stats.loc[:,["PI","M","PM","PG","abs"]].sum(axis=1)
+        stats["genes with missing sequence"]=stats.loc[:,["PI","M","PM","PG","N","abs"]].sum(axis=1)
         stats["intact genes"]=stats["I"]
         stats["genes with inactivating mutations"]=stats.loc[:,["L","UL"]].sum(axis=1)
 
@@ -169,6 +169,4 @@ elif ARGS.mode=="merge":
             f.write("\t".join(["GENE",n,genes.loc[n,"status"]])+"\n")
         for n in transcripts.index:
             f.write("\t".join(["TRANSCRIPT",n,transcripts.loc[n,"status"]])+"\n")
-
-        
 
