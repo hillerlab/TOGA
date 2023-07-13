@@ -8,6 +8,7 @@ neither nextflow nor para satisfy your needs.
 from abc import ABC, abstractmethod
 import subprocess
 import os
+import shutil
 
 
 class ParallelizationStrategy(ABC):
@@ -40,14 +41,38 @@ class NextflowStrategy(ParallelizationStrategy):
     """
     Concrete strategy for parallelization using Nextflow.
     """
+    def __init__(self):
+        self._process = None
+        self.joblist_path = None
+        self.manager_data = None
+        self.label = None
+        self.project_path = None
+        self.keep_logs = False
 
     def execute(self, joblist_path, manager_data, label, **kwargs):
         """Implementation for Nextflow."""
+        self.joblist_path = joblist_path
+        self.manager_data = manager_data
+        self.label = label
+        if kwargs["project_path"]:
+            self.project_path = kwargs["project_path"]
+        self.keep_logs = manager_data.get("keep_nf_logs", False)
+
         pass
 
     def check_status(self):
         """Check if nextflow jobs are done."""
-        pass
+        running = self._process.poll() is None
+        if running:
+            return None
+        # the process just finished
+        # nextflow provides a huge and complex tree of log files
+        # remove them if user did not explicitly ask to keep them
+        if not self.keep_logs and self.project_path:
+            # remove nextflow intermediate files
+            shutil.rmtree(self.project_path) if os.path.isdir(self.project_path) else None
+
+        return self._process.returncode
 
 
 class ParaStrategy(ParallelizationStrategy):
@@ -101,6 +126,7 @@ class CustomStrategy(ParallelizationStrategy):
         whether all jobs are done."""
         raise NotImplementedError("Custom strategy is not implemented -> pls see documentation")
 
+
 class ParallelJobsManager:
     """
     Class for managing parallel jobs using a specified parallelization strategy.
@@ -122,7 +148,7 @@ class ParallelJobsManager:
         :param manager_data: Data from the manager class.
         :param label: Label for the run.
         """
-        self.strategy.execute(joblist_path, manager_data, label, kwargs)
+        self.strategy.execute(joblist_path, manager_data, label, **kwargs)
 
     def check_jobs_status(self):
         """
