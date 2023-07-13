@@ -6,17 +6,25 @@ import os
 from collections import defaultdict
 from version import __version__
 
+# TODO: figure this out
 try:
     from modules.common import chain_extract_id
     from modules.common import bed_extract_id
     from modules.common import load_chain_dict
+    from modules.common import setup_logger
+    from modules.common import to_log
 except ImportError:
     from common import chain_extract_id
     from common import bed_extract_id
     from common import load_chain_dict
+    from common import setup_logger
+    from common import to_log
+
+__author__ = "Bogdan M. Kirilenko"
 
 PINK_COLOR = "250,50,200"
 DEF_SCORE = 100
+PPGENE_SCORE_MARK = "-2.0"
 
 
 def parse_args():
@@ -26,9 +34,7 @@ def parse_args():
     app.add_argument("chain_file", help="Chain file")
     app.add_argument("bed_db", help="Bed indexed file")
     app.add_argument("output", help="Bed-9 output")
-    app.add_argument(
-        "--verbose", "-v", action="store_true", dest="verbose", help="Enable verbosity"
-    )
+    app.add_argument("--log_file", default=None, help="Log file")
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -42,7 +48,7 @@ def verbose(msg):
     sys.stderr.write("\n")
 
 
-def get_pp_gene_chains(chain_class_file, v=False):
+def get_pp_gene_chains(chain_class_file):
     """Get gene: pp chains dict."""
     gene_to_pp_chains = defaultdict(list)  # init the dict
     f = open(chain_class_file, "r")  # open file with classifications
@@ -62,12 +68,11 @@ def get_pp_gene_chains(chain_class_file, v=False):
         # gene_to_pp_chains[trans] = pp_genes
         chain = int(line_data[1])
         stat = line_data[2]
-        if stat == "-2.0":
+        if stat == PPGENE_SCORE_MARK:
             gene_to_pp_chains[trans].append(chain)
 
     f.close()
-    if v:
-        verbose(f"Extracted {len(gene_to_pp_chains)} genes with proc pseudogenes")
+    to_log(f"make_pr_pseudogenes anno: {len(gene_to_pp_chains)} transcripts have processed pseudogenes")
     return gene_to_pp_chains
 
 
@@ -84,7 +89,7 @@ def extract_chain(chain_file, chain_dict, chain):
     return chain
 
 
-def get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v=False):
+def get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb):
     """Create projection: q region dict.
 
     We assume the following:
@@ -93,15 +98,15 @@ def get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v=Fal
     """
     proj_to_q_reg = {}  # save results here
     task_size = len(gene_to_pp_chains)
+    to_log(f"make_pr_pseudogenes anno: identifying processed pseudogenes regions in the query")
+    to_log(f"make_pr_pseudogenes anno: analysing data for {task_size} reference transcripts")
+    chains_counter = 0
     # iterate over gene: [chain ids] elements
     for num, (gene, chains) in enumerate(gene_to_pp_chains.items()):
-        if v:
-            verbose(
-                f"# Processing gene {gene} {num} / {task_size} with {len(chains)} chains"
-            )
         # extract gene track
         gene_track = bed_extract_id(bed_bdb, gene).rstrip().split("\t")
         gene_strand = gene_track[5]  # we need the strand only
+        chains_counter += len(chains)
         for chain_id in chains:
             # we have a list of chains
             projection = f"{gene}.{chain_id}"  # name this projection as usual
@@ -125,12 +130,20 @@ def get_corr_q_regions(gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v=Fal
             proj_strand = "+" if q_strand == gene_strand else "-"
             proj_reg = (q_chrom, proj_strand, q_start, q_end)
             proj_to_q_reg[projection] = proj_reg
+    result_size = len(proj_to_q_reg)
+    to_log(
+        f"make_pr_pseudogenes anno: for {task_size} reference transcripts "
+        f"found {chains_counter} processed pseudogene chains in total"
+    )
+    to_log(f"make_pr_pseudogenes anno: resulted in {result_size} processed pseudogenes projections in query")
     return proj_to_q_reg
 
 
 def merge_intervals(intervals):
     # Sort the intervals by start position
+    to_log(f"make_pr_pseudogenes anno: collapsing intersecting bed lines (if any)")
     intervals.sort(key=lambda x: (x[0], x[1], x[2]))
+    to_log(f"make_pr_pseudogenes anno: {len(intervals)} records before collapse")
 
     # Initialize the merged list with the first interval
     merged = [intervals[0]]
@@ -148,12 +161,14 @@ def merge_intervals(intervals):
         else:
             # Otherwise, just add the current interval to the list
             merged.append(current)
-
+    to_log(f"make_pr_pseudogenes anno: {len(merged)} records after collapse")
     return merged
 
 
 def make_bed_lines(proj_to_reg):
     """Create bed9 lines."""
+    task_size = len(proj_to_reg)
+    to_log(f"make_pr_pseudogenes_anno: generating bed lines for {task_size} projections")
     intervals = []
     for name, region in proj_to_reg.items():
         # just parse the region
@@ -179,11 +194,12 @@ def make_bed_lines(proj_to_reg):
         intervals.append(line_data)
 
     # Merge overlapping intervals
+    to_log(f"make_pr_pseudogenes_anno: generated {len(intervals)} intervals")
     intervals = merge_intervals(intervals)
 
     # Convert the merged intervals back into bed lines
     bed_lines = ["\t".join(str(x) for x in interval) for interval in intervals]
-
+    to_log(f"make_pr_pseudogenes_anno: generated {len(bed_lines)} bed lines to be saved")
     return bed_lines
 
 
@@ -195,37 +211,35 @@ def save_bed(bed_lines, bed_file):
     f.close()
 
 
-def create_ppgene_track(chain_class_file, chain_file, bed_bdb, output, v=None):
+def create_ppgene_track(chain_class_file, chain_file, bed_bdb, output):
     """Create ppgene track."""
     # get processed pseudogene chains
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
-    verbose("Loading chains index...") if v else None
+    to_log(f"make_pr_pseudogenes_anno: loading chain index...")
     index_file = chain_file.replace(".chain", ".chain_ID_position")
     chain_dict = load_chain_dict(index_file)
-    verbose("Extracting pr pseudogene chains") if v else None
-    gene_to_pp_chains = get_pp_gene_chains(chain_class_file, v)
+    gene_to_pp_chains = get_pp_gene_chains(chain_class_file)
     if len(gene_to_pp_chains) == 0:
         # no proc pseudogenes
-        verbose("No processed pseudogenes found, skip.")
+        to_log(f"make_pr_pseudogenes_anno: no processed pseudogenes found, skip")
         return
     # for each gene-chain pair get corresponding region in query
-    verbose("Extracting corresponding regions") if v else None
     projection_to_reg = get_corr_q_regions(
-        gene_to_pp_chains, chain_file, chain_dict, bed_bdb, v
+        gene_to_pp_chains, chain_file, chain_dict, bed_bdb
     )
     # convert the regions to bed-9 formatted-lines
-    verbose("Saving results") if v else None
     bed_lines = make_bed_lines(projection_to_reg)
-    verbose(f"There are {len(bed_lines)} bed lines") if v else None
+    to_log(f"make_pr_pseudogenes_anno: {len(bed_lines)} processed pseudogene annotations in total")
+    to_log(f"make_pr_pseudogenes_anno: saving results to {output}")
     save_bed(bed_lines, output)  # write lines to the output file
 
 
 if __name__ == "__main__":
     args = parse_args()
+    setup_logger(args.log_file)
     create_ppgene_track(
         args.chain_classification,
         args.chain_file,
         args.bed_db,
-        args.output,
-        v=args.verbose,
+        args.output
     )
