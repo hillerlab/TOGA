@@ -912,7 +912,7 @@ class Toga:
         # get timestamp to name the project and create a dir for that
         #  time() returns something like: 1595861493.8344169
         timestamp = str(time.time()).split(".")[0]
-        project_name = f"{self.project_name}_chain_feats_at_{timestamp}"
+        project_name = f"chain_feats__{self.project_name}_at_{timestamp}"
         project_path = os.path.join(self.nextflow_dir, project_name)
         print(f"Extract chain features, project name: {project_name}")
         print(f"Project path: {project_path}")
@@ -1466,7 +1466,7 @@ class Toga:
                 joblist_abspath = os.path.abspath(self.cesar_combined)
 
             # create project directory for logs
-            nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_{b}"
+            nf_project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_{b}"
             project_names.append(nf_project_name)
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
@@ -1501,7 +1501,7 @@ class Toga:
         # push bigmem jobs
         if self.nextflow_bigmem_config and not self.para:
             # if provided: push bigmem jobs also
-            nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+            nf_project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_bigmem"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             nf_cmd = (
                 f"nextflow {self.NF_EXECUTE} "
@@ -1531,7 +1531,7 @@ class Toga:
         elif self.para and self.para_bigmem:
             # if requested: push bigmem jobs with para
             is_file = os.path.isfile(self.cesar_bigmem_jobs)
-            bm_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+            bm_project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_bigmem"
             if is_file:  # if a file: we can open and count lines
                 f = open(self.cesar_bigmem_jobs, "r")
                 big_lines_num = len(f.readlines())
@@ -1694,7 +1694,7 @@ class Toga:
             f.close()
 
             nf_project_name = (
-                f"{self.project_name}_RERUN_cesar_at_{timestamp}_q_{bucket}"
+                f"cesar_jobs__RERUN_{self.project_name}_at_{timestamp}_q_{bucket}"
             )
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
@@ -1714,7 +1714,7 @@ class Toga:
                     self.wd, f"cesar_config_{bucket}_queue.nf"
                 )
                 config_file_abspath = os.path.abspath(config_file_path)
-                cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {bucket_batch_file}"
+                cmd = f"nextflow {self.NF_EXECUTE} --joblist {bucket_batch_file}"
                 if os.path.isfile(config_file_abspath):
                     cmd += f" -c {config_file_abspath}"
                 p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
@@ -2061,6 +2061,7 @@ def parse_args():
         help=(
             "The parallelization strategy to use. If custom -> please provide "
             "a custom strategy implementation in the parallel_jobs_manager.py "
+            "(to be enabled in future)"
         )
     )
     app.add_argument(
