@@ -187,7 +187,7 @@ def check_args(args):
     WORK_DATA["on_cluster"] = True
     to_log("split_chain jobs: the run data overview is:\n")
     for k, v in WORK_DATA.items():
-        to_log(f"{k}: {v}")
+        to_log(f"* {k}: {v}")
 
 
 def get_chroms():
