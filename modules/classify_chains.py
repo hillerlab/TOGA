@@ -6,25 +6,22 @@ We have a XGBoost pre-trained model that can classify them.
 """
 import argparse
 import sys
-from collections import defaultdict
-import functools
 import numpy as np
 import pandas as pd
 import joblib
 import xgboost as xgb
 from version import __version__
 
-try:  # for robustness
-    from modules.common import eprint
+try:  # TODO: check whether it's needed
+    from modules.common import setup_logger
+    from modules.common import to_log
     from modules.common import die
 except ImportError:
-    from common import eprint
+    from modules.common import setup_logger
+    from modules.common import to_log
     from common import die
 
-
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 # paths to single (SE) and multi-exon (ME) models
 SE_MODEL = "models/se_model.dat"
@@ -33,8 +30,11 @@ LD_MODEL = "models/long_dist_model.dat"
 
 ORTH = "ORTH"
 PARA = "PARA"
-TRANS = "TRANS"
+SPAN = "SPAN"
 P_PGENES = "P_PGENES"
+
+SPANNING_SCORE = -1.0
+PPGENE_SCORE = -2.0
 
 # we actually extract a redundant amount of features
 # lists of features required by single and multi exon models
@@ -43,25 +43,19 @@ ME_MODEL_FEATURES = ["gl_exo", "loc_exo", "flank_cov", "synt_log", "intr_perc"]
 LD_MODEL_FEATURES = ["gl_exo", "flank_cov", "exon_perc", "synt_log", "loc_exo",
                      "intr_perc", "score", "single_exon"]
 
-print = functools.partial(print, flush=True)
-
-
-def verbose(msg):
-    """Eprint for verbose messages."""
-    print(msg + "\n")
-
 
 def parse_args():
     """Read args, check."""
     app = argparse.ArgumentParser()
     app.add_argument("table", type=str, help="Table containing merged results.")
     app.add_argument("output", type=str, help="Write the table here.")
-    app.add_argument("se_model", help="A trained XGBoost model for single-exon genes.")
-    app.add_argument("me_model", help="A trained XGBoost model for multi-exon genes.")
+    app.add_argument("se_model", help="A trained XGBoost model for single-exon transcripts.")
+    app.add_argument("me_model", help="A trained XGBoost model for multi-exon transcripts.")
     app.add_argument(
         "--raw_model_out", "--ro", default=None, help="Save gene: chain xgboost output"
     )
     app.add_argument("--ld_model", action="store_true", dest="ld_model", help="Apply LD model")
+    app.add_argument("--log_file", default=None, help="Path to the log file")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -81,26 +75,29 @@ def classify_chains(
     ld_model=None
 ):
     """Core chain classifier function."""
-    verbose("Loading dataset...")
     # read dataframe
     df = pd.read_csv(table, header=0, sep="\t")
-    init_genes_set = set(df["gene"])
+    init_transcripts_set = set(df["gene"])
+    to_log(f"classify_chains.py: loaded dataframe of size {len(df)}")
+    to_log(f"classify_chains.py: total number of transcripts: {len(df)}")
 
     # get indexes of processed pseudogene chains
     # if a chain has synteny = 1, introns are deleted and exon_num > 1
     # -> then this is a proc pseudogene
-
-    # move trans chains to a different dataframe
+    # move spanning chains to a different dataframe
     # TODO: rename trans -> spanning
     # trans chain -> a syntenic chain that passes throw the gene body
     #                but has no aligning bases in the CDS
-    trans_lines = df[(df["exon_cover"] == 0) & (df["synt"] > 1)]
+    spanning_ts_lines = df[(df["exon_cover"] == 0) & (df["synt"] > 1)]
+    to_log(f"classify_chains.py: {len(spanning_ts_lines)} rows with spanning chains")
     # remove from dataframe: (this includes trans chains)
     # 1) chains that don't cover CDS
     # 2) remove chains that have synteny == 0
     df = df[(df["exon_cover"] > 0) & (df["synt"] > 0)]
     df_final = df.copy()  # filtered dataframe: what we will classify
+    to_log(f"classify_chains.py: filtered dataset contains {len(df_final)} records")
     # compute some necessary features
+    to_log("classify_chains.py: omputing additional features...")
     df_final["exon_perc"] = df_final["exon_cover"] / df_final["ex_fract"]
     df_final["chain_len_log"] = np.log10(df_final["chain_len"])
     df_final["synt_log"] = np.log10(df_final["synt"])
@@ -113,11 +110,15 @@ def classify_chains(
         df_final.loc[df_final["ex_num"] == 1, "single_exon"] = 1
         df_final.loc[df_final["ex_num"] != 1, "single_exon"] = 0
     else:  # this df is empty anyway, so any value fits
+        to_log("classify chains: WARNING! The final df for classification is empty")
         df_final["single_exon"] = 0
 
     # split df into two: for single and multi exon models
     df_se = df_final[df_final["single_exon"] == 1]
     df_me = df_final[df_final["single_exon"] == 0]
+    to_log(f"classify chains: df for single-exon model contains {len(df_se)} records")
+    to_log(f"classify chains: df for multi-exon model contains {len(df_me)} records")
+
     # create X dataframes: skip unnecessary columns
     X_se = df_se.copy()
     X_me = df_me.copy()
@@ -125,10 +126,10 @@ def classify_chains(
     X_me = X_me[ME_MODEL_FEATURES]
 
     # load models
-    verbose("Load and apply model")
     try:  # there are 2 potential problems:
         # no files at all and
         # cannot load files
+        to_log(f"classify chains: loading models at {se_model_path} (SE) and {me_model_path} (ME)")
         se_model = joblib.load(se_model_path)
         me_model = joblib.load(me_model_path)
     except FileNotFoundError:
@@ -136,6 +137,7 @@ def classify_chains(
             f"Cannot find models {se_model_path} and {me_model_path}\n"
             f"Please call train_model.py to create them.\nAbort."
         )
+        to_log(f"classify chains: ERROR! {err_msg}")
         raise FileNotFoundError(err_msg)
     except (xgb.core.XGBoostError, AttributeError):
         xgboost_version = xgb.__version__
@@ -145,8 +147,11 @@ def classify_chains(
             f"XGBoost. You used XBGoost version: {xgboost_version}; "
             f"Please make sure you called train_model.py with the same version."
         )
+        to_log(f"classify chains: ERROR! {err_msg}")
         raise ValueError(err_msg)
+
     # and apply them
+    to_log(f"classify chains: applying models to SE and ME datasets...")
     me_pred = me_model.predict_proba(X_me)[:, 1] if len(X_me) > 0 else np.array([])
     se_pred = se_model.predict_proba(X_se)[:, 1] if len(X_se) > 0 else np.array([])
 
@@ -154,12 +159,15 @@ def classify_chains(
     # prediction is basically a single-column
     df_se_result = df_se.copy()
     df_me_result = df_me.copy()
-    trans_result = trans_lines.copy()
+    spanning_chains_result = spanning_ts_lines.copy()
 
     df_se_result["pred"] = se_pred
     df_me_result["pred"] = me_pred
 
     if ld_model:
+        to_log(f"classify chains: applying model for higher molecular distances")
+        to_log(f"classify chains: WARNING! This is an experimental feature")
+        to_log(f"classify chains: it is not recommended to use for research purposes yet")
         # apply LD model in addition
         # score from previous prediction is a feature for the LD model
         ld_model = joblib.load(ld_model)
@@ -173,26 +181,45 @@ def classify_chains(
         df_me_result["pred"] = me_ld_pred
 
     # model prediction is a float from 0 to 1, -1 -> for trans chains
-    trans_result["pred"] = -1
+    to_log(f"classify chains: applying -1.0 score to the spanning chains")
+    spanning_chains_result["pred"] = SPANNING_SCORE
     # identify processed pseudogenes, they satisfy the following criteria:
     # 1) multi-exon (single-exon ones are out of score of the method)
     # 2) synteny == 1
     # 3) cds_to_qlen > 0.95
     # set them score -2
+    to_log(f"classify chains: applying -2.0 score to the processed pseudogene alignments")
     df_me_result.loc[
         (df_me_result["synt"] == 1)
         & (df_me_result["exon_qlen"] > 0.95)
         & (df_me_result["pred"] < annot_threshold)
         & (df_me_result["exon_perc"] > 0.65),
         "pred",
-    ] = -2
+    ] = PPGENE_SCORE
+
+    pp_gene_count = df_me_result[df_me_result["pred"] == PPGENE_SCORE].shape[0]
+    to_log(f"classify chains: number of processed pseudogene alignments: {pp_gene_count}")
 
     # we need gene -> chain -> prediction from each row
+    to_log(f"classify chains: arranging the final output")
     df_se_result = df_se_result.loc[:, ["gene", "chain", "pred"]]
     df_me_result = df_me_result.loc[:, ["gene", "chain", "pred"]]
-    trans_result = trans_result.loc[:, ["gene", "chain", "pred"]]
+    spanning_chains_result = spanning_chains_result.loc[:, ["gene", "chain", "pred"]]
     # concatenate the results
-    overall_result = pd.concat([df_se_result, df_me_result, trans_result])
+    overall_result = pd.concat([df_se_result, df_me_result, spanning_chains_result])
+    # some stats
+    paralogs_count = overall_result[overall_result["pred"] < annot_threshold].shape[0]
+    orthologs_count = overall_result[overall_result["pred"] >= annot_threshold].shape[0]
+    spanning_chains_count = overall_result[overall_result["pred"] == 1.0].shape[0]
+    pp_genes_count = overall_result[overall_result["pred"] == 2.0].shape[0]
+    stats_msg = (
+        f"orthologs: {orthologs_count}\n"
+        f"paralogs: {paralogs_count}\n"
+        f"spanning chains: {spanning_chains_count}\n"
+        f"processed pseudogenes: {pp_genes_count}"
+    )
+    to_log(f"classify chains: classification result stats:\n{stats_msg}")
+    to_log(f"classify chains: using {annot_threshold} as a threshold to separate orthologs from paralogs")
 
     if raw_out:  # save raw scores if required
         overall_result.to_csv(raw_out, sep="\t", index=False)
@@ -202,37 +229,35 @@ def classify_chains(
     # such as transcript A: [orthologous chains] [paralogous chains] etc
     # 0 -> placeholder, means "the class if empty"
     gene_class_chains = {}
-    genes = set(overall_result["gene"])
-    for gene in genes:
-        gene_class_chains[gene] = {ORTH: [], PARA: [], TRANS: [], P_PGENES: []}
+    transcripts = set(overall_result["gene"])
+    for transcript in transcripts:
+        gene_class_chains[transcript] = {ORTH: [], PARA: [], SPAN: [], P_PGENES: []}
 
-    verbose("Combining classification data...")
+    to_log(f"classify chains: combining results for {len(transcripts)} individual transcripts")
     for data in overall_result.itertuples():
         gene = data.gene
         chain = data.chain
         pred = data.pred
 
-        if pred == -1:  # spanning (trans) chain
-            gene_class_chains[gene][TRANS].append(chain)
-        elif pred == -2:  # processed pseudogene
+        if pred == SPANNING_SCORE:  # spanning (trans) chain
+            gene_class_chains[gene][SPAN].append(chain)
+        elif pred == PPGENE_SCORE:  # processed pseudogene
             gene_class_chains[gene][P_PGENES].append(chain)
         elif pred < annot_threshold:
             gene_class_chains[gene][PARA].append(chain)
         else:  # > annot_threshold
             gene_class_chains[gene][ORTH].append(chain)
-        # verbose
-        # if num % 10000 == 0:
-        #     print(num)
 
     # save orthologs output
+    to_log(f"classify chains: saving the classification to {output}")
     f = open(output, "w") if output != "stdout" else sys.stdout
-    f.write(f"GENE\t{ORTH}\t{PARA}\t{TRANS}\t{P_PGENES}\n")
+    f.write(f"GENE\t{ORTH}\t{PARA}\t{SPAN}\t{P_PGENES}\n")
     i = 0
     for k, v in gene_class_chains.items():
         i += 1
         orth = v[ORTH]
         para = v[PARA]
-        trans = v[TRANS]
+        trans = v[SPAN]
         pp = v[P_PGENES]
         orth_f = ",".join(str(x) for x in orth) if orth else "0"
         para_f = ",".join(str(x) for x in para) if para else "0"
@@ -240,18 +265,21 @@ def classify_chains(
         p_pgenes_f = ",".join(str(x) for x in pp) if pp else "0"
         f.write("\t".join([k, orth_f, para_f, trans_f, p_pgenes_f]) + "\n")
     f.close() if output != "stdout" else None
-    # for some genes there are no classifiable chains, save them
-    genes_missing = list(init_genes_set.difference(genes))
+    # for some transcripts there are no classifiable chains, save them
+    transcripts_missing = list(init_transcripts_set.difference(transcripts))
+    to_log(f"classify chains: found no classifiable chains for {len(transcripts_missing)} transcripts")
 
     if rejected:  # we requested to save transcripts without classifiable chains
+        to_log(f"classify chains: saving these transcripts to: {rejected}")
         f = open(rejected, "w")
-        for gene in genes_missing:
-            f.write(f"{gene}\tNo classifiable chains\n")
+        for transcript in transcripts_missing:
+            f.write(f"{transcript}\tNo classifiable chains\n")
         f.close()
 
 
 def main():
     args = parse_args()
+    setup_logger(args.log_file)
     classify_chains(
         args.table,
         args.output,

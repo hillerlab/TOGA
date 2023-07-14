@@ -461,7 +461,7 @@ def chain_feat_extractor(
     """Chain features extractor entry point."""
     # global vars
     t0 = dt.now()
-    to_log(f"Processing chain_id: {chain_id} transcripts: {transcripts}")
+    to_log(f"processing chain_id: {chain_id} transcripts: {transcripts}")
     # global work_data: bed, chain, etc
     work_data = {
         "bed": "",
@@ -565,7 +565,7 @@ def main():
         sys.stdout.write(genes_output)
         sys.stdout.write(time_output)
         # sys.stderr.write(f"Job {job_num}/{task_size} done\r") if args.verbose else None
-    to_log(f"Total job time: {dt.now() - t0}\n")
+    to_log(f"Total job time: {dt.now() - t0}")
 
 
 if __name__ == "__main__":

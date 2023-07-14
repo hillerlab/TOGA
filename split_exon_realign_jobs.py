@@ -16,14 +16,14 @@ from twobitreader import TwoBitFile
 from modules.common import parts
 from modules.common import split_in_n_lists
 from modules.common import chain_extract_id
-from modules.common import eprint
 from modules.common import make_cds_track
 from modules.common import die
+from modules.common import eprint
+from modules.common import setup_logger
+from modules.common import to_log
 from version import __version__
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 # 0 gene; 1 chains; 2 bed_file; 3 bdb_chain_file; 4 tDB; 5 qDB; 6 memlim gig;
 LOCATION = os.path.dirname(__file__)
@@ -38,7 +38,7 @@ CESAR_RUNNER = os.path.abspath(
 )  # script that will run jobs
 LONG_LOCI_FIELDS = {
     "GGLOB",
-    "TRANS",
+    "SPAN",
 }  # chain classes that could lead to very long query loci
 BIGMEM_LIM = 500  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
@@ -55,7 +55,7 @@ L = "L"
 
 ORTHOLOG = "ORTH"
 PARALOG = "PARA"
-TRANS = "TRANS"
+SPAN = "SPAN"
 PROJECTION = "PROJECTION"
 TRANSCRIPT = "TRANSCRIPT"
 
@@ -231,6 +231,11 @@ def parse_args():
              "the reading frame, ignoring ATG codons distribution. "
              "(Default mode in V1.0, not recommended to use in later versions)"
     )
+    app.add_argument(
+        "--log_file",
+        default=None,
+        help="Log file"
+    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -291,9 +296,9 @@ def read_orthologs(orthologs_file, only_o2o=False, annotate_paralogs=False):
 
         chains[ORTHOLOG] = [x for x in line_info[1].split(",") if x != "0"]
         chains[PARALOG] = [x for x in line_info[2].split(",") if x != "0"]
-        chains[TRANS] = [x for x in line_info[3].split(",") if x != "0"]
+        chains[SPAN] = [x for x in line_info[3].split(",") if x != "0"]
         # Processed pseudogenes column ignored -> they are processed separately
-        all_chains = chains[ORTHOLOG] + chains[PARALOG] + chains[TRANS]
+        all_chains = chains[ORTHOLOG] + chains[PARALOG] + chains[SPAN]
 
         if len(all_chains) == 0:
             # no way in running CESAR on this gene
@@ -310,14 +315,14 @@ def read_orthologs(orthologs_file, only_o2o=False, annotate_paralogs=False):
             continue
 
         # use orthologous chains by default,
-        # if no orthologous chains -> use spanning chains (TRANS)
+        # if no orthologous chains -> use spanning chains (SPAN)
         # no spanning chains -> use paralogous
         if annotate_paralogs:
             selected_field = PARALOG
         elif len(chains[ORTHOLOG]) > 0:
             selected_field = ORTHOLOG
-        elif len(chains[TRANS]) > 0:
-            selected_field = TRANS
+        elif len(chains[SPAN]) > 0:
+            selected_field = SPAN
         else:
             selected_field = PARALOG
 
@@ -482,7 +487,7 @@ def precompute_regions(
             field = chain_gene_field.get((chain_id, gene))
             # check that corresponding region in the query is not too long
             # for instance query locus is 50 times longer than the gene
-            # or it's longer than 1M base and also this is a TRANS chain
+            # or it's longer than 1M base and also this is a SPAN chain
             high_rel_len = delta_gene_times > REL_LENGTH_THR
             high_abs_len = len_delta > ABS_LENGTH_TRH
             long_loci_field = field in LONG_LOCI_FIELDS
@@ -798,6 +803,7 @@ def main():
     """Entry point."""
     t0 = dt.now()
     args = parse_args()
+    setup_logger(args.log_file)
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
     cesar_temp_dir = os.path.join(args.toga_out_dir, "temp", "cesar_temp_files")
     os.mkdir(cesar_temp_dir) if not os.path.isdir(cesar_temp_dir) else None

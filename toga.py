@@ -786,7 +786,8 @@ class Toga:
 
         # 5) create cluster jobs for CESAR2.0
         to_log("\n\n#### STEP 5: Generate CESAR jobs")
-        self.__precompute_data_for_opt_cesar()
+        # experimental feature, not publically available:
+        # self.__precompute_data_for_opt_cesar()
         self.__split_cesar_jobs()
         self.__time_mark("Split cesar jobs done")
 
@@ -988,8 +989,10 @@ class Toga:
         )
         cl_rej_log = os.path.join(self.rejected_dir, "classify_chains_rejected.txt")
         ld_arg_ = self.ld_model if self.ld_model_arg else None
+
         if not os.path.isfile(self.se_model) or not os.path.isfile(self.me_model):
             self.__call_proc(self.MODEL_TRAINER, "Models not found, training...")
+
         classify_chains(
             self.chain_results_df,
             self.orthologs,
@@ -1005,7 +1008,7 @@ class Toga:
         self._transcripts_not_classified = self.__get_fst_col(cl_rej_log)
 
         if self.stop_at_chain_class:
-            self.die("User requested to halt after chain features extraction", rc=0)
+            self.die("User requested to halt TOGA after chain features extraction", rc=0)
 
     def __get_proc_pseudogenes_track(self):
         """Create annotation of processed genes in query."""
@@ -1170,6 +1173,8 @@ class Toga:
         # artificial bed file with all possible exons per gene, maybe the longest if intersection... or not?
         # what if there is a giant exon that does not align but smaller versions do?
         to_log("Computing memory requirements for optimized CESAR")
+        to_log("Warning! This is an experimental feature")
+
         mem_dir = os.path.join(self.wd, CESAR_PRECOMPUTED_MEMORY_DIRNAME)
         self.precomp_reg_dir = os.path.join(self.wd, CESAR_PRECOMPUTED_REGIONS_DIRNAME)
 
@@ -1267,6 +1272,7 @@ class Toga:
 
     def __split_cesar_jobs(self):
         """Call split_exon_realign_jobs.py."""
+        # TODO: check whether it is reachable
         if not self.t_2bit or not self.q_2bit:
             self.die(
                 "There are no 2 bit files provided, cannot go ahead and call CESAR.",
@@ -1287,13 +1293,14 @@ class Toga:
                 v_str = ",".join(map(str, v))
                 f.write(f"{k}\t{v_str}\n")
             f.close()
-            to_log(f"Detected {len(gene_fragments.keys())} fragmented transcripts")
             to_log(f"Fragments data saved to {fragm_dict_file}")
         else:
             # no fragment file: ok
             to_log("Skip fragmented genes detection")
             fragm_dict_file = None
+
         # if we call CESAR
+        to_log("Setting up creating CESAR jobs")
         self.cesar_jobs_dir = os.path.join(self.temp_wd, "cesar_jobs")
         self.cesar_combined = os.path.join(self.temp_wd, "cesar_combined")
         self.cesar_results = os.path.join(self.temp_wd, "cesar_results")
@@ -1308,7 +1315,6 @@ class Toga:
         ) else None
 
         # different field names depending on --ml flag
-
         self.temp_files.append(self.cesar_results)
         self.temp_files.append(self.gene_loss_data)
         skipped_path = os.path.join(self.rejected_dir, "SPLIT_CESAR.txt")
@@ -1338,7 +1344,8 @@ class Toga:
             f"--paralogs_log {self.paralogs_log} "
             f"--uhq_flank {self.uhq_flank} "
             f"--predefined_glp_class_path {self.predefined_glp_cesar_split} "
-            f"--unprocessed_log {self.technical_cesar_err}"
+            f"--unprocessed_log {self.technical_cesar_err} "
+            f"--log_file {self.log_file}"
         )
 
         if self.annotate_paralogs:  # very rare occasion
@@ -1960,15 +1967,20 @@ class Toga:
         os.remove(start_mark) if os.path.isfile(start_mark) else None
 
     def __get_version(self):
-        """Get git hash if possible."""
-        cmd = "git rev-parse HEAD"
+        """Get git hash and current branch if possible."""
+        cmd_hash = "git rev-parse HEAD"
+        cmd_branch = "git rev-parse --abbrev-ref HEAD"
         try:
             git_hash = subprocess.check_output(
-                cmd, shell=True, cwd=self.toga_exe_path
-            ).decode("utf-8")
+                cmd_hash, shell=True, cwd=self.toga_exe_path
+            ).decode("utf-8").strip()
+            git_branch = subprocess.check_output(
+                cmd_branch, shell=True, cwd=self.toga_exe_path
+            ).decode("utf-8").strip()
         except subprocess.CalledProcessError:
             git_hash = "unknown"
-        version = f"Version {__version__}\nCommit: {git_hash}\n"
+            git_branch = "unknown"
+        version = f"Version {__version__}\nCommit: {git_hash}\nBranch: {git_branch}\n"
         to_log(version)
         return version
 
