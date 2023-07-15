@@ -779,7 +779,7 @@ class Toga:
         self.__merge_chains_output()
         self.__time_mark("Chains output merged")
 
-        # 4) classify chains as orthologous, paralogous, etc using xgboost
+        # 4) classify chains as orthologous, paralogous, etc. using xgboost
         to_log("\n\n#### STEP 4: Classify chains using gradient boosting model\n")
         self.__classify_chains()
         self.__time_mark("Chains classified")
@@ -1404,6 +1404,7 @@ class Toga:
             # no need to monitor jobs in this way
             # if they are called sequentially
             return
+        to_log(f"## Stated polling jobs until they done")
         iter_num = 0
         while True:  # Run until all jobs are done (or crashed)
             all_done = True  # default val, re-define if something is not done
@@ -1416,7 +1417,7 @@ class Toga:
                 to_log("### CESAR jobs done ###")
                 break
             else:
-                to_log(f"Status check iteration {iter_num} waiting {ITER_DURATION * iter_num} seconds.")
+                to_log(f"Poll iteration {iter_num}; already waiting {ITER_DURATION * iter_num} seconds.")
                 time.sleep(ITER_DURATION)
                 iter_num += 1
         if not self.keep_nf_logs:
@@ -1429,9 +1430,11 @@ class Toga:
             # some para/nextflow job died: critical issue
             # if die_if_sc_1 is True: terminate the program
             err = "Error! Some para/nextflow processes died!"
+            to_log(err)
             self.die(err, 1)
 
     def __run_cesar_jobs(self):
+        # TODO: to replace with ParallelizationStrategy instance
         """Run CESAR jobs using nextflow.
 
         At first -> push joblists, there might be a few of them
@@ -1439,6 +1442,9 @@ class Toga:
         """
         # for each bucket I create a separate joblist and config file
         # different config files because different memory limits
+        to_log(f"Attention: the parallelization module will be rearranged in the future")
+        to_log(f"Because of that, logging messages can be incomplete, and will be properly ")
+        to_log(f"implemented in the future version.")
         project_paths = []  # dirs with logs
         processes = []  # keep subprocess objects here
         timestamp = str(time.time()).split(".")[1]  # for project name
@@ -1446,9 +1452,7 @@ class Toga:
 
         # get a list of buckets
         if self.cesar_buckets == "0":
-            buckets = [
-                0,
-            ]  # a single bucket
+            buckets = [0]  # a single bucket
         else:  # several buckets, each int -> memory limit in gb
             buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
         to_log(f"Pushing {len(buckets)} CESAR job lists")
@@ -1458,6 +1462,7 @@ class Toga:
             # create config file
             # 0 means that that buckets were not split
             mem_lim = b if b != 0 else self.cesar_mem_limit
+            to_log(f"Pushing memory bucket {b}Gb to the executor")
 
             if not self.local_executor:
                 # running on cluster, need to create config file
@@ -1515,7 +1520,7 @@ class Toga:
                     cmd += f" --memoryMb={memory_mb}"
                 p = subprocess.Popen(cmd, shell=True)
 
-            sys.stderr.write(f"Pushed cluster jobs with {cmd}\n")
+            to_log(f"Pushed cluster jobs with {cmd}\n")
 
             # wait for the process if calling processes sequentially
             # or wait a minute before pushing the next batch in parallel
@@ -1527,6 +1532,7 @@ class Toga:
 
         # push bigmem jobs
         if self.nextflow_bigmem_config and not self.para:
+            to_log(f"!!Pushing bibmem queue jobs - this part is experimental")
             # if provided: push bigmem jobs also
             nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
@@ -1551,7 +1557,7 @@ class Toga:
                 ) else None
                 project_paths.append(nf_project_path)
                 p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
-                sys.stderr.write(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
+                to_log(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
                 if self.exec_cesar_parts_sequentially:
                     p.wait()
                 processes.append(p)
@@ -1585,6 +1591,8 @@ class Toga:
             return
 
         for p_name in project_names:
+            # TODO: implement this logic for each ParallelizationStrategy
+            to_log(f"Collecting para runtime stats")
             cmd = f"para time {p_name}"
             p = subprocess.Popen(
                 cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -1654,12 +1662,13 @@ class Toga:
 
     def __check_cesar_completeness(self):
         """Check that all CESAR jobs were executed, quit otherwise."""
+        to_log("\nChecking whether all CESAR results are complete")
         rejected_logs_filenames = [
             x for x in os.listdir(self.rejected_dir) if x.startswith("cesar")
         ]
         if len(rejected_logs_filenames) == 0:
             # nothing crashed
-            to_log("No CESAR jobs crashed")
+            to_log("No CESAR jobs crashed accodring to rejection log")
             return
         # collect crashed jobs
         crashed_jobs = []
@@ -1675,9 +1684,10 @@ class Toga:
             return
         elif crashed_jobs_num > 1000:  # this is TOO MUCH, must never happen
             err_msg_ = (
-                f"Too many ({crashed_jobs_num}) CESAR jobs died, "
+                f"!!CRITICAL: Too many ({crashed_jobs_num}) CESAR jobs died, "
                 f"please check your input data and re-run TOGA"
             )
+            to_log(err_msg_)
             self.die(err_msg_)
 
         to_log(f"{crashed_jobs_num} CESAR jobs crashed, trying to run again...")
@@ -1693,15 +1703,15 @@ class Toga:
         ) else None
         err_log_files = []
 
+        # TODO: remove code duplication
         for bucket, jobs in bucket_to_jobs.items():
-            to_log(f"Pushing {len(jobs)} jobs into {bucket} GB queue")
+            to_log(f"!!RERUN CESAR JOBS: Pushing {len(jobs)} jobs into {bucket} GB queue")
             batch_path = f"_cesar_rerun_batch_{bucket}"
             bucket_batch_file = os.path.join(self.wd, batch_path)
             batch_commands = []
             for num, job in enumerate(jobs, 1):
                 job_file = f"rerun_job_{num}_{bucket}"
                 job_path = os.path.join(temp_jobs_dir, job_file)
-                # job_files.append(job_path)
                 f = open(job_path, "w")
                 f.write(job)
                 f.write("\n")
@@ -1747,10 +1757,12 @@ class Toga:
                 p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
             p_objects.append(p)
             time.sleep(CESAR_PUSH_INTERVAL)
+        to_log(f"Monitoring CESAR jobs rerun")
         self.__monitor_jobs(p_objects, project_paths, die_if_sc_1=True)
         # TODO: maybe some extra sanity check
 
         # need to check whether anything crashed again
+        to_log("!!Checking whether any CESAR jobs crashed twice")
         crashed_twice = []
         for elem in err_log_files:
             f = open(elem, "r")
@@ -1759,14 +1771,15 @@ class Toga:
             crashed_twice.extend(lines)
         shutil.rmtree(self.rejected_dir_rerun)
         if len(crashed_twice) == 0:
-            to_log("All CESAR jobs re-ran succesfully!")
+            to_log("!!All CESAR jobs re-ran succesfully!!\n\n")
             return
         # OK, some jobs crashed twice
         crashed_log = os.path.join(self.wd, "cesar_jobs_crashed.txt")
         f = open(crashed_log, "w")
         f.write("".join(crashed_twice))
         f.close()
-        err_msg = f"Some CESAR jobs crashed twice, please check {crashed_log}; Abort"
+        err_msg = f"!!Some CESAR jobs crashed twice, please check {crashed_log}; Abort"
+        to_log(err_msg)
         self.die(err_msg, 1)
 
     def __append_technicall_err_to_predef_class(self, transcripts_path, out_path):
@@ -1807,7 +1820,8 @@ class Toga:
         )
 
         self.__append_technicall_err_to_predef_class(
-            self.technical_cesar_err_merged, self.predefined_glp_cesar_split
+            self.technical_cesar_err_merged,
+            self.predefined_glp_cesar_split
         )
 
         if len(all_ok) == 0:

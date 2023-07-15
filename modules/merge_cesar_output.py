@@ -17,19 +17,18 @@ from version import __version__
 
 try:
     from modules.parse_cesar_output import classify_exon
-    from modules.common import eprint
+    from modules.common import to_log
+    from modules.common import setup_logger
     from modules.common import die
     from modules.common import split_proj_name
 except ImportError:
     from parse_cesar_output import classify_exon
-    from common import eprint
+    from common import to_log
+    from common import setup_logger
     from common import die
     from common import split_proj_name
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
-
+__author__ = "Bogdan M. Kirilenko"
 
 # constants
 MAX_SCORE = 1000
@@ -50,6 +49,8 @@ META_HEADER = "\t".join(
     " in_exp pid blosum gap class paralog q_mark".split()
 )
 
+MODULE_NAME_FOR_LOG = "merge_cesar_jobs"
+
 
 def parse_args():
     """Read args, check."""
@@ -61,6 +62,7 @@ def parse_args():
     app.add_argument("prot_fasta", help="Save protein fasta to...")
     app.add_argument("codon_fasta", help="Save codon alignment fasta to...")
     app.add_argument("skipped", help="Save skipped genes")
+    app.add_argument("--log_file", default=None, help="Log file")
     app.add_argument("--output_trash", default=None, help="Save deleted exons")
     app.add_argument(
         "--fragm_data",
@@ -587,8 +589,8 @@ def merge_cesar_output(
     """Merge multiple CESAR output files."""
     # check that input dir is correct
     die(f"Error! {input_dir} is not a dir!") if not os.path.isdir(input_dir) else None
-    # get list of bdb files (output of CESAR part)
-    bdbs = [x for x in os.listdir(input_dir) if x.endswith(".txt")]
+    cesar_output_files = [x for x in os.listdir(input_dir) if x.endswith(".txt")]
+    to_log(f"{MODULE_NAME_FOR_LOG}: merging CESAR results from {len(cesar_output_files)} output files")
     # get list of excluded transcripts
     excluded_genes = get_excluded_genes(exclude)
 
@@ -603,31 +605,34 @@ def merge_cesar_output(
     fragm_genes_summary = []
     crashed_status = []
 
-    task_size = len(bdbs)
+    task_size = len(cesar_output_files)
     # extract data for all the files
-    for num, bdb_file in enumerate(bdbs):
+    for num, cesar_out_file in enumerate(cesar_output_files):
+        to_log(f" * processing file {cesar_out_file} {num + 1}/{task_size}")
         # parse bdb files one by one
-        bdb_path = os.path.join(input_dir, bdb_file)
+        cesar_out_path = os.path.join(input_dir, cesar_out_file)
 
         # check whether this file exists
-        if not os.path.isfile(bdb_path):
-            stat = (bdb_path, "file doesn't exist!")
+        if not os.path.isfile(cesar_out_path):
+            stat = (cesar_out_path, "file doesn't exist!")
+            to_log(f"!! file {cesar_out_path} does not exist")
             crashed_status.append(stat)
             continue
         # and check that this file has size > 0
-        elif os.stat(bdb_path).st_size == 0:
-            # stat = (bdb_path, "file is empty!")
-            # crashed_status.append(stat)
-            # ok, no output: if something crashed, we will find out
+        elif os.stat(cesar_out_path).st_size == 0:
+            to_log(f"!! file {cesar_out_path} is empty!!")
             continue
 
         try:  # try to parse data
-            parsed_data = parse_cesar_bdb(bdb_path, exclude_arg=excluded_genes)
+            parsed_data = parse_cesar_bdb(cesar_out_path, exclude_arg=excluded_genes)
         except AssertionError:
             # if this happened: some assertion was violated
             # probably CESAR output data is corrupted
-            parsed_data = (None,)
-            sys.exit(f"Error! Failed reading file {bdb_file}")
+            err_msg = (
+                f"{MODULE_NAME_FOR_LOG}: Error! Failed reading file {cesar_out_file}"
+            )
+            to_log(err_msg)
+            sys.exit(1)
 
         # unpack parsed data tuple:
         bed_lines = parsed_data[0]
@@ -639,13 +644,6 @@ def merge_cesar_output(
         skip = parsed_data[6]
         fragm_bed_exons = parsed_data[7]
 
-        # if len(bed_lines) == 0:
-        #     # actually should not happen, but can
-        #     eprint(f"Warning! Cannot extract bed from {bdb_file}")
-        #     stat = (bdb_path, "Could not extract bed track")
-        #     crashed_status.append(stat)
-        #     continue  # it is empty
-
         # append data to lists
         bed_summary.append("\n".join(bed_lines) + "\n")
         fasta_summary.append(fasta_lines)
@@ -655,17 +653,21 @@ def merge_cesar_output(
         prot_summary.append(prot_fasta)
         codon_summary.append(codon_fasta)
         fragm_genes_summary.append(fragm_bed_exons)
-        eprint(f"Reading file {num + 1}/{task_size}", end="\r")
 
     # save output
-    eprint("Saving the output")
+    to_log(f"{MODULE_NAME_FOR_LOG}: Saving the output")
     if len(bed_summary) == 0:
         # if so, no need to continue
-        eprint("! merge_cesar_output.py:")
-        die("No projections found! Abort.")
+        err_msg = (
+            f"{MODULE_NAME_FOR_LOG}: CRITICAL: could not extract any bed lines "
+            f"from the CESAR output, abort"
+        )
+        to_log(err_msg)
+        sys.exit(1)
 
     # save bed, fasta and the rest
     with open(output_bed, "w") as f:
+        to_log(f"{MODULE_NAME_FOR_LOG}: Saving {len(bed_summary)} bed lines to {output_bed}")
         f.write("".join(bed_summary))
     with open(output_fasta, "w") as f:
         f.write("".join(fasta_summary))
@@ -696,6 +698,7 @@ def merge_cesar_output(
 def main():
     """Entry point."""
     args = parse_args()
+    setup_logger(args.log_file)
     merge_cesar_output(
         args.input_dir,
         args.output_bed,
