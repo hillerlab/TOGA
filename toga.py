@@ -980,8 +980,8 @@ class Toga:
         """Run decision tree."""
         # define input and output."""
         to_log("Classifying chains")
-        self.orthologs = os.path.join(self.temp_wd, "trans_to_chain_classes.tsv")
-        self.pred_scores = os.path.join(self.temp_wd, "orthology_scores.tsv")
+        self.transcript_to_chain_classes = os.path.join(self.temp_wd, "trans_to_chain_classes.tsv")
+        self.pred_scores = os.path.join(self.wd, "orthology_scores.tsv")
         self.se_model = os.path.join(self.LOCATION, "models", "se_model.dat")
         self.me_model = os.path.join(self.LOCATION, "models", "me_model.dat")
         self.ld_model = os.path.join(
@@ -995,7 +995,7 @@ class Toga:
 
         classify_chains(
             self.chain_results_df,
-            self.orthologs,
+            self.transcript_to_chain_classes,
             self.se_model,
             self.me_model,
             rejected=cl_rej_log,
@@ -1204,7 +1204,7 @@ class Toga:
 
         # split file containing gene: orthologous/paralogous chains into 100 pieces
         class_pieces = self.__split_file(
-            self.orthologs, chain_class_temp_dir, NUM_CESAR_MEM_PRECOMP_JUBS
+            self.transcript_to_chain_classes, chain_class_temp_dir, NUM_CESAR_MEM_PRECOMP_JUBS
         )
         precompute_jobs = []
         # for nextflow abspath is better:
@@ -1325,7 +1325,7 @@ class Toga:
 
         split_cesar_cmd = (
             f"{self.SPLIT_EXON_REALIGN_JOBS} "
-            f"{self.orthologs} {self.ref_bed} "
+            f"{self.transcript_to_chain_classes} {self.ref_bed} "
             f"{self.index_bed_file} {self.chain_index_file} "
             f"{self.t_2bit} "
             f"{self.q_2bit} "

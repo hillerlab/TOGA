@@ -586,7 +586,9 @@ def precompute_regions(
 
 def fill_buckets(buckets, all_jobs):
     """Split jobs in buckets according their memory consumption."""
+    to_log(f"{MODULE_NAME_FOR_LOG}: filling the following RAM limit buckets: {buckets}")
     if 0 in buckets.keys():  # do not split it
+        to_log(f"No buckets to split, saving {len(all_jobs)} jobs into the same queue")
         buckets[0] = list(all_jobs.keys())
         return buckets
     # buckets were set
@@ -604,6 +606,10 @@ def fill_buckets(buckets, all_jobs):
         prev_lim = memlim
     # remove empty
     filter_buckets = {k: v for k, v in buckets.items() if len(v) > 0}
+
+    to_log(f"{MODULE_NAME_FOR_LOG}: bucket and number of assigned jobs:")
+    for b, jobs in filter_buckets.items():
+        to_log(f"* bucket {b}Gb: {jobs} jobs")
     return filter_buckets
 
 
@@ -612,6 +618,7 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
     os.mkdir(jobs_dir) if not os.path.isdir(jobs_dir) else None
     file_num, to_combine = 0, []
     bucket_saved = {k: True for k in filled_buckets.keys()}
+    to_log(f"{MODULE_NAME_FOR_LOG}: saving CESAR job queues to {jobs_dir}")
 
     for bucket_id, jobs in filled_buckets.items():
         num_of_files = bucket_jobs_num[bucket_id]
@@ -633,11 +640,18 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
             f.write("\n".join(part) + "\n")
             f.close()
             to_combine.append(file_path)
+            to_log(
+                f"# {MODULE_NAME_FOR_LOG}: saved part {part} of bucket "
+                f"{bucket_id} to {file_path} with {len(part)} commands"
+            )
     # check if anything saved
     if all(x is False for x in bucket_saved.values()):
-        print("Could not create any CESAR job. Probably, ALL genes require much more memory than the available.")
-        print("If this result is unexpected, please contact the developers.")
-        sys.exit(1)
+        err_msg = (
+            "Could not create any CESAR job. Probably, ALL genes require much more memory than the available."
+            "If this result is unexpected, please contact the developers."
+        )
+        to_log(err_msg)
+        die(err_msg)
     return to_combine
 
 
@@ -650,6 +664,11 @@ def save_bigmem_jobs(bigmem_joblist, jobs_dir):
     num_of_parts = joblist_size if joblist_size <= BIGMEM_LIM else BIGMEM_JOBSNUM
     if num_of_parts == 0:
         return None  # no bigmem jobs
+    to_log(f"{MODULE_NAME_FOR_LOG}: saving {joblist_size} jobs to BIGMEM queue")
+    to_log(
+        f"!!{MODULE_NAME_FOR_LOG}: this part is a subject of being "
+        f"refactored or excluded from the pipeline"
+    )
 
     bigmem_parts = split_in_n_lists(bigmem_joblist, num_of_parts)
     bigmem_files_num = len(bigmem_parts)  # in case if num of jobs < BIGMEM_JOBSNUM
@@ -676,6 +695,7 @@ def save_combined_joblist(
     name=""
 ):
     """Save joblist of joblists (combined joblist)."""
+    to_log(f"{MODULE_NAME_FOR_LOG}: saving combined CESAR jobs to {to_combine}")
     f = open(combined_file, "w")
     for num, comb in enumerate(to_combine, 1):
         basename = os.path.basename(comb).split(".")[0]
@@ -945,7 +965,9 @@ def main():
     predef_glp_class__chains_step = {}
 
     # start making the jobs
-    # TODO: stopped here
+    to_log(f"{MODULE_NAME_FOR_LOG}: building commands for {len(batch)} transcripts")
+    to_log(f"{MODULE_NAME_FOR_LOG}: some transcripts can be omitted (see above)")
+
     all_jobs = {}
     skipped_3 = []
     bigmem_jobs = []
@@ -957,8 +979,10 @@ def main():
 
         # check that there is something for this gene
         if not gene_chains_data:
+            to_log(f" * skipping transcript: {gene}: no data")
             continue
         elif len(gene_chains_data.keys()) == 0:
+            to_log(f" * skipping transcript: {gene}: no data")
             continue
 
         gene_fragments = gene_fragments_dict.get(gene, False)
@@ -971,6 +995,7 @@ def main():
         chains = gene_chains_data.keys()
         if len(chains) == 0:
             continue
+
         precomp_gig = precomp_mem.get(gene, None)
         chain_arg_to_gig = compute_memory(chains,
                                           precomp_gig,
@@ -992,20 +1017,38 @@ def main():
             # define whether it's an ordinary or a bigmem job
             # depending on the memory requirements
             if stat == MEM_FIT:  # ordinary job
+                msg = (
+                    f" * added job for transcript {gene}, chains: {chains}, "
+                    f"memory_requirements: {gig}, u12_data: {u12_this_gene}"
+                )
+                to_log(msg)
                 all_jobs[job] = gig
             elif stat == MEM_BIGMEM:
                 to_app = (gene, chains_arg, f"requires {gig}) -> bigmem job")
                 skipped_3.append(to_app)
                 bigmem_jobs.append(job)
+                msg = (
+                    f"* !!job for transcript {gene}, chains {chains} requires "
+                    f"{gig}Gb of memory -> does not fit the memory requirements, "
+                    f"can be executed in the bigmem queue (if defined by user)"
+                )
+                to_log(msg)
                 for chain_id in chains_tup:
                     proj_id = f"{gene}.{chain_id}"
                     predef_glp_class__chains_step[proj_id] = f"{PROJECTION}\tM"
             else:
                 to_app = (gene, chains_arg, f"big mem limit ({BIGMEM_LIM} gig) exceeded (needs {gig})",)
                 skipped_3.append(to_app)
+                msg = (
+                    f"* !!job for transcript {gene}, chains {chains} requires "
+                    f"{gig}Gb of memory -> exceeded the limit {BIGMEM_LIM};"
+                    f"skipping the transcript completely "
+                )
+                to_log(msg)
                 for chain_id in chains_tup:
                     proj_id = f"{gene}.{chain_id}"
                     predef_glp_class__chains_step[proj_id] = f"{PROJECTION}\tM"
+                    to_log(f"* !!assigning status MISSING to projection {proj_id}")
     
     # TODO: predefined GLP classes to be refactored 
     predefined_glp_class.update(predef_glp_class__chains_step)
@@ -1013,19 +1056,25 @@ def main():
     # eprint(f"\nThere are {len(all_jobs.keys())} jobs in total.")
     # eprint("Splitting the jobs.")
     # split jobs in buckets | compute proportions
+    to_log(f"{MODULE_NAME_FOR_LOG}: created {len(all_jobs.keys())} jobs in total")
     filled_buckets = fill_buckets(buckets, all_jobs)
     prop_sum = sum([k * len(v) for k, v in filled_buckets.items()])
     # estimate proportion of a bucket in the runtime
+    to_log(f"{MODULE_NAME_FOR_LOG}: defining number of cluster jobs for each bucket")
     buckets_prop = (
+        # TODO: it is not linear, use squares of RAM limits to eval runtime proportions
         {k: (k * len(v)) / prop_sum for k, v in filled_buckets.items()}
         if 0 not in filled_buckets.keys()
         else {0: 1.0}
     )
-    # eprint("Bucket proportions are:")
-    # eprint("\n".join([f"{k} -> {v}" for k, v in buckets_prop.items()]))
-    # eprint(f"Also there are {len(bigmem_jobs)} bigmem jobs")
+    to_log(f"{MODULE_NAME_FOR_LOG}: based on memory, the estimated runtime proportions are:")
+    for b, prop in buckets_prop.items():
+        to_log(f"* bucke {b}Gb: {prop}")
     # get number of jobs for each bucket
     bucket_jobs_num = {k: math.ceil(args.jobs_num * v) for k, v in buckets_prop.items()}
+    to_log(f"Final numbers of cluster jobs per bucket are:")
+    for b, jn in bucket_jobs_num.items():
+        to_log(f" * bucket {b}Gb: {jn} jobs")
     # save jobs, get comb lines
     to_combine = save_jobs(filled_buckets, bucket_jobs_num, args.jobs_dir)
     # save combined jobs, combined is a file containing paths to separate jobs
@@ -1060,6 +1109,7 @@ def main():
     # save skipped genes if required
     if args.skipped_genes:
         skipped = skipped_1 + skipped_2 + skipped_3
+        to_log(f"{MODULE_NAME_FOR_LOG}: saving {len(skipped)} skipped transcripts to {args.skipped_genes}")
         f = open(args.skipped_genes, "w")
         # usually we have gene + reason why skipped
         # we split them with tab
@@ -1069,6 +1119,10 @@ def main():
     if args.predefined_glp_class_path:
         # if we know GLP class for some of the projections: save it
         f = open(args.predefined_glp_class_path, "w")
+        to_log(
+            f"{MODULE_NAME_FOR_LOG}: precomputed gene loss classes for "
+            f"{len(predefined_glp_class)} items are saved to {args.predefined_glp_class_path}"
+        )
         for k, v in predefined_glp_class.items():
             f.write(f"{k}\t{v}\n")
         f.close()
@@ -1077,15 +1131,22 @@ def main():
     # skip if we annotate only paralogs
     if not args.annotate_paralogs:
         f = open(args.paralogs_log, "w")
+        to_log(f"{MODULE_NAME_FOR_LOG}: potentially, for some transcripts, no orthologous chains found")
+        paralogs_count = 0
         for k, v in chain_gene_field.items():
             if v != "PARA":
                 continue
             gene_ = f"{k[1]}.{k[0]}\n"
             f.write(gene_)
+            paralogs_count += 1
         f.close()
+        to_log(
+            f"{MODULE_NAME_FOR_LOG}: TOGA will create {paralogs_count} paralogous "
+            f"projections (PG class); their IDs are saved to {args.paralogs_log}"
+        )
 
-    # eprint(f"Estimated: {dt.now() - t0}")
-    sys.exit(0)
+    runtime = dt.now() - t0
+    to_log(f"{MODULE_NAME_FOR_LOG}: splitting jobs done in {runtime}")
 
 
 if __name__ == "__main__":
