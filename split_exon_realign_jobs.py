@@ -217,6 +217,11 @@ def parse_args():
         help="Store unprocessed genes in a separate file."
     )
     app.add_argument(
+        "--cesar_logs_dir",
+        default=None,
+        help="CESAR logs dir"
+    )
+    app.add_argument(
         "--debug",
         "-d",
         action="store_true",
@@ -641,7 +646,7 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
             f.close()
             to_combine.append(file_path)
             to_log(
-                f"# {MODULE_NAME_FOR_LOG}: saved part {part} of bucket "
+                f"# {MODULE_NAME_FOR_LOG}: saved part  of bucket "
                 f"{bucket_id} to {file_path} with {len(part)} commands"
             )
     # check if anything saved
@@ -692,6 +697,7 @@ def save_combined_joblist(
     inact_mut_dat,
     rejected_log,
     unproc_log,
+    cesar_logs_dir,
     name=""
 ):
     """Save joblist of joblists (combined joblist)."""
@@ -705,12 +711,16 @@ def save_combined_joblist(
             loss_data_path = os.path.join(inact_mut_dat, f"{basename}.inact_mut.txt")
             combined_command += f" --check_loss {loss_data_path}"
         if rejected_log:
-            log_path = os.path.join(rejected_log, f"{basename}.txt")
-            combined_command += f" --rejected_log {log_path}"
+            rejected_log_path = os.path.join(rejected_log, f"{basename}.txt")
+            combined_command += f" --rejected_log {rejected_log_path}"
         if unproc_log:
-            log_path = os.path.join(unproc_log, f"{basename}.txt")
-            combined_command += f" --unproc_log {log_path}"
+            unproc_log_path = os.path.join(unproc_log, f"{basename}.txt")
+            combined_command += f" --unproc_log {unproc_log_path}"
+        if cesar_logs_dir:
+            cesar_logs_path = os.path.join(cesar_logs_dir, f"cesar_{basename}.txt")
+            combined_command += f" --log_file {cesar_logs_path}"
         f.write(combined_command + "\n")
+
     f.close()
 
 
@@ -1090,7 +1100,8 @@ def main():
         args.results,
         args.check_loss,
         args.rejected_log,
-        args.unprocessed_log
+        args.unprocessed_log,
+        args.cesar_logs_dir
     )
 
     # save bigmem jobs, a bit different logic
@@ -1103,6 +1114,7 @@ def main():
             args.check_loss,
             args.rejected_log,
             None,  # TODO: decide what we do with this branch
+            args.cesar_logs_dir,
             name="bigmem",
         )
 

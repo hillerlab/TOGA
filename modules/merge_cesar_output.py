@@ -86,13 +86,9 @@ def parse_args():
 def read_fasta(fasta_line, v=False):
     """Read fasta, return dict and type."""
     fasta_data = fasta_line.split(">")
-    eprint(f"fasta_data[0] is:\n{fasta_data[0]}") if v else None
-    eprint(f"fasta_data[1] is:\n{fasta_data[1]}") if v else None
     if fasta_data[0] != "":
         # this is a bug
-        eprint("ERROR! Cesar output is corrupted")
-        # eprint(f"Issue detected in the following string:\n{fasta_line}")
-        eprint(f"fasta_data[0]: {fasta_data[0]}")
+        to_log(f"!!{MODULE_NAME_FOR_LOG}: CRITICAL: corrupted fasta content: {fasta_data}")
         die("Abort")
     del fasta_data[0]  # remove it "" we don't need that
     sequences = {}  # accumulate data here
@@ -196,11 +192,12 @@ def split_ex_reg_in_chrom(exon_regions):
     return chrom_n_to_pieces
 
 
-def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
+def parse_cesar_out_file(arg_input, v=False, exclude_arg=None):
     """Parse CESAR bdb file core function."""
     in_ = open(arg_input, "r")  # read cesar bdb file
     # two \n\n divide each unit of information
     content = [x for x in in_.read().split("#") if x]
+    to_log(f"{MODULE_NAME_FOR_LOG}: parsing file {arg_input} with {len(content)} lines")
     in_.close()
     # GLP-related data is already filtered out by cesar_runner
 
@@ -227,7 +224,6 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
             skipped.append(f"{gene}\tfound in the exclude list")
             continue
 
-        eprint(f"Reading gene {gene}") if v else None
         cesar_out = "\n".join(elem_lines[1:])
 
         # basically this is a fasta file with headers
@@ -273,7 +269,7 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
 
         # parse query headers
         for header in query_headers:
-            # the most complicatd part: here we extract not only the
+            # the most complicated part: here we extract not only the
             # nucleotide sequence but also coordinates and other features
             header_fields = [s.replace(" ", "") for s in header.split("|")]
             if len(header_fields) != Q_HEADER_FIELDS_NUM:
@@ -334,6 +330,7 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
                 continue
             # projection has no exons: log it
             name_ = f"{name[0]}.{name[1]}"
+            to_log(f"{MODULE_NAME_FOR_LOG}: Warning: {name_} skipped: all exons are deleted")
             skipped.append(f"{name_}\tall exons are deleted.")
 
         # make bed tracks
@@ -434,6 +431,7 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
             name = f"{gene}.{chain_id}"  # projection name for bed file
 
             if len(ranges) == 0:  # this projection is completely missing
+                to_log(f"{MODULE_NAME_FOR_LOG}: skipping {name}: all exons are deleted")
                 skipped.append(f"{name}\tall exons are deleted.")
                 continue
             direct = chain_dir[chain_id]
@@ -492,16 +490,18 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
                 ],
             )
             bed_line = "\t".join(bed_list)
+            to_log(f"{MODULE_NAME_FOR_LOG}: Added raw bed line for {name}: {bed_line}")
             bed_lines.append(bed_line)
 
     # arrange fasta content
     fasta_lines_lst = []
+    to_log(f"{MODULE_NAME_FOR_LOG}: arranging fasta file")
     for gene, chain_exon_seq in pred_seq_chain.items():
         # write target gene info
         t_gene_seq_dct = t_exon_seqs.get(gene)
         if t_gene_seq_dct is None:
             # no sequence data for this transcript?
-            eprint(f"Warning! Missing data for {gene}")
+            to_log(f"{MODULE_NAME_FOR_LOG}: STRONG WARNING! Missing data for {gene} after CESAR")
             skipped.append(f"{gene}\tmissing data after cesar stage")
             continue
         # We have sequence fragments split between different exons
@@ -543,6 +543,10 @@ def parse_cesar_bdb(arg_input, v=False, exclude_arg=None):
         bed_6 = "\t".join([chrom, start, end, label, score, strand]) + "\n"
         trash_exons.append(bed_6)
 
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: added {len(trash_exons)} exons that are actually "
+        f"deleted or missing but annotated by CESAR"
+    )
     # join output strings
     meta_str = "\n".join(all_meta_data) + "\n"
     skipped_str = "\n".join(skipped) + "\n"
@@ -588,6 +592,10 @@ def merge_cesar_output(
 ):
     """Merge multiple CESAR output files."""
     # check that input dir is correct
+    func_args = locals()
+    to_log(f"{MODULE_NAME_FOR_LOG}: module called with arguments:")
+    for k, v in func_args.items():
+        to_log(f"* {k}: {v}")
     die(f"Error! {input_dir} is not a dir!") if not os.path.isdir(input_dir) else None
     cesar_output_files = [x for x in os.listdir(input_dir) if x.endswith(".txt")]
     to_log(f"{MODULE_NAME_FOR_LOG}: merging CESAR results from {len(cesar_output_files)} output files")
@@ -606,6 +614,8 @@ def merge_cesar_output(
     crashed_status = []
 
     task_size = len(cesar_output_files)
+    bed_lines_count = 0
+
     # extract data for all the files
     for num, cesar_out_file in enumerate(cesar_output_files):
         to_log(f" * processing file {cesar_out_file} {num + 1}/{task_size}")
@@ -624,7 +634,7 @@ def merge_cesar_output(
             continue
 
         try:  # try to parse data
-            parsed_data = parse_cesar_bdb(cesar_out_path, exclude_arg=excluded_genes)
+            parsed_data = parse_cesar_out_file(cesar_out_path, exclude_arg=excluded_genes)
         except AssertionError:
             # if this happened: some assertion was violated
             # probably CESAR output data is corrupted
@@ -646,6 +656,8 @@ def merge_cesar_output(
 
         # append data to lists
         bed_summary.append("\n".join(bed_lines) + "\n")
+        to_log(f"{MODULE_NAME_FOR_LOG}: saving {len(bed_lines)} bed lines from this part")
+        bed_lines_count += len(bed_lines)
         fasta_summary.append(fasta_lines)
         trash_summary.append("".join(trash_exons))
         meta_summary.append(meta_data)
@@ -667,7 +679,7 @@ def merge_cesar_output(
 
     # save bed, fasta and the rest
     with open(output_bed, "w") as f:
-        to_log(f"{MODULE_NAME_FOR_LOG}: Saving {len(bed_summary)} bed lines to {output_bed}")
+        to_log(f"{MODULE_NAME_FOR_LOG}: writing {bed_lines_count} bed records to {output_bed}")
         f.write("".join(bed_summary))
     with open(output_fasta, "w") as f:
         f.write("".join(fasta_summary))

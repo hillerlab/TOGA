@@ -14,7 +14,6 @@ import json
 import shutil
 from math import ceil
 from collections import defaultdict
-import logging
 from twobitreader import TwoBitFile
 from modules.common import parts
 from modules.filter_bed import prepare_bed_file
@@ -800,6 +799,7 @@ class Toga:
         self.__run_cesar_jobs()
         self.__time_mark("Cesar jobs done")
         self.__check_cesar_completeness()
+        self.__collapse_logs("cesar_")
 
         # 8) parse CESAR output, create bed / fasta files
         to_log("\n\n#### STEP 8: Merge STEP 7 output\n")
@@ -1345,7 +1345,8 @@ class Toga:
             f"--uhq_flank {self.uhq_flank} "
             f"--predefined_glp_class_path {self.predefined_glp_cesar_split} "
             f"--unprocessed_log {self.technical_cesar_err} "
-            f"--log_file {self.log_file}"
+            f"--log_file {self.log_file} "
+            f"--cesar_logs_dir {self.log_dir}"
         )
 
         if self.annotate_paralogs:  # very rare occasion
@@ -1831,26 +1832,35 @@ class Toga:
         else:
             # there are some empty output files
             # MAYBE everything is fine
-            f = open(self.cesar_crashed_batches_log, "w")
-            for err in all_ok:
-                _path = err[0]
-                _reason = err[1]
-                f.write(f"{_path}\t{_reason}\n")
-            f.close()
-            # but need to notify user anyway
-
             warning_message = (
                 f"WARNING!\nSOME CESAR JOB BATCHES LIKELY CRASHED\n!"
                 f"RESULTS ARE LIKELY INCOMPLETE"
                 f"PLEASE SEE {self.cesar_crashed_batches_log} FOR DETAILS"
-                f"THERE IS A MINOR CHANCE THAT EVERYTHING IS CORRECT"
+                f"THERE IS A MINOR CHANCE THAT EVERYTHING IS CORRECT.\n"
+                f"Files that were not parsed are provided below and saved to "
+                f"{self.cesar_crashed_batches_log}"
             )
             to_log(warning_message)
+
+            f = open(self.cesar_crashed_batches_log, "w")
+            for err in all_ok:
+                _path = err[0]
+                _reason = err[1]
+                to_log(f"!!{_path}: {_reason}")
+                f.write(f"{_path}\t{_reason}\n")
+            f.close()
+            # but need to notify user anyway
             self.cesar_ok_merged = False
 
     def __transcript_quality(self):
         """Call module to get transcript quality."""
         self.trans_quality_file = os.path.join(self.temp_wd, "transcript_quality.tsv")
+        to_log(
+            "Running module to classify annotated transcripts by quality. "
+            "The module will be potentially excluded later: this informations is "
+            "not used anywhere."
+        )
+        # TODO: think about excluding this part from the TOGA pipeline
         classify_transcripts(
             self.meta_data,
             self.pred_scores,
@@ -1865,9 +1875,11 @@ class Toga:
         predef_glp_classes = collect_predefined_glp_cases(
             self.predefined_glp_cesar_split
         )
+        to_log(f"Classification for {len(predef_glp_classes)} query transcripts was already computed")
         predef_missing = add_transcripts_to_missing(
             self._transcripts_not_intersected, self._transcripts_not_classified
         )
+        to_log(f"Added {len(predef_missing)} query transcripts classified as missing")
         predef_glp_classes.extend(predef_missing)
 
         # call classifier itself

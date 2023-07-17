@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """Run a batch of CESAR jobs and save the output."""
 import argparse
+import os.path
 import sys
 import subprocess
 from subprocess import PIPE
-from modules.common import eprint
+from modules.common import to_log
+from modules.common import setup_logger
 from version import __version__
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 MAX_ATTEMPTS = 2
 ZERO_CODE = 0
 ERR_CODE = 1
 FRAGM_CHAIN_ISSUE_CODE = 2
+
+MODULE_NAME_FOR_LOG = "cesar_runner"
 
 
 def parse_args():
@@ -25,6 +27,7 @@ def parse_args():
     app.add_argument(
         "--check_loss", default=None, help="File to save gene loss data if requested"
     )
+    app.add_argument("--log_file", help="Main log file")
     app.add_argument("--rejected_log", default=None, help="Log gene rejection events")
     app.add_argument("--unproc_log", "--ul", default=None, help="Log unprocessed genes")
     # print help if there are no args
@@ -53,9 +56,11 @@ def call_job(cmd):
             err_msg = f"CESAR_wrapper.py detected that fragments overlap for {cmd}, abort"
             return err_msg, FRAGM_CHAIN_ISSUE_CODE
         else:
-            eprint(err_msg)
-            eprint(f"\n{cmd} FAILED")
+            to_log(f"!!{err_msg}")
+            to_log(f"!!FAILED COMMAND: {cmd}")
+            to_log(f"!!At attempt {attempts}")
             attempts += 1
+    to_log(f"!!FAILED TO EXECUTE COMMAND {cmd} in {MAX_ATTEMPTS} attempts")
     return err_msg, ERR_CODE  # send failure signal
 
 
@@ -68,11 +73,15 @@ def __job_to_transcript(job):
 def main():
     """Entry point."""
     args = parse_args()
+    setup_logger(args.log_file, write_to_console=False)
+    filename = os.path.basename(args.jobs_file)
     # read jobs
     with open(args.jobs_file, "r") as f:
         # text file, a command per line
         jobs = [x.rstrip() for x in f.readlines()]
     jobs_num = len(jobs)
+    log_prefix = f"{MODULE_NAME_FOR_LOG}::{filename}"
+    to_log(f"{log_prefix}: started executing {jobs_num} jobs")
     unprocessed_genes = []
 
     out = open(args.output, "w")  # handle output file
@@ -80,13 +89,15 @@ def main():
     rejected = []  # keep genes that were skipped at this stage + reason
 
     for num, job in enumerate(jobs, 1):
-        eprint(f"Calling:\n{job}")
+        to_log(f"{log_prefix}: calling job {job}")
         # catch job stdout
         job_out, rc = call_job(job)
+        to_log(f"{log_prefix}: return code: {rc}")
         if rc == FRAGM_CHAIN_ISSUE_CODE:
             # very special case -> nothig we can do
             # mark as missnig, I guess
-            rejected.append(f"{job}\tfragment chains oevrlap\n")
+            to_log(f"{log_prefix}: WARNING fragment chains overlap for {job}")
+            rejected.append(f"{job}\tfragment chains overlap\n")
             unprocessed_genes.append(__job_to_transcript(job))
             continue
         if rc == 1:
@@ -94,6 +105,8 @@ def main():
             # abort execution, write what job exactly failed
             # there are rare cases where CESAR fails
             # these cases usually contain rubbish
+            to_log(f"{log_prefix}: CESAR JOB FAILED: {job}")
+            to_log(f"{log_prefix}: ERROR MESSAGE: {job_out}")
             rejected.append(f"{job}\tCESAR JOB FAILURE\t{job_out}\n")
             continue
 
@@ -102,6 +115,7 @@ def main():
         if job_out.startswith(">>>STOP_CODON>>>"):
             # CESAR wrapper detected in-frame stop codon in REFERENCE
             # There was not --mask_stops flag -> job cannot get proceed
+            to_log(f"{log_prefix}: REFERENCE IN FRAME STOP CODON FOUND: {job}")
             rejected.append(f"{job}\tIN FRAME STOP CODON\n")
             continue
 
@@ -112,11 +126,8 @@ def main():
             job_out_lines = job_out.split("\n")
             # lines starting with # and ! -> inact mut scanner output
             job_gene_loss = "\n".join(
-                [
-                    line
-                    for line in job_out_lines
-                    if line.startswith("#") or line.startswith("!")
-                ]
+                [line for line in job_out_lines
+                 if line.startswith("#") or line.startswith("!")]
             )
             gene_loss_data.append((gene, job_gene_loss))
             # all other lines -> processed CESAR output
@@ -131,10 +142,10 @@ def main():
         # write output
         out.write(f"#{gene}\n")
         out.write(f"{job_out}\n")
-        eprint(f"{num} / {jobs_num} done", end="\r")
 
     out.close()
 
+    to_log(f"{log_prefix}: saving output for joblist")
     if args.check_loss:
         # need to save gene loss data also
         if len(gene_loss_data) == 0:
