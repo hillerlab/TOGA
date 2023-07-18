@@ -98,7 +98,7 @@ class Toga:
         os.mkdir(self.wd) if not os.path.isdir(self.wd) else None
 
         # manage logfiles
-        _log_filename = self.t0.strftime("%Y.%m.%d_at_%H:%M")
+        _log_filename = self.t0.strftime("%Y_%m_%d_at_%H_%M")
         self.log_file = os.path.join(self.wd, f"toga_{_log_filename}.log")
         self.log_dir = os.path.join(self.wd, "temp_logs")  # temp file to collect logs from processes
         os.mkdir(self.log_dir) if not os.path.isdir(self.log_dir) else None

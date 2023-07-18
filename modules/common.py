@@ -296,6 +296,7 @@ def get_graph_components(graph):
     # could crash if x.y.z
     # or something like 3.aplha
     v_split = [x for x in nx_v.split(".") if x.isnumeric()]
+    # TODO: fix it, it is not OK
     if len(v_split) > 1:
         f_s_nums = float(f"{v_split[0]}.{v_split[1]}")
     else:

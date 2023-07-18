@@ -15,13 +15,23 @@ from version import __version__
 try:
     from modules.common import flatten
     from modules.common import get_graph_components
+    from modules.common import to_log
+    from modules.common import setup_logger
     from modules.GLP_values import *
 except ImportError:
     from common import flatten
     from common import get_graph_components
+    from common import to_log
+    from common import setup_logger
     from GLP_values import *
 
+__author__ = "Bogdan M. Kirilenko"
+
+# Intact, Partially Intact, and UL annotations are marked
+# with these colors
 BED_COLORS_TO_KEEP = {BLUE, LIGHT_BLUE, SALMON}
+MODULE_NAME_FOR_LOG = "make_query_isoforms"
+TOGA_GENE_PREFIX = "TOGA"
 
 
 def parse_args():
@@ -36,6 +46,7 @@ def parse_args():
         dest="ignore_color",
         help="Disable color filter",
     )
+    app.add_argument("--log_file", help="Log file")
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -45,9 +56,10 @@ def parse_args():
 
 def read_query_bed(bed_file, ignore_color=False):
     """Read query bed, return exons and exon to gene dict."""
+    to_log(f"{MODULE_NAME_FOR_LOG}: reading query annotation file {bed_file}...")
     f = open(bed_file, "r")
     exon_counter = 0  # each exon gets an unique ID
-    exons_list = []  # save exons here
+    exons_list = []  # save exons here  # TODO: check why returning this data twice (exon_id_to_trans)
     exon_id_to_trans = {}  # exon_id to corresponding transcript
     trans_to_range = {}  # also save a region for each transcript
 
@@ -86,11 +98,17 @@ def read_query_bed(bed_file, ignore_color=False):
             # save exon_id to transcript:
             exon_id_to_trans[exon_counter] = transcript_name
     f.close()
+    to_log(f"{MODULE_NAME_FOR_LOG}: got {len(trans_to_range)} unique transcripts annotated in query")
+    to_log(f"{MODULE_NAME_FOR_LOG}: got data for {len(exon_id_to_trans)} exons in these trancscripts")
     return exons_list, exon_id_to_trans, trans_to_range
 
 
 def split_exons_in_chr_dir(exons_list):
     """Make a (chr, strand): [exons] dict."""
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: splitting {len(exons_list)} into buckets "
+        f"based on their chromosome/scaffold and strand"
+    )
     chr_dir_exons_not_sorted = defaultdict(list)
     for exon in exons_list:
         # just rearrange a data a bit
@@ -110,6 +128,9 @@ def split_exons_in_chr_dir(exons_list):
     chr_dir_exons = {
         k: sorted(v, key=lambda x: x[1]) for k, v in chr_dir_exons_not_sorted.items()
     }
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: got {len(chr_dir_exons)} unique chromosome/scaffold combinations"
+    )
     return chr_dir_exons
 
 
@@ -125,6 +146,11 @@ def intersect_exons(chr_dir_exons, exon_id_to_transcript):
     We will use a graph where nodes are transcript IDs.
     Nodes are connected if they have a pair of intersected exons.
     """
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: Building a graph where nodes are query exons, and edges "
+        f"indicate the fact that their coordinates intersect. Needed to identify which "
+        f"annotated transcripts intersect."
+    )
     G = nx.Graph()  # init the graph
     for exons in chr_dir_exons.values():
         # this is the same chrom and direction now
@@ -184,9 +210,10 @@ def parse_components(components, trans_to_range):
     2) Included transcripts
     3) Genomic range.
     """
+    to_log(f"{MODULE_NAME_FOR_LOG}: parsing components data to identify query genes")
     genes_data = []  # save gene objects here
     for num, component in enumerate(components, 1):
-        gene_id = f"reg_{num}"  # need to name them somehow
+        gene_id = f"{TOGA_GENE_PREFIX}_{num}"  # need to name them somehow
         # get transcripts and their ranges
         transcripts = set(component.nodes())
         regions = [trans_to_range[t] for t in transcripts]
@@ -204,6 +231,7 @@ def parse_components(components, trans_to_range):
         gene_range = (gene_chrom, gene_strand, gene_start, gene_end)
         gene_data = {"ID": gene_id, "range": gene_range, "transcripts": transcripts}
         genes_data.append(gene_data)
+        to_log(f"* Inferred gene: {gene_data}")
     return genes_data
 
 
@@ -211,6 +239,7 @@ def save_isoforms(genes_data, output):
     """Save isoforms data."""
     # use the same logic as Ensembl Biomart
     # two tab-separated columns: gene_id and transcript_id
+    to_log(f"{MODULE_NAME_FOR_LOG}: saving query isoforms data to {output}")
     f = open(output, "w") if output != "stdout" else sys.stdout
     f.write("Region_ID\tProjection_ID\n")
     for gene_datum in genes_data:
@@ -226,6 +255,7 @@ def save_regions(genes_data, output):
     if output is None:
         # no, not required
         return
+    to_log(f"{MODULE_NAME_FOR_LOG}: saving coordinates of inferred genes to {output}")
     f = open(output, "w") if output != "stdout" else sys.stdout
     for gene_datum in genes_data:
         gene_id = gene_datum["ID"]
@@ -239,12 +269,17 @@ def get_query_isoforms_data(
     query_bed, query_isoforms, save_genes_track=None, ignore_color=False
 ):
     """Create isoforms track for query."""
+    to_log(f"{MODULE_NAME_FOR_LOG}: inferring genes from annotated isoforms in the query")
+    to_log(f"{MODULE_NAME_FOR_LOG}: called with the following arguments:")
+    for k, v in locals().items():
+        to_log(f"* {k}: {v}")
     # extract all exons
     # exon could be described as: <ID, chrom, strand, start, end>
     # + table exon_ID -> corresponding gene
     exons_list, exon_id_to_transcript, trans_to_range = read_query_bed(
         query_bed, ignore_color=ignore_color
     )
+
     # get {(chr, dir) -> [exons]} dict (sorted)
     # exons from different chrom/direction cannot actually intersect
     chr_dir_to_exons = split_exons_in_chr_dir(exons_list)
@@ -254,6 +289,7 @@ def get_query_isoforms_data(
     # split graph into connected components
     # if two transcripts are in the same component -> they belong to the same gene
     components = get_graph_components(conn_graph)
+    to_log(f"{MODULE_NAME_FOR_LOG}: identified {len(components)} connected components in the graph")
     # covert components to isoforms table
     genes_data = parse_components(components, trans_to_range)
     # save the results
@@ -263,6 +299,7 @@ def get_query_isoforms_data(
 
 if __name__ == "__main__":
     args = parse_args()
+    setup_logger(args.log_file)
     get_query_isoforms_data(
         args.query_bed,
         args.output,
