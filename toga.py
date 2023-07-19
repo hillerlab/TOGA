@@ -33,6 +33,10 @@ from modules.stitch_fragments import stitch_scaffolds
 from modules.common import read_isoforms_file
 from modules.common import to_log
 from modules.common import setup_logger
+from parallel_jobs_manager import ParallelJobsManager
+from parallel_jobs_manager import NextflowStrategy
+from parallel_jobs_manager import ParaStrategy
+from parallel_jobs_manager import CustomStrategy
 from version import __version__
 
 
@@ -941,7 +945,7 @@ class Toga:
         # get timestamp to name the project and create a dir for that
         #  time() returns something like: 1595861493.8344169
         timestamp = str(time.time()).split(".")[0]
-        project_name = f"{self.project_name}_chain_feats_at_{timestamp}"
+        project_name = f"chain_feats__{self.project_name}_at_{timestamp}"
         project_path = os.path.join(self.nextflow_dir, project_name)
         to_log(f"Extracting chain features, NF project name: {project_name}")
         to_log(f"Project path: {project_path}")
@@ -1502,7 +1506,7 @@ class Toga:
                 joblist_abspath = os.path.abspath(self.cesar_combined)
 
             # create project directory for logs
-            nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_{b}"
+            nf_project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_{b}"
             project_names.append(nf_project_name)
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
@@ -1538,7 +1542,7 @@ class Toga:
         if self.nextflow_bigmem_config and not self.para:
             to_log(f"!!Pushing bibmem queue jobs - this part is experimental")
             # if provided: push bigmem jobs also
-            nf_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+            nf_project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_bigmem"
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             nf_cmd = (
                 f"nextflow {self.NF_EXECUTE} "
@@ -1568,7 +1572,7 @@ class Toga:
         elif self.para and self.para_bigmem:
             # if requested: push bigmem jobs with para
             is_file = os.path.isfile(self.cesar_bigmem_jobs)
-            bm_project_name = f"{self.project_name}_cesar_at_{timestamp}_q_bigmem"
+            bm_project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_bigmem"
             if is_file:  # if a file: we can open and count lines
                 f = open(self.cesar_bigmem_jobs, "r")
                 big_lines_num = len(f.readlines())
@@ -1735,7 +1739,7 @@ class Toga:
             f.close()
 
             nf_project_name = (
-                f"{self.project_name}_RERUN_cesar_at_{timestamp}_q_{bucket}"
+                f"cesar_jobs__RERUN_{self.project_name}_at_{timestamp}_q_{bucket}"
             )
             nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
             project_paths.append(nf_project_path)
@@ -1755,7 +1759,7 @@ class Toga:
                     self.wd, f"cesar_config_{bucket}_queue.nf"
                 )
                 config_file_abspath = os.path.abspath(config_file_path)
-                cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {bucket_batch_file}"
+                cmd = f"nextflow {self.NF_EXECUTE} --joblist {bucket_batch_file}"
                 if os.path.isfile(config_file_abspath):
                     cmd += f" -c {config_file_abspath}"
                 p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
@@ -2116,6 +2120,17 @@ def parse_args():
         help="File containing "
         "nextflow config for BIGMEM CESAR jobs. If not provided, these "
         "jobs will not run (but list of them saved)/ NOT IMPLEMENTED YET",
+    )
+    app.add_argument(
+        "--parallelisation_strategy",
+        "--ps",
+        choices=["nextflow", "para", "custom"],
+        default="nextflow",
+        help=(
+            "The parallelization strategy to use. If custom -> please provide "
+            "a custom strategy implementation in the parallel_jobs_manager.py "
+            "(to be enabled in future)"
+        )
     )
     app.add_argument(
         "--para",
