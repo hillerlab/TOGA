@@ -14,22 +14,22 @@ from version import __version__
 try:
     from modules.common import split_proj_name
     from modules.common import flatten
-    from modules.common import eprint
     from modules.common import die
     from modules.common import get_graph_components
     from modules.common import read_isoforms_file
+    from modules.common import to_log
+    from modules.common import setup_logger
 except ImportError:
     from common import split_proj_name
     from common import flatten
-    from common import eprint
     from common import die
     from common import get_graph_components
     from common import read_isoforms_file
+    from common import to_log
+    from common import setup_logger
 
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 INCLUDE_CLASSES = {"I", "PI", "UL"}
 
@@ -45,7 +45,9 @@ C_CLASS = "c_class"
 Q_PREFIX = "#Q#"
 R_PREFIX = "#R#"
 PREFIX_LEN = 3
+
 assert len(Q_PREFIX) == len(R_PREFIX) == PREFIX_LEN
+MODULE_NAME_FOR_LOG = "orthology_mapping"
 
 
 def trim_prefix(s):
@@ -111,7 +113,7 @@ def read_proj_scores(orth_score_file):
         projection = f"{trans}.{chain}"
         score = float(line_datum[2])
         if score == -1:
-            # trans chain: without score
+            # spanning chain: without score
             # assign default 0.5 value
             score = 0.5
         ret[projection] = score
@@ -149,7 +151,6 @@ def read_loss_data(loss_file):
 def filter_query_transcripts(transcripts, paralogs, trans_to_status):
     """Keep intact orthologous transcripts."""
     filt_transcripts = []  # save transcripts we keep
-    print(f"Extracted {len(transcripts)} query transcripts")
     for trans in transcripts:
         is_paral = trans in paralogs
         if is_paral:
@@ -159,12 +160,7 @@ def filter_query_transcripts(transcripts, paralogs, trans_to_status):
         if l_status not in INCLUDE_CLASSES:
             # only grey and intact participate
             continue
-        # is_low_qual = trans in low_score_trans
-        # if is_low_qual:
-        #     # chain orthology score is quite low
-        #     continue
         filt_transcripts.append(trans)
-    print(f"After filters {len(filt_transcripts)} transcripts left")
     return set(filt_transcripts)
 
 
@@ -185,12 +181,12 @@ def connect_genes(t_trans_to_gene, t_trans_to_q_proj, q_proj_to_q_gene, proj_to_
     If nodes are connected -> they are orthologs.
     Also emit ref_gene -> que_gene -> scores dict.
     """
+    to_log(f"{MODULE_NAME_FOR_LOG}: creating a mapping between reference and query genes...")
     o_graph = nx.Graph()  # init the graph
     ref_que_gene_scores = defaultdict(list)
     genes = set(t_trans_to_gene.values())
     o_graph.add_nodes_from(genes)
     q_genes_all = []
-    print(f"Added {len(genes)} reference genes on graph")
     conn_count = 0  # connections counter
     for t_trans, t_gene in t_trans_to_gene.items():
         # we know ref gene: ref transcripts relation by default
@@ -212,8 +208,7 @@ def connect_genes(t_trans_to_gene, t_trans_to_q_proj, q_proj_to_q_gene, proj_to_
             q_genes_all.append(q_gene)
             o_graph.add_edge(t_gene, q_gene)
     q_genes_all = set(q_genes_all)
-    print(f"Added {len(q_genes_all)} query genes on graph")
-    print(f"Graph contains {conn_count} connections")
+    to_log(f"{MODULE_NAME_FOR_LOG}: added {len(q_genes_all)} query genes to the orthology graph")
     return o_graph, ref_que_gene_scores
 
 
@@ -440,19 +435,28 @@ def resolve_many2many(graph, r_genes, q_genes, edge_to_score):
     """Resolve many2many graph."""
     is_b_complete = is_complete_bipartite(graph, r_genes, q_genes)
     if is_b_complete:
-        # nothing to do actually
+        to_log(
+            f"* the subgraph with reference genes {r_genes} and query "
+            f"genes {q_genes} is complete: leaving as many-2-many"
+        )
         conn = {R_GENES: r_genes, Q_GENES: q_genes, C_CLASS: MANY2MANY}
         return [
             conn,
         ]
+
     # not complete bipartite graph
     # first, select reference genes that have a single connection
     # edges = [(node, node), (node, node), ..] -> list of pairs
     ret = []
     graph_parts = split_graph(graph, r_genes, q_genes, edge_to_score)
+    to_log(
+        f"* could split a subgraph for reference genes {r_genes} and query "
+        f"genes {q_genes} into {len(graph_parts)} components:"
+    )
     for elem in graph_parts:
         conn = get_graph_conn(elem, r_genes, q_genes)
         ret.append(conn)
+        to_log(f"*** subcomponent: {conn}")
     return ret
 
 
@@ -460,6 +464,9 @@ def extract_orth_connections(graph, r_genes_all, q_genes_all, edge_to_score):
     """Split graph in orth connections."""
     orth_connections = []
     graph_components = get_graph_components(graph)
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: orthology graph contains {len(graph_components)} connected components"
+    )
 
     for component in graph_components:
         # each component contains some reference and query gene ids
@@ -480,31 +487,37 @@ def extract_orth_connections(graph, r_genes_all, q_genes_all, edge_to_score):
             connections = resolve_many2many(component, r_genes, q_genes, edge_to_score)
             orth_connections.extend(connections)
             continue
-        # not many2many: just save it
-        # create connection object and save it
+        # not many2many: create connection object and save it
+        to_log(
+            f"* assigned class {c_class} to node containing reference "
+            f"genes: {r_genes} and query genes: {q_genes}"
+        )
         conn = {R_GENES: r_genes, Q_GENES: q_genes, C_CLASS: c_class}
         orth_connections.append(conn)
 
     # count different orthology classes
     class_list = [c[C_CLASS] for c in orth_connections]
-    print(f"Detected {len(class_list)} orthology components")
+    to_log(f"{MODULE_NAME_FOR_LOG}: Extracted {len(class_list)} orthology components in total")
     class_count = Counter(class_list)
-    print(f"Orthology class sizes:")
+    to_log(f"{MODULE_NAME_FOR_LOG}: Orthology class sizes:")
     for k, v in class_count.most_common():
-        print(f"{k}: {v}")
+        to_log(f"* {k}: {v}")
     return orth_connections
 
 
 def save_data(
-    orth_connections, r_gene_to_trans, q_trans_to_gene, t_trans_to_projections, out
+    orth_connections,
+    r_gene_to_trans,
+    q_trans_to_gene,
+    t_trans_to_projections,
+    out
 ):
     """Save orthology data."""
+    to_log(f"{MODULE_NAME_FOR_LOG}: saving the results to {out}")
     f = open(out, "w") if out != "stdout" else sys.stdout
     # write the header
     f.write("t_gene\tt_transcript\tq_gene\tq_transcript\torthology_class\n")
-    non_orthologous_isoforms = (
-        []
-    )  # to save reference transcripts that don't have orthologs
+    non_orthologous_isoforms = []  # to save reference transcripts that don't have orthologs
 
     for conn in orth_connections:
         # connection: class + GENES
@@ -543,9 +556,7 @@ def save_data(
                         # there are orthologous projections detected earlier but
                         # we removed them earlier
                         continue
-                    proj_not_added = (
-                        False  # if True -> consider this transcript skipped
-                    )
+                    proj_not_added = False  # if True -> consider this transcript skipped
                     ref_gene = trim_prefix(pf_ref_gene)
                     que_gene = trim_prefix(pf_proj_q_gene)
                     f.write(
@@ -580,32 +591,68 @@ def orthology_type_map(
     orth_scores_arg=None,
 ):
     """Make orthology classification track."""
+    to_log(f"{MODULE_NAME_FOR_LOG}: called with the following parameters:")
+    for k, v in locals().items():
+        to_log(f"* {k}: {v}")
     q_trans_paralogs = read_paralogs(paralogs_arg)  # do not include paralogs
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: extracted {len(q_trans_paralogs)} "
+        f"paralogous projections IDs from {paralogs_arg}"
+    )
     q_trans_l_score = read_proj_scores(orth_scores_arg)
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: extracted orthology scores for {len(q_trans_l_score)} projections"
+    )
     ref_transcripts = extract_names_from_bed(ref_bed)  # list of reference transcripts
+    to_log(f"{MODULE_NAME_FOR_LOG}: got data for {len(ref_transcripts)} reference transcripts")
     que_transcripts_all = extract_names_from_bed(que_bed)  # list of query transcripts
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: got data for {len(que_transcripts_all)} transcripts annotated in query"
+    )
+
     if loss_data is None:
+        to_log(f"{MODULE_NAME_FOR_LOG}: no loss data provided: assuming everything is intact")
         # no loss data: assume everything is intact
         trans_to_L_status = {x: "I" for x in que_transcripts_all}
     else:  # we do add only I, PI and G projections
         trans_to_L_status = read_loss_data(loss_data)
+        to_log(f"{MODULE_NAME_FOR_LOG}: got gene loss classifications for {len(trans_to_L_status)} projections in query")
     # remove I/PI/G or paralogous transcripts
     que_transcripts = filter_query_transcripts(
         que_transcripts_all, q_trans_paralogs, trans_to_L_status
     )
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: filtered out query transcripts that have loss "
+        f"class not in {INCLUDE_CLASSES}; resulted in {len(que_transcripts)} "
+        f"query transcripts to consider"
+    )
     # read reference and query isoform files; orthology is a story about genes
     r_gene_to_trans, r_trans_to_gene = read_isoforms__otm(ref_iso, ref_transcripts)
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: processed reference transcripts, got data for "
+        f"{len(r_gene_to_trans)} genes and {len(r_trans_to_gene)} transcripts"
+    )
     q_gene_to_trans, q_trans_to_gene = read_isoforms__otm(
         que_iso, que_transcripts_all, is_ref=False
+    )
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: processed query transcripts, got data for "
+        f"{len(q_gene_to_trans)} genes and {len(q_trans_to_gene)} transcripts"
     )
     r_genes_all = set(r_gene_to_trans.keys())
     q_genes_all = set(q_gene_to_trans.keys())
     # make transcript to projections dict:
     t_trans_to_projections = get_t_trans_to_projections(que_transcripts)
+    temp_query_mapped = flatten(t_trans_to_projections.values())
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: mapped {len(t_trans_to_projections)} reference "
+        f"transcripts to respective {len(temp_query_mapped)} query transcripts"
+    )
     # create graph to connect orthologous transcripts
     o_graph, ref_que_conn_scores = connect_genes(
         r_trans_to_gene, t_trans_to_projections, q_trans_to_gene, q_trans_l_score
     )
+
     edge_to_score = get_edge_score(ref_que_conn_scores)
     # if a group of reference and query genes are in the same connected component
     # then they are orthologs
@@ -649,7 +696,8 @@ def parse_args():
     app.add_argument(
         "--save_skipped", "-s", default=None, help="Save orphan transcripts"
     )
-    app.add_argument("--orth_scores", "-o", default=None, help="Orthology scores")
+    app.add_argument("--orth_scores", "-o", default=None, help="Orthology scores file")
+    app.add_argument("--log_file", default=None, help="Log file")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -661,6 +709,7 @@ def parse_args():
 def main():
     """CLI entry point."""
     args = parse_args()
+    setup_logger(args.log_file)
     orthology_type_map(
         args.target_bed,
         args.query_bed,

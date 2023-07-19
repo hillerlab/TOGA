@@ -10,11 +10,10 @@ And then simply extract it.
 import sys
 import os
 import ctypes
+from modules.common import to_log
 from version import __version__
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 SLIB_NAME = "chain_bst_lib.so"
 
@@ -38,12 +37,12 @@ def chain_bst_index(chain_file, index_file, txt_index=None):
     sh_lib.make_index.restype = ctypes.c_int
 
     # read chain file, get necessary data: start bytes and offsets
-    print("Reading chain...")
     chain_ids = [0]
     start_bytes = [0]
     offsets = [0]
 
-    byte_num, offset = 0, 0
+    byte_num = 0
+    offset = 0
 
     f = open(chain_file, "rb")
     for line in f:
@@ -68,8 +67,9 @@ def chain_bst_index(chain_file, index_file, txt_index=None):
     del offsets[0]
 
     if arr_size == 0:
-        sys.exit("Error! No chains found. Abort")
-    print(f"There are {arr_size} chains to index")
+        to_log(f"chain_bst_index: ERROR: No chains found. Abort")
+        sys.exit(1)
+    to_log(f"chain_bst_index: indexing {arr_size} chains")
 
     if txt_index:
         # save text (non-binary) dict for chain ids and positions in the file
@@ -81,7 +81,6 @@ def chain_bst_index(chain_file, index_file, txt_index=None):
         f.close()
 
     # call shared lib
-    print("Saved chain index data...")
     c_chain_ids = (ctypes.c_uint64 * (arr_size + 1))()
     c_chain_ids[:-1] = chain_ids
     c_s_bytes = (ctypes.c_uint64 * (arr_size + 1))()
@@ -92,7 +91,7 @@ def chain_bst_index(chain_file, index_file, txt_index=None):
     c_arr_size = ctypes.c_uint64(arr_size)
     c_table_path = ctypes.c_char_p(str(index_file).encode())
     _ = sh_lib.make_index(c_chain_ids, c_s_bytes, c_offsets, c_arr_size, c_table_path)
-    print(f"Saved chain {chain_file} index to {index_file}")
+    to_log(f"chain_bst_index: Saved chain {chain_file} index to {index_file}")
 
 
 if __name__ == "__main__":

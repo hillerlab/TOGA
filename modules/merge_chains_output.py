@@ -12,28 +12,23 @@ from datetime import datetime as dt
 from collections import defaultdict
 from version import __version__
 
-try:  # for robustness
+# TODO: check what is going on here
+try:
     from modules.common import make_cds_track
-    from modules.common import eprint
     from modules.common import die
     from modules.common import read_isoforms_file
+    from modules.common import to_log
+    from modules.common import setup_logger
 except ImportError:
     from common import make_cds_track
-    from common import eprint
     from common import die
     from common import read_isoforms_file
+    from common import to_log
+    from modules.common import setup_logger
 
-
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 t0 = dt.now()
-
-
-def verbose(msg, end="\n"):
-    """Eprint for verbose messages."""
-    eprint(msg + end)
 
 
 def parse_args():
@@ -64,6 +59,7 @@ def parse_args():
         "those chains that cover at least 1 base in exons. If no, "
         "consider all the chains overlapping and introns only any.",
     )
+    app.add_argument("--log_file", type=str, help="Log file")
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -75,7 +71,7 @@ def parse_args():
 def read_bed_data(bed_file):
     """Get the necessary data from the bed file."""
     result = {}  # return this dictionary
-    verbose(f"Reading {bed_file}")
+    to_log(f"Reading {bed_file}")
     f = open(bed_file, "r")
     for line in f:
         # parse tab-separated bed file
@@ -112,7 +108,7 @@ def read_bed_data(bed_file):
             "exons_num": exons_num,
         }
     f.close()
-    verbose(f"Got data for {len(result.keys())} genes")
+    to_log(f"merge_chains_output: got data for {len(result.keys())} transcripts")
     return result
 
 
@@ -161,9 +157,9 @@ def process_chain_line(chain_line):
 
 def load_results(results_dir):
     """Load and sort the chain feature extractor results."""
-    verbose("Loading the results...")
+    to_log("merge_chains_output: Loading the results...")
     results_files = os.listdir(results_dir)
-    verbose(f"There are {len(results_files)} result files to combine")
+    to_log(f"merge_chains_output: There are {len(results_files)} result files to combine")
 
     # to hold data from fields "genes":
     chain_genes_data = defaultdict(list)
@@ -195,16 +191,17 @@ def load_results(results_dir):
         # do not forget to close the file
         f.close()
 
-    verbose(f"Got {len(chain_genes_data)} keys in chain_genes_data")
-    verbose(f"Got {len(chain_raw_data)} keys in chain_raw_data")
-    verbose(f"There were {genes_counter} genes lines and {chain_counter} chain lines")
+    to_log(f"merge_chains_output: got {len(chain_genes_data)} keys in chain_genes_data")
+    to_log(f"merge_chains_output: got {len(chain_raw_data)} keys in chain_raw_data")
+    to_log(f"merge_chains_output: There were {genes_counter} transcript lines and {chain_counter} chain lines")
     # actually, these values must be equal
     # just a sanity check
     if not genes_counter == chain_counter:
-        eprint(
-            f"WARNING! genes_counter and chain_counter hold different "
+        err_msg = (
+            f"merge_chains_output: ERROR!\ngenes_counter and chain_counter hold different "
             f"values:\n{genes_counter} and {chain_counter} respectively"
         )
+        to_log(err_msg)
         die("Some features extracting jobs died!")
     return chain_genes_data, chain_raw_data
 
@@ -215,9 +212,7 @@ def revert_dict(dct):
     for k, value in dct.items():
         for v in value:
             reverted[v].append(k)
-    verbose(
-        f"chain_genes_data dict reverted, there are {len(reverted.keys())} keys now"
-    )
+    to_log(f"merge_chains_output: chain_genes_data dict reverted, there are {len(reverted.keys())} keys now")
     return reverted
 
 
@@ -228,7 +223,7 @@ def make_synteny(genes, isoforms):
 
 def combine(bed_data, chain_data, genes_data, exon_cov, isoforms):
     """Combine chain and bed data and return gene-oriented table."""
-    verbose("Combining the data...")
+    to_log(f"merge_chains_output: Combining the data...")
     combined = defaultdict(list)  # {gene: [related lines]}
 
     for chain, data in chain_data.items():
@@ -281,7 +276,7 @@ def combine(bed_data, chain_data, genes_data, exon_cov, isoforms):
             line = "\t".join([str(x) for x in line_data]) + "\n"
             combined[gene].append(line)
     # got all the data --> return back
-    verbose(f"Got combined dict with {len(combined.keys())} keys")
+    to_log(f"merge_chains_output: got combined dict with {len(combined.keys())} keys")
     return combined
 
 
@@ -294,7 +289,7 @@ def save(data, output):
     )
     header = "\t".join(header_fields) + "\n"
     # define the stream to write the data
-    verbose("Writing output to {}".format(output))
+    to_log(f"merge_chains_output: Writing output to {output}")
     f = open(output, "w") if output != "stdout" else sys.stdout
     f.write(header)
     for lines in data.values():
@@ -327,12 +322,13 @@ def merge_chains_output(
     # save this data
     save(combined_data, output)
     # finish the program
-    eprint(f"Estimated_time: {format(dt.now() - t0)}")
+    to_log(f"merge_chains_output: total runtime: {format(dt.now() - t0)}")
 
 
 def main():
     """Entry point."""
     args = parse_args()
+    setup_logger(args.log_file)
     merge_chains_output(
         args.bed_file,
         args.isoforms,

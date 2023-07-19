@@ -68,6 +68,8 @@ Documentation improvements.
 # TOGA 1.1.5 (in progress) #
 
 * CESAR_wrapper.py -> does not use `/dev/shm/` or `/tmp/` partitions anymore.
-* (planned) Significantly improved logging - all logs are automatically stored in the output directory.
+* (in progress) Significantly improved logging - all logs are automatically stored in the output directory.
 * (planned) Step management - now user can rerun TOGA from any desired step.
 * (in progress) Improved parallelization strategy
+* Nomenclature update: identifiers of TOGA-annotated genes now start with "TOGA_" instead of potentially confusing "reg_"
+* Nomenclature update: TRANS chain class (considered confusing) renamed to SPAN (better fits spanning chains)

@@ -3,13 +3,13 @@ import os
 import sys
 import ctypes
 from collections import defaultdict
+import functools
+import logging
 import h5py
 import networkx as nx
 from version import __version__
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 SLIB_NAME = "chain_bst_lib.so"
 ISOFORMS_FILE_COLS = 2
@@ -29,6 +29,29 @@ def die(msg, rc=1):
     """Show msg in stderr, exit with the rc given."""
     sys.stderr.write(msg + "\n")
     sys.exit(rc)
+
+
+def setup_logger(log_file, write_to_console=True):
+    # Set up logging
+    logger = logging.getLogger('toga')
+    logger.setLevel(logging.INFO)
+
+    if write_to_console:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        logger.addHandler(console_handler)
+
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.INFO)
+        logger.addHandler(file_handler)
+
+
+def to_log(msg):
+    # Get the 'toga' logger
+    logger = logging.getLogger('toga')
+    # Log to both file and console
+    logger.info(msg)
 
 
 def bed_extract_id(index_file, gene_ids):
@@ -273,6 +296,7 @@ def get_graph_components(graph):
     # could crash if x.y.z
     # or something like 3.aplha
     v_split = [x for x in nx_v.split(".") if x.isnumeric()]
+    # TODO: fix it, it is not OK
     if len(v_split) > 1:
         f_s_nums = float(f"{v_split[0]}.{v_split[1]}")
     else:

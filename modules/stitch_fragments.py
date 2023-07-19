@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Author: Ekaterina Osipova.
-Included in TOGA by Bogdan Kirilenko.
+
 """
 import argparse
 import sys
@@ -10,9 +9,13 @@ from collections import defaultdict
 from version import __version__
 
 try:
+    from modules.common import setup_logger
+    from modules.common import to_log
     from modules.common import make_cds_track
     from modules.common import flatten
 except ImportError:
+    from modules.common import setup_logger
+    from modules.common import to_log
     from common import make_cds_track
     from common import flatten
 
@@ -22,6 +25,8 @@ SINK = "SINK"
 SCORE_THRESHOLD = 0.5
 EXON_COV_THRESHOLD = 1.33
 MAX_OVERLAP = 250  # TODO: check whether 250 is a good option
+
+__author__ = "Ekaterina Osipova & Bogdan M. Kirilenko"
 
 
 class Vertex:
@@ -112,6 +117,7 @@ def parse_args():
         dest="only_fragmented",
         help="Output fragmented genes only.",
     )
+    app.add_argument("--log_file", help="Log file", default=None)
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -122,21 +128,24 @@ def parse_args():
 def read_gene_scores(score_file):
     """Read orthology_score.tsv file into a dict.
     Dict structure is:
-    {GENEid : [(chain, score), (chain2, score2), ..] }.
+    {transcript_id : [(chain, score), (chain2, score2), ..] }.
     """
     ret = defaultdict(list)
     f = open(score_file, "r")
     f.__next__()  # skip header
     for line in f:
         line_data = line.rstrip().split()
-        gene = line_data[0]
+        transcript = line_data[0]
         chain_id = int(line_data[1])
         chain_score = float(line_data[2])
         if chain_score < SCORE_THRESHOLD:
             continue
         item = (chain_id, chain_score)
-        ret[gene].append(item)
+        ret[transcript].append(item)
     f.close()
+    to_log(
+        f"stitch fragments: processing {len(ret)} transcripts with scores >= {SCORE_THRESHOLD}"
+    )
     return ret
 
 
@@ -145,6 +154,10 @@ def read_chain_file(chain_file):
 
     Create dict chain_id: (start, end)."""
     ret = {}
+    to_log(
+        f"stitch fragments: parsing chain file {chain_file} to get a mapping "
+        f"between chain ID and coordinates in the query genome"
+    )
     f = open(chain_file, "r")
     for line in f:
         if not line.startswith("chain"):
@@ -155,6 +168,7 @@ def read_chain_file(chain_file):
         chain_id = int(line_data[12])
         ret[chain_id] = (start, end)
     f.close()
+    to_log(f"stitch fragments: parsed {len(ret)} chains")
     return ret
 
 
@@ -170,6 +184,7 @@ def read_gene_loci(bed_file):
         name = cds_line[3]
         if name.endswith("_CDS"):
             name = name[:-4]
+        # TODO: fix duplicated code fragment
         block_count = int(cds_line[9])
         block_sizes = [int(x) for x in cds_line[10].split(",") if x != ""]
         block_starts = [int(x) for x in cds_line[11].split(",") if x != ""]
@@ -243,9 +258,9 @@ def add_source_sink_graph(graph_name):
 
 
 def find_shortest_path(graph_name, source, sink, sorted_vertices):
-    """Find shortest path in directed acyclic graph.
+    """Find the shortest path in directed acyclic graph.
 
-    Initiate dictionary with shortest paths to each node:
+    Initiate dictionary with the shortest paths to each node:
     {vertex: (value, path itself)}.
     """
     shortest_paths = {}
@@ -267,11 +282,6 @@ def find_shortest_path(graph_name, source, sink, sorted_vertices):
                     new_path.append(sorted_vertex)
                 shortest_paths[child] = (score_if_updated, new_path)
     return shortest_paths[sink]
-
-
-# def intersect(range_1, range_2):
-#     """Return intersection size."""
-#     return min(range_1[1], range_2[1]) - max(range_1[0], range_2[0])
 
 
 def check_exon_coverage(chains, chain_id_to_loc, exons_loci):
@@ -310,50 +320,51 @@ def get_average_exon_cov(chain_to_exon_cov, exon_num):
 
 def stitch_scaffolds(chain_file, chain_scores_file, bed_file, fragments_only=False):
     """Stitch chains of fragmented orthologs."""
-    gene_score_dict = read_gene_scores(chain_scores_file)
+    to_log("stitch_fragments: started stitching fragmented orthologous loci (if any)")
+    transcript_score_dict = read_gene_scores(chain_scores_file)
     # func read_chain_file returns data about all chains in the file
     # however, we need only orthologous ones
     # to avoid contamination with paralogous chains we further filter the
     # chain_id_to_loc dictionary
-    # gene score dict: gene_id: [(chain, score), (chain, score), ...]
+    # transcript score dict: gene_id: [(chain, score), (chain, score), ...]
     # Iterate over dict values (lists of tuples), get the 1st elem of each tuple (chain_id)
     orth_chains = set(
-        flatten([v[0] for v in vals] for vals in gene_score_dict.values())
+        flatten([v[0] for v in vals] for vals in transcript_score_dict.values())
     )
+    to_log(f"stitch fragments: processing total of {len(orth_chains)} chains with scores")
     chain_id_to_loc__no_filt = read_chain_file(chain_file)
     chain_id_to_loc = {
         k: v for k, v in chain_id_to_loc__no_filt.items() if k in orth_chains
     }
     genes_to_exon_coords = read_gene_loci(bed_file)
-    gene_to_path = {}
-    task_size = len(gene_score_dict.keys())
+    transcript_to_path = {}
+    task_size = len(transcript_score_dict.keys())
+    to_log(f"stitch fragments: processing {task_size} transcripts")
     count = 1
 
-    for gene, intersecting_chains_wscores in gene_score_dict.items():
-        if count % 500 == 0:
-            print(f"Processing gene: {count} / {task_size}", flush=True)
+    for transcript, intersecting_chains_wscores in transcript_score_dict.items():
         count += 1
         if len(intersecting_chains_wscores) <= 1:
             continue
         # intersecting chains: list of tuples
         # [(chain, score), (chain, score), ...]
-        # chains that intersect this gene
-        exon_coords = genes_to_exon_coords.get(gene)
+        # chains that intersect this transcript
+        exon_coords = genes_to_exon_coords.get(transcript)
         if exon_coords is None:
             # must never happen
-            raise ValueError(f"Cannot find a bed track for {gene}")
+            err_msg = f"Cannot find a bed track for {transcript}"
+            to_log(f"stitch fragments: FATAL ERROR {err_msg}")
+            raise ValueError(err_msg)
         # extract some extra information about exon coverage
         intersecting_chains = [x[0] for x in intersecting_chains_wscores]
         chain_id_to_exon_cov = check_exon_coverage(
             intersecting_chains, chain_id_to_loc, exon_coords
         )
-        # for k, v in chain_id_to_exon_cov.items():
-        #    print(k, v)
         chain_id_covers_all = {
             k: all(v for v in val) for k, val in chain_id_to_exon_cov.items()
         }
         if any(chain_id_covers_all.values()):
-            # if there is a chain that covers the gene entirely: skip this
+            # if there is a chain that covers the transcript entirely: skip this
             continue
         average_exon_coverage = get_average_exon_cov(
             chain_id_to_exon_cov, len(exon_coords)
@@ -369,32 +380,35 @@ def stitch_scaffolds(chain_file, chain_scores_file, bed_file, fragments_only=Fal
         sorted_vertices = chain_graph.topological_sort()
 
         # Find 'longest' (=highest scoring) path in the graph =
-        # find shortest path in the graph with negative scoring vertices.
+        # find the shortest path in the graph with negative scoring vertices.
         longest_path_chain_graph = find_shortest_path(
             chain_graph, SOURCE, SINK, sorted_vertices
         )
         _, _path = longest_path_chain_graph
         path = _path[1:]  # starts with [SOURCE, ... ]
         if fragments_only and len(path) < 2:
-            # this gene is covered entirely by a single chain
+            # this transcript is covered entirely by a single chain
             continue
-        gene_to_path[gene] = path
+        to_log(f"stitch fragments: transcript {transcript} is potentially fragmented")
+        transcript_to_path[transcript] = path
         del chain_graph
-    return gene_to_path
+    to_log(f"stitch fragments: identified {len(transcript_to_path)} fragmented transcripts")
+    return transcript_to_path
 
 
 if __name__ == "__main__":
     t0 = dt.now()
     args = parse_args()
-    gene_to_path = stitch_scaffolds(
+    setup_logger(args.log_file)
+    transcript_to_path = stitch_scaffolds(
         args.chain_file,
         args.chain_scores_file,
         args.bed_file,
         fragments_only=args.only_fragmented,
     )
     # save output
-    for k, v in gene_to_path.items():
+    for k, v in transcript_to_path.items():
         v_str = ",".join(map(str, v))
         print(f"{k}\t{v_str}")
     elapsed = dt.now() - t0
-    print(f"# Elapsed: {elapsed}")
+    to_log(f"# Elapsed: {elapsed}")

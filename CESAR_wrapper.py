@@ -7,14 +7,12 @@ import argparse
 import os
 import sys
 import subprocess
-import string
 import uuid
 import math
 from datetime import datetime as dt
 from re import finditer, IGNORECASE
 from collections import defaultdict
 import ctypes
-import random
 from operator import and_
 from functools import reduce
 from twobitreader import TwoBitFile
@@ -28,9 +26,7 @@ from modules.inact_mut_check import inact_mut_check
 from modules.parse_cesar_output import parse_cesar_out
 from version import __version__
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
-__credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
+__author__ = "Bogdan M. Kirilenko"
 
 complement = {
     "A": "T",

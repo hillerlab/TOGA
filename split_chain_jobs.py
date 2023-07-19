@@ -13,8 +13,9 @@ import random
 from datetime import datetime as dt
 from modules.chain_bed_intersect import chain_bed_intersect
 from modules.common import parts
-from modules.common import eprint
 from modules.common import die
+from modules.common import setup_logger
+from modules.common import to_log
 from version import __version__
 
 __author__ = "Bogdan Kirilenko, 2020."
@@ -26,12 +27,6 @@ WORK_DATA = {}  # script-related data
 LOCATION = os.path.abspath(os.path.dirname(__file__))
 CHAIN_RUNNER = os.path.join(LOCATION, "chain_runner.py")
 t0 = dt.now()
-VERBOSE = False
-
-
-def verbose(msg):
-    """Eprint for verbose messages."""
-    eprint(msg) if VERBOSE else None
 
 
 def parse_args():
@@ -41,6 +36,8 @@ def parse_args():
     # app.add_argument("chain_index", type=str, help="Chain sqlite 3 index db")
     app.add_argument("bed_file", type=str, help="Bed file, gene annotations.")
     app.add_argument("bed_index", type=str, help="Indexed bed")
+    app.add_argument("--log_file", type=str, help="Path to logfile")
+    app.add_argument("--parallel_logs_dir", type=str, help="Path to dir storing logs from each cluster job")
     app.add_argument(
         "--jobs_num",
         "--jn",
@@ -54,9 +51,6 @@ def parse_args():
         default=None,
         help="How many jobs to put into one cluster job."
         "If defined, --jobs_Num is ignored.",
-    )
-    app.add_argument(
-        "--verbose", "-v", action="store_true", dest="verbose", help="Verbose messages."
     )
     app.add_argument(
         "--jobs",
@@ -128,9 +122,6 @@ def call_proc(cmd):
 
 def check_args(args):
     """Check if args are correct, fill global dict."""
-    # check the directories
-    global VERBOSE  # set verbosity level
-    VERBOSE = True if args.verbose else False
     WORK_DATA["vv"] = True if args.vv else False
 
     try:  # check the directories, create if it is necessary
@@ -142,12 +133,9 @@ def check_args(args):
         WORK_DATA["jobs"] = args.jobs
         WORK_DATA["results_dir"] = args.results_dir
         WORK_DATA["errors_dir"] = args.errors_dir
-        verbose(
-            f"Directories in usage: {args.jobs} {args.results_dir} {args.errors_dir}"
-        )
 
     except FileNotFoundError as grepexc:  # a one of those tasks failed
-        eprint(f"Arguments are corrupted!\n{str(grepexc)}")
+        to_log(f"Arguments are corrupted!\n{str(grepexc)}")
         die("Cannot create one of the directories requested.")
 
     # define about chain and bed files
@@ -162,7 +150,7 @@ def check_args(args):
         if os.path.isfile(args.bed_file)
         else die(f"Error! Bed file {args.bed_file} is wrong!")
     )
-    verbose(f"Use bed file {args.bed_file} and chain file {args.chain_file}")
+    to_log(f"split_chain_jobs: Use bed file {args.bed_file} and chain file {args.chain_file}")
 
     # look for .ID.bb file
     index_file = (
@@ -173,9 +161,7 @@ def check_args(args):
 
     if os.path.isfile(index_file):  # check if bb file is here
         WORK_DATA["index_file"] = index_file
-        verbose(f"And {index_file} as an index file")
     elif args.make_index:  # create index if not exists
-        eprint("make_indexed in progress...")
         idbb_cmd = f"/modules/chain_bdb_index.py {args.chain_file} {index_file}"
         call_proc(idbb_cmd)
         WORK_DATA["index_file"] = index_file
@@ -199,9 +185,9 @@ def check_args(args):
     WORK_DATA["ref"] = args.ref
     # check if we are on cluster
     WORK_DATA["on_cluster"] = True
-    verbose("Program-wide dictionary looks like:\n")
+    to_log("split_chain jobs: the run data overview is:\n")
     for k, v in WORK_DATA.items():
-        verbose(f"{k}: {v}")
+        to_log(f"* {k}: {v}")
 
 
 def get_chroms():
@@ -216,7 +202,7 @@ def get_chroms():
 
 def get_intersections():
     """Make an array of intersections between genes and alignments."""
-    verbose("Splitting the jobs.")
+    to_log("split_chain_jobs: searching for intersections between reference transcripts and chains")
     # this function will get all chain X bed track intersections
     chain_genes_raw, skipped = chain_bed_intersect(
         WORK_DATA["chain_file"], WORK_DATA["bed_file"]
@@ -225,6 +211,8 @@ def get_intersections():
     del chain_genes_raw
     # skipped genes do not intersect any chain
     # please note that chains with too low score are likely filtered out
+    to_log(f"split_chain_jobs: chains-to-transcripts dict contains {len(chain_genes)} records")
+    to_log(f"split_chain_jobs: skipped {len(skipped)} transcripts that do not intersect any chain")
     return chain_genes, skipped
 
 
@@ -236,7 +224,6 @@ def get_template():
     bdb_to_template = WORK_DATA["chain_file"]
     template += " {0} {1}".format(bed_to_template, bdb_to_template)
     template += " -v" if WORK_DATA["vv"] else ""
-    verbose("Command template is:\n")
     return template
 
 
@@ -257,14 +244,14 @@ def make_commands(intersection):
 
 def split_commands(commands):
     """Split the commands into N cluster jobs."""
-    verbose(f"There are {len(commands)} commands")
+    to_log(f"split_chain_jobs: preparing {len(commands)} commands")
     if WORK_DATA["job_size"]:  # size of cluster job is pre-defined
         job_size = WORK_DATA["job_size"]
     else:  # if was not defined - compute the size of cluster job
         job_size = (len(commands) // WORK_DATA["jobs_num"]) + 1
-    verbose(f"Split commands with size of {job_size} for each cluster job")
+    to_log(f"split_chain_jobs: command size of {job_size} for each cluster job")
     batch = parts(commands, n=job_size)
-    verbose(f"There are {len(batch)} cluster jobs")
+    to_log(f"split_chain_jobs: results in {len(batch)} cluster jobs")
     return batch
 
 
@@ -276,13 +263,13 @@ def save_rejected_genes(skipped, filename):
     f.close()
 
 
-def save(template, batch):
+def save(template, batch, logs_dir=None):
     """Save the cluster jobs, create jobs_file file."""
     filenames = {}  # collect filenames of cluster jobs
     for num, jobs in enumerate(batch):
         # define the path for the job
         job_path = os.path.join(WORK_DATA["jobs"], f"part_{num}")
-        filenames[num] = job_path  # i need these paths for jobs_file file
+        filenames[num] = job_path  # need these paths for jobs_file file
         # put the \n-separated jobs into the template
         # save this finally
         with open(job_path, "w") as f:
@@ -294,21 +281,19 @@ def save(template, batch):
     for num, path in filenames.items():
         cmd = template.format(path)
         stdout_part = f"> {WORK_DATA['results_dir']}/{num}.txt"
-        stderr_part = (
-            "2> {WORK_DATA['errors_dir']}/{num}.txt" if WORK_DATA["errors_dir"] else ""
-        )
-        jobs_file_line = "{0} {1} {2}\n".format(cmd, stdout_part, stderr_part)
+        if logs_dir:
+            logs_part = f" --log_file {logs_dir}/chain_runner_{num}.log"
+        else:
+            logs_part = ""
+        jobs_file_line = f"{cmd} {logs_part} {stdout_part}\n"
         f.write(jobs_file_line)
-    # make executable
-    # rc = subprocess.call(f"chmod +x {WORK_DATA['jobs_file']}", shell=True)
-    # if rc != 0:  # just in case
-    #     die(f"Error! chmod +x {WORK_DATA['jobs_file']} failed")
     f.close()
 
 
 def main():
     """Entry point."""
     args = parse_args()
+    setup_logger(args.log_file)
     check_args(args)  # check if all the files, dependencies etc are correct
     intersections, skipped = get_intersections()  # intersect chains and beds
     # # extract genes that are not intersected by any chain
@@ -320,8 +305,8 @@ def main():
     commands = make_commands(intersections)  # shuffle and create set of commands
     batch = split_commands(commands)  # split the commands into cluster jobs
     template = get_template()
-    save(template, batch)  # save jobs and a jobs_file file
-    verbose("Estimated time: {0}".format(dt.now() - t0))
+    save(template, batch, logs_dir=args.parallel_logs_dir)  # save jobs and a jobs_file file
+    to_log("split_chain_jobs: estimated time: {0}".format(dt.now() - t0))
     sys.exit(0)
 
 
