@@ -826,7 +826,6 @@ class Toga:
         self.__check_crashed_cesar_jobs()
         # Everything is done
 
-        self.__time_mark("Everything is done")
         if not self.cesar_ok_merged:
             cesar_not_ok_message = (
                 f"PLEASE NOTE:\nCESAR RESULTS ARE LIKELY INCOMPLETE"
@@ -834,6 +833,9 @@ class Toga:
             )
             to_log(cesar_not_ok_message)
         self.__left_done_mark()
+        tot_runtime = dt.now() - self.t0
+        self.__time_mark("Everything is done")
+        to_log(f"TOGA pipeline is done in {tot_runtime}")
 
     def __collapse_logs(self, prefix):
         """Merge logfiles starting with prefix into a single log."""
@@ -1957,7 +1959,7 @@ class Toga:
             if "CESAR" not in line:
                 # not related to CESAR
                 continue
-            if "fragment chains oevrlap" in line:
+            if "fragment chains ovrelap" in line:
                 # they are not really "crashed"
                 # those jobs could not produce a meaningful result
                 # only intersecting exons
@@ -1969,11 +1971,11 @@ class Toga:
         # save crashed jobs list if it's non-empty
         if len(self.crashed_cesar_jobs) == 0:
             return  # good, nothing crashed
-        to_log(f"{len(self.crashed_cesar_jobs)} CESAR wrapper commands failed")
+        to_log(f"!!{len(self.crashed_cesar_jobs)} CESAR wrapper commands failed")
         f = open(self.cesar_crashed_jobs_log, "w")
         for cmd in self.crashed_cesar_jobs:
             f.write(f"{cmd}\n")
-        to_log(f"Failed CESAR wrapper commands were written to: {self.cesar_crashed_jobs_log}")
+        to_log(f"!!Failed CESAR wrapper commands were written to: {self.cesar_crashed_jobs_log}")
         f.close()
 
     def __left_done_mark(self):
