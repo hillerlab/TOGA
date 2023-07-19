@@ -771,6 +771,7 @@ class Toga:
         to_log("\n\n#### STEP 2: Extract chain features: parallel step\n")
         self.__extract_chain_features()
         self.__time_mark("Chain jobs done")
+        to_log(f"Logs from individual chain runner jobs are show below")
         self.__collapse_logs("chain_runner_")
 
         # 3) create chain features dataset
@@ -799,6 +800,7 @@ class Toga:
         self.__run_cesar_jobs()
         self.__time_mark("Cesar jobs done")
         self.__check_cesar_completeness()
+        to_log(f"Logs from individual CESAR jobs are show below")
         self.__collapse_logs("cesar_")
 
         # 8) parse CESAR output, create bed / fasta files
@@ -813,7 +815,6 @@ class Toga:
         self.__gene_loss_summary()
         self.__time_mark("Got gene loss summary")
 
-        # TODO: missing genes! no chain chrom???
         # 10) classify genes as one2one, one2many, etc orthologs
         to_log("\n\n#### STEP 10: Create orthology relationships table\n")
         self.__orthology_type_map()
@@ -1418,7 +1419,7 @@ class Toga:
                 to_log("### CESAR jobs done ###")
                 break
             else:
-                to_log(f"Poll iteration {iter_num}; already waiting {ITER_DURATION * iter_num} seconds.")
+                to_log(f"Polling iteration {iter_num}; already waiting {ITER_DURATION * iter_num} seconds.")
                 time.sleep(ITER_DURATION)
                 iter_num += 1
         if not self.keep_nf_logs:
