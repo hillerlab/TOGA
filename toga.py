@@ -67,7 +67,7 @@ CESAR_PRECOMPUTED_REGIONS_DATA = "cesar_precomputed_regions.tsv"
 CESAR_PRECOMPUTED_ORTHO_LOCI_DATA = "cesar_precomputed_orthologous_loci.tsv"
 
 NUM_CESAR_MEM_PRECOMP_JUBS = 500
-
+PARA_STRATEGIES = ["nextflow", "para", "custom"]  # TODO: add snakemake
 
 TEMP_CHAIN_CLASS = "temp_chain_trans_class"
 MODULES_DIR = "modules"
@@ -288,6 +288,7 @@ class Toga:
         )
 
         self.__check_param_files()
+        # self.paralellizer = self.__get_paralellizer(args.parallelisation_strategy)
 
         # create symlinks to 2bits: let user know what 2bits were used
         self.t_2bit_link = os.path.join(self.wd, "t2bit.link")
@@ -330,6 +331,20 @@ class Toga:
         today_and_now = dt.now().strftime("%Y.%m.%d_at_%H:%M:%S")
         project_name = f"TOGA_project_on_{today_and_now}"
         return project_name
+
+    def __get_paralellizer(self, selected_strategy):
+        """Initiate parallelization strategy selected by user."""
+        to_log(f"Selected parallelisation strategy: {selected_strategy}")
+        if selected_strategy not in PARA_STRATEGIES:
+            msg = f"ERROR! Strategy {selected_strategy} is not found, allowed strategies are: {PARA_STRATEGIES}"
+            self.die(msg, rc=1)
+        if selected_strategy == "nextflow":
+            strategy = NextflowStrategy()
+        elif selected_strategy == "para":
+            selected_strategy = ParaStrategy()
+        else:
+            selected_strategy = CustomStrategy()
+        return selected_strategy
 
     def __check_args_correctness(self, args):
         """Check that arguments are correct.
@@ -791,7 +806,7 @@ class Toga:
         # 5) create cluster jobs for CESAR2.0
         to_log("\n\n#### STEP 5: Generate CESAR jobs")
         # experimental feature, not publically available:
-        # self.__precompute_data_for_opt_cesar()
+        self.__precompute_data_for_opt_cesar()
         self.__split_cesar_jobs()
         self.__time_mark("Split cesar jobs done")
 
@@ -2124,7 +2139,7 @@ def parse_args():
     app.add_argument(
         "--parallelisation_strategy",
         "--ps",
-        choices=["nextflow", "para", "custom"],
+        choices=PARA_STRATEGIES,  # TODO: add snakemake
         default="nextflow",
         help=(
             "The parallelization strategy to use. If custom -> please provide "

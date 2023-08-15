@@ -168,6 +168,21 @@ class ParaStrategy(ParallelizationStrategy):
             return None
 
 
+class SnakeMakeStrategy(ParallelizationStrategy):
+    """
+    Not implemented class for Snakemake strategy.
+    Might be helpful for users experiencing issues with Nextflow.
+    """
+    def __int__(self):
+        self._process = None
+
+    def execute(self, joblist_path, manager_data, label, **kwargs):
+        raise NotImplementedError("Snakemake strategy is not yet implemented")
+
+    def check_status(self):
+        raise NotImplementedError("Snakemake strategy is not yet implemented")
+
+
 class CustomStrategy(ParallelizationStrategy):
     """
     Custom parallel jobs execution strategy.
