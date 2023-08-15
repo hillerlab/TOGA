@@ -612,6 +612,21 @@ def convert_seq_to_fasta(seq_data):
     return fasta_line
 
 
+def remove_exclamation_marks_from_fasta(fasta_string):
+    """MACSE inserts ! characters in the alignments to cover frameshifts.
+    This function replaces them with N character.
+    """
+    fasta_lines = fasta_string.split("\n")
+    updated_lines = []
+    for line in fasta_lines:
+        if line.startswith(">"):
+            # header line -> do not replace !s here
+            updated_lines.append(line)
+        else:
+            updated_lines.append(line.replace("!", "N"))
+    return "\n".join(updated_lines)
+    
+
 def macse_alignment(in_fasta, temp_dir, macse_caller, v=False):
     """Align fasta with MACSE."""
     # MACSE is unable to write to stdout
@@ -645,7 +660,9 @@ def macse_alignment(in_fasta, temp_dir, macse_caller, v=False):
         os.remove(to_del_file) if os.path.isfile(to_del_file) else None
         os.close(fd1)
         os.close(fd2)
-    return aligned_fasta
+    # remove ! marks if any:
+    aligned_fasta_corrected = remove_exclamation_marks_from_fasta(aligned_fasta)
+    return aligned_fasta_corrected
 
 
 def __fasta_replace_X_with_N(in_fasta):
