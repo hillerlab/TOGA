@@ -624,7 +624,7 @@ This can be useful when using the same script as outlined in the previous sectio
 
 ## Contributing
 
-If you would like to contribute, please see the (contributing guidelines)[https://github.com/hillerlab/TOGA/wiki/Contributing] in the TOGA wiki.
+If you would like to contribute, please see the [contributing guidelines](https://github.com/hillerlab/TOGA/wiki/Contributing) in the TOGA wiki.
 Your potential help is greatly appreciated.
 
 ## Citation
