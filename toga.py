@@ -288,7 +288,7 @@ class Toga:
         )
 
         self.__check_param_files()
-        # self.paralellizer = self.__get_paralellizer(args.parallelisation_strategy)
+        self.paralellizer = self.__get_paralellizer(args.parallelisation_strategy)
 
         # create symlinks to 2bits: let user know what 2bits were used
         self.t_2bit_link = os.path.join(self.wd, "t2bit.link")
@@ -339,12 +339,13 @@ class Toga:
             msg = f"ERROR! Strategy {selected_strategy} is not found, allowed strategies are: {PARA_STRATEGIES}"
             self.die(msg, rc=1)
         if selected_strategy == "nextflow":
-            strategy = NextflowStrategy()
+            selected_strategy = NextflowStrategy()
         elif selected_strategy == "para":
             selected_strategy = ParaStrategy()
         else:
             selected_strategy = CustomStrategy()
-        return selected_strategy
+        jobs_manager = ParallelJobsManager(selected_strategy)
+        return jobs_manager
 
     def __check_args_correctness(self, args):
         """Check that arguments are correct.
