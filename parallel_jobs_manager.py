@@ -22,13 +22,14 @@ class ParallelizationStrategy(ABC):
     """
 
     @abstractmethod
-    def execute(self, joblist_path, manager_data, label, **kwargs):
+    def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         """
         Execute the jobs in parallel.
 
         :param joblist_path: Path to the joblist file.
         :param manager_data: Data from the manager class.
         :param label: Label for the run.
+        :param wait: Boolean -> controls whether run blocking or not
         """
         pass
 
@@ -155,7 +156,7 @@ class ParaStrategy(ParallelizationStrategy):
         self._process = None
         self.return_code = None
 
-    def execute(self, joblist_path, manager_data, label, **kwargs):
+    def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         """Implementation for Para."""
         cmd = f"para make {label} {joblist_path} "
         if "queue_name" in kwargs:
@@ -172,6 +173,8 @@ class ParaStrategy(ParallelizationStrategy):
         log_file_path = os.path.join(manager_data["logs_dir"], f"{label}.log")
         with open(log_file_path, "w") as log_file:
             self._process = subprocess.Popen(cmd, shell=True, stdout=log_file, stderr=log_file)
+        if wait:
+            self._process.wait()
 
     def check_status(self):
         """Check if Para jobs are done."""
@@ -192,8 +195,9 @@ class SnakeMakeStrategy(ParallelizationStrategy):
     """
     def __int__(self):
         self._process = None
+        self.return_code = None
 
-    def execute(self, joblist_path, manager_data, label, **kwargs):
+    def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         raise NotImplementedError("Snakemake strategy is not yet implemented")
 
     def check_status(self):
@@ -207,8 +211,9 @@ class CustomStrategy(ParallelizationStrategy):
 
     def __init__(self):
         self._process = None
+        self.return_code = None
 
-    def execute(self, joblist_path, manager_data, label, **kwargs):
+    def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         """Custom implementation.
 
         Please provide your implementation of parallel jobs executor.
