@@ -164,7 +164,7 @@ class ParaStrategy(ParallelizationStrategy):
             cmd += f" -q={queue_name} "
         # otherwise use default medium queue
         if "memory_limit" in kwargs:
-            memory_mb = kwargs["memory_mb"]
+            memory_mb = kwargs["memory_limit"] * 1000  # para uses MB instead of GB
             cmd += f" --memoryMb={memory_mb}"
         # otherwise use default para's 10Gb
 

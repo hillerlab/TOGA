@@ -943,7 +943,7 @@ class Toga:
         project_name = f"chain_feats__{self.project_name}_at_{timestamp}"
         project_path = os.path.join(self.nextflow_dir, project_name)
 
-        to_log(f"Extracting chain features, NF project name: {project_name}")
+        to_log(f"Extracting chain features, project name: {project_name}")
         to_log(f"Project path: {project_path}")
 
         # Prepare common data for the strategy to use
@@ -1317,7 +1317,6 @@ class Toga:
             f"--jobs_dir {self.cesar_jobs_dir} "
             f"--jobs_num {self.cesar_jobs_num} "
             f"--combined {self.cesar_combined} "
-            # f"--bigmem {self.cesar_bigmem_jobs} "  # TODO: refactor this part
             f"--results {self.cesar_results} "
             f"--buckets {self.cesar_buckets} "
             f"--mem_limit {self.cesar_mem_limit} "
