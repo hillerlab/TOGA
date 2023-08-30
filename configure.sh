@@ -3,10 +3,23 @@ exit_status=0
 mydir="${0%/*}"
 
 OVERRIDE=false
-if [ "$1" == "--override" ]; then
-    OVERRIDE=true
-    echo "Overriding existing CESAR installation and models"
-fi
+BUILD_BED2GTF=false
+
+
+# Parsing arguments
+for arg in "$@"
+do
+    case $arg in
+        --override)
+            OVERRIDE=true
+            echo "Overriding existing CESAR installation and models"
+            ;;
+        --bed2gtf)
+            BUILD_BED2GTF=true
+            echo "Building bed2gtf"
+            ;;
+    esac
+done
 
 printf "Compiling C code...\n"
 
@@ -37,8 +50,20 @@ then
     printf "CESAR installation found\n"
 else
     printf "CESAR installation not found, cloning\n"
-    git submodule init
-    git submodule update
+    git submodule init CESAR2.0
+    git submodule update CESAR2.0
     cd CESAR2.0 && make
     printf "Don't worry about '*** are the same file' message if you see it\n"
+fi
+
+if $BUILD_BED2GTF; then
+    if ! $OVERRIDE && [[ -f "./bed2gtf/some_check_file" ]]
+    then
+        printf "bed2gtf installation found\n"
+    else
+        printf "bed2gtf installation not found, cloning and building\n"
+        git submodule init bed2gtf
+        git submodule update bed2gtf
+        # ACTUAL BUILD COMMAND HERE
+    fi
 fi

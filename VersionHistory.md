@@ -70,7 +70,8 @@ Documentation improvements.
 * extract_codon_alignment.py: "!" characters inserted my MACSE2.0 to compensate frameshifts are replaced with "N". 
 * CESAR_wrapper.py -> does not use `/dev/shm/` or `/tmp/` partitions anymore.
 * Significantly improved logging - all logs are automatically stored in the output directory.
-* (in progress) Improved parallelization strategy
 * Nomenclature update: identifiers of TOGA-annotated genes now start with "TOGA_" instead of potentially confusing "reg_"
 * Nomenclature update: TRANS chain class (considered confusing) renamed to SPAN (better fits spanning chains)
+* Added bed2gtf submodule to facilitate results post-processing.
+* (in progress) Improved parallelization strategy
 * (planned) Step management - now user can rerun TOGA from any desired step.
