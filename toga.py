@@ -111,7 +111,7 @@ class Toga:
         # check if all files TOGA needs are here
         self.temp_files = []  # remove at the end, list of temp files
         to_log("#### Initiating TOGA class ####")
-        self.para = args.para
+        self.para = args.parallelisation_strategy == "para"  # legacy/deprecated
         self.__check_args_correctness(args)
         self.__modules_addr()
         self.__check_dependencies()
@@ -289,7 +289,6 @@ class Toga:
 
         self.__check_param_files()
         self.para_strategy = args.parallelisation_strategy
-        self.jobs_manager = self.__get_paralellizer(self.para_strategy)
 
         # create symlinks to 2bits: let user know what 2bits were used
         self.t_2bit_link = os.path.join(self.wd, "t2bit.link")
@@ -335,7 +334,7 @@ class Toga:
 
     def __get_paralellizer(self, selected_strategy):
         """Initiate parallelization strategy selected by user."""
-        to_log(f"Selected parallelisation strategy: {selected_strategy}")
+        to_log(f"Selected parallelization strategy: {selected_strategy}")
         if selected_strategy not in PARA_STRATEGIES:
             msg = f"ERROR! Strategy {selected_strategy} is not found, allowed strategies are: {PARA_STRATEGIES}"
             self.die(msg, rc=1)
@@ -556,7 +555,7 @@ class Toga:
         # then we don't need to write the original header
         # if present -> let keep it
         # there is not absolutely correct: MAYBE there is no header at all, but
-        # the first line of the isoforms file is not in the bed file so we still will write it
+        # the first line of the isoforms file is not in the bed file, so we still will write it
         skip_header = header_maybe_trans in t_in_bed
 
         # write isoforms file
@@ -568,14 +567,8 @@ class Toga:
             gene = isoform_to_gene[trans]
             f.write(f"{gene}\t{trans}\n")
 
-    def __log_blank(self):
-        """Add blank line to log."""
-        with open(self.log_file, "a") as f:
-            f.write("\n\n")
-
     def die(self, msg, rc=1):
         """Show msg in stderr, exit with the rc given."""
-        self.__log_blank()
         to_log(msg)
         to_log(f"Program finished with exit code {rc}\n")
         # for t_file in self.temp_files:  # remove temp files if required
@@ -669,7 +662,7 @@ class Toga:
             imports_not_found = True
 
         not_nf = shutil.which(NEXTFLOW) is None
-        if not self.para and not_nf:
+        if self.para_strategy == "nextflow" and not_nf:
             msg = (
                 "Error! Cannot fild nextflow executable. Please make sure you "
                 "have a nextflow binary in a directory listed in your $PATH"
@@ -820,7 +813,7 @@ class Toga:
         to_log("\n\n### STEP 7: Execute CESAR jobs: parallel step\n")
         self.__run_cesar_jobs()
         self.__time_mark("Cesar jobs done")
-        self.__check_cesar_completeness()
+        # self.__check_cesar_completeness()
         to_log(f"Logs from individual CESAR jobs are show below")
         self.__collapse_logs("cesar_")
 
@@ -979,7 +972,8 @@ class Toga:
         }
 
         # Execute jobs via the Strategy pattern
-        self.jobs_manager.execute_jobs(self.chain_cl_jobs_combined, manager_data, project_name, wait=True)
+        jobs_manager = self.__get_paralellizer(self.para_strategy)
+        jobs_manager.execute_jobs(self.chain_cl_jobs_combined, manager_data, project_name, wait=True)
 
     def __merge_chains_output(self):
         """Call parse results."""
@@ -1097,7 +1091,6 @@ class Toga:
             elem_data = elem.split("\t")
             transcript = elem_data[1]
             chain = int(elem_data[2])
-            projection = f"{transcript}.{chain}"
             search_locus = elem_data[3]
             chrom, s_e = search_locus.split(":")
             s_e_split = s_e.split("-")
@@ -1221,7 +1214,7 @@ class Toga:
         )
         precompute_jobs = []
         # for nextflow abspath is better:
-        precomp_abspath = os.path.abspath(self.PRECOMPUTE_OPT_CESAR_DATA)
+        precomputed_data_abspath = os.path.abspath(self.PRECOMPUTE_OPT_CESAR_DATA)
         # cesar_bin_abspath = os.path.abspath(self.cesar_binary)
 
         # create joblist: one job per piece
@@ -1231,7 +1224,7 @@ class Toga:
             out_ol_path = os.path.join(self.precomp_query_loci_dir, f"path_{num}")
 
             cmd = (
-                f"{precomp_abspath} {class_piece} {self.wd} {self.opt_cesar_binary} "
+                f"{precomputed_data_abspath} {class_piece} {self.wd} {self.opt_cesar_binary} "
                 f"{self.t_2bit} {self.q_2bit} {out_m_path} --ro {out_reg_path} --ol {out_ol_path}"
             )
             precompute_jobs.append(cmd)
@@ -1285,13 +1278,6 @@ class Toga:
 
     def __split_cesar_jobs(self):
         """Call split_exon_realign_jobs.py."""
-        # TODO: check whether it is reachable
-        if not self.t_2bit or not self.q_2bit:
-            self.die(
-                "There are no 2 bit files provided, cannot go ahead and call CESAR.",
-                rc=0,
-            )
-
         if self.fragmented_genome:
             to_log("Detecting fragmented transcripts")
             # need to stitch fragments together
@@ -1412,20 +1398,20 @@ class Toga:
         f.close()
         return "".join(lines)
 
-    def __monitor_jobs(self, processes, project_paths, die_if_sc_1=False):
+    def __monitor_jobs(self, jobs_managers, die_if_sc_1=False):
         """Monitor para/ nextflow jobs."""
         if self.exec_cesar_parts_sequentially is True:
             # no need to monitor jobs in this way
             # if they are called sequentially
             return
-        to_log(f"## Stated polling jobs until they done")
+        to_log(f"## Stated polling cluster jobs until they done")
         iter_num = 0
         while True:  # Run until all jobs are done (or crashed)
             all_done = True  # default val, re-define if something is not done
-            for p in processes:
+            for job_manager in jobs_managers:
                 # check if each process is still running
-                running = p.poll() is None
-                if running:
+                rc = job_manager.check_status()
+                if rc is None:
                     all_done = False
             if all_done:
                 to_log("### CESAR jobs done ###")
@@ -1434,178 +1420,39 @@ class Toga:
                 to_log(f"Polling iteration {iter_num}; already waiting {ITER_DURATION * iter_num} seconds.")
                 time.sleep(ITER_DURATION)
                 iter_num += 1
-        if not self.keep_nf_logs:
-            # remove nextflow intermediate files
-            to_log("Removing nextflow temp files")
-            for path in project_paths:
-                shutil.rmtree(path) if os.path.isdir(path) else None
 
-        if any(p.returncode != 0 for p in processes) and die_if_sc_1 is True:
+        if any(jm.return_code != 0 for jm in jobs_managers) and die_if_sc_1 is True:
             # some para/nextflow job died: critical issue
             # if die_if_sc_1 is True: terminate the program
             err = "Error! Some para/nextflow processes died!"
             to_log(err)
             self.die(err, 1)
 
-    def __run_cesar_jobs(self):
-        # TODO: to replace with ParallelizationStrategy instance
-        """Run CESAR jobs using nextflow.
-
-        At first -> push joblists, there might be a few of them
-        At second -> monitor joblists, wait until all are done.
-        """
-        # for each bucket I create a separate joblist and config file
-        # different config files because different memory limits
-        to_log(f"Attention: the parallelization module will be rearranged in the future")
-        to_log(f"Because of that, logging messages can be incomplete, and will be properly ")
-        to_log(f"implemented in the future version.")
-        project_paths = []  # dirs with logs
-        processes = []  # keep subprocess objects here
-        timestamp = str(time.time()).split(".")[1]  # for project name
-        project_names = []
-
-        # get a list of buckets
-        if self.cesar_buckets == "0":
-            buckets = [0]  # a single bucket
-        else:  # several buckets, each int -> memory limit in gb
-            buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
-        to_log(f"Pushing {len(buckets)} CESAR job lists")
-
-        # generate buckets, create subprocess instances
-        for b in buckets:
-            # create config file
-            # 0 means that that buckets were not split
-            mem_lim = b if b != 0 else self.cesar_mem_limit
-            to_log(f"Pushing memory bucket {b}Gb to the executor")
-
-            if not self.local_executor:
-                # running on cluster, need to create config file
-                # for this bucket's memory requirement
-                config_string = self.cesar_config_template.replace(
-                    "${_MEMORY_}", f"{mem_lim}"
-                )
-                config_file_path = os.path.join(
-                    self.temp_wd, f"cesar_config_{b}_queue.nf"
-                )
-                config_file_abspath = os.path.abspath(config_file_path)
-                with open(config_file_path, "w") as f:
-                    f.write(config_string)
-                self.temp_files.append(config_file_path)
-            else:  # no config dir given: use local executor
-                # OK if there is a single bucket
-                config_file_abspath = None
-
-            if b != 0:  # extract jobs related to this bucket (if it's not 0)
-                bucket_tasks = self.__get_cesar_jobs_for_bucket(
-                    self.cesar_combined, str(b)
-                )
-                if len(bucket_tasks) == 0:
-                    to_log(f"There are no jobs in the {b}Gb bucket")
-                    continue
-                joblist_name = f"cesar_joblist_queue_{b}.txt"
-                joblist_path = os.path.join(self.temp_wd, joblist_name)
-                with open(joblist_path, "w") as f:
-                    f.write(bucket_tasks)
-                joblist_abspath = os.path.abspath(joblist_path)
-                self.temp_files.append(joblist_path)
-            else:  # nothing to extract, there is a single joblist
-                joblist_abspath = os.path.abspath(self.cesar_combined)
-
-            # create project directory for logs
-            nf_project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_{b}"
-            project_names.append(nf_project_name)
-            nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
-            project_paths.append(nf_project_path)
-
-            # create subprocess object
-            if not self.para:  # create nextflow cmd
-                os.mkdir(nf_project_path) if not os.path.isdir(
-                    nf_project_path
-                ) else None
-
-                cmd = f"nextflow {self.NF_EXECUTE} " f"--joblist {joblist_abspath}"
-                if config_file_abspath:
-                    cmd += f" -c {config_file_abspath}"
-                p = subprocess.Popen(cmd, shell=True, cwd=nf_project_path)
-            else:  # create cmd for para
-                memory_mb = b * 1000
-                cmd = f'para make {nf_project_name} {joblist_abspath} -q="shortmed"'
-                if memory_mb > 0:
-                    cmd += f" --memoryMb={memory_mb}"
-                p = subprocess.Popen(cmd, shell=True)
-
-            to_log(f"Pushed cluster jobs with {cmd}\n")
-
-            # wait for the process if calling processes sequentially
-            # or wait a minute before pushing the next batch in parallel
-            if self.exec_cesar_parts_sequentially is True:
-                p.wait()
-            else:
-                time.sleep(CESAR_PUSH_INTERVAL)
-            processes.append(p)
-
-        # push bigmem jobs
-        if self.nextflow_bigmem_config and not self.para:
-            to_log(f"!!Pushing bibmem queue jobs - this part is experimental")
-            # if provided: push bigmem jobs also
-            nf_project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_bigmem"
-            nf_project_path = os.path.join(self.nextflow_dir, nf_project_name)
-            nf_cmd = (
-                f"nextflow {self.NF_EXECUTE} "
-                f"--joblist {self.cesar_bigmem_jobs} -c {self.nextflow_bigmem_config}"
+    def __locate_joblist_abspath(self, b):
+        if b != 0:  # extract jobs related to this bucket (if it's not 0)
+            bucket_tasks = self.__get_cesar_jobs_for_bucket(
+                self.cesar_combined, str(b)
             )
-            # if bigmem joblist is empty or not exist: do nothing
-            is_file = os.path.isfile(self.cesar_bigmem_jobs)
-            if is_file:  # if a file: we can open and count lines
-                f = open(self.cesar_bigmem_jobs, "r")
-                big_lines_num = len(f.readlines())
-                f.close()
-            else:  # file doesn't exist, equivalent to an empty file in our case
-                big_lines_num = 0
-            # if it's empty: do nothing
-            if big_lines_num == 0:
-                pass
-            else:
-                os.mkdir(nf_project_path) if not os.path.isdir(
-                    nf_project_path
-                ) else None
-                project_paths.append(nf_project_path)
-                p = subprocess.Popen(nf_cmd, shell=True, cwd=nf_project_path)
-                to_log(f"Pushed {big_lines_num} bigmem jobs with {nf_cmd}\n")
-                if self.exec_cesar_parts_sequentially:
-                    p.wait()
-                processes.append(p)
-        elif self.para and self.para_bigmem:
-            # if requested: push bigmem jobs with para
-            is_file = os.path.isfile(self.cesar_bigmem_jobs)
-            bm_project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_bigmem"
-            if is_file:  # if a file: we can open and count lines
-                f = open(self.cesar_bigmem_jobs, "r")
-                big_lines_num = len(f.readlines())
-                f.close()
-            else:  # file doesn't exist, equivalent to an empty file in our case
-                big_lines_num = 0
-            # if it's empty: do nothing
-            if big_lines_num == 0:
-                pass
-            else:  # there ARE cesar bigmem jobs: push them
-                memory_mb = 500 * 1000  # TODO: bigmem memory param
-                cmd = (
-                    f"para make {bm_project_name} {self.cesar_bigmem_jobs} "
-                    f'-q="bigmem" --memoryMb={memory_mb}'
-                )
-                p = subprocess.Popen(cmd, shell=True)
-                processes.append(p)
+            if len(bucket_tasks) == 0:
+                to_log(f"There are no jobs in the {b}Gb bucket")
+                return None
+            joblist_name = f"cesar_joblist_queue_{b}.txt"
+            joblist_path = os.path.join(self.temp_wd, joblist_name)
+            with open(joblist_path, "w") as f:
+                f.write(bucket_tasks)
+            joblist_abspath = os.path.abspath(joblist_path)
+            self.temp_files.append(joblist_path)
+        else:  # nothing to extract, there is a single joblist
+            joblist_abspath = os.path.abspath(self.cesar_combined)
+        return joblist_abspath
 
-        # monitor jobs
-        self.__monitor_jobs(processes, project_paths)
-
-        # print CPU runtime (if para), if not -> quit function
+    def __save_para_time_output_if_applicable(self, project_names):
+        """In case para was used -> save para time data."""
+        # TODO: implement this logic for each ParallelizationStrategy
         if not self.para:
             return
 
         for p_name in project_names:
-            # TODO: implement this logic for each ParallelizationStrategy
             to_log(f"Collecting para runtime stats")
             cmd = f"para time {p_name}"
             p = subprocess.Popen(
@@ -1622,6 +1469,54 @@ class Toga:
                 cmd_cleanup, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
             _, _ = p.communicate()
+
+    def __run_cesar_jobs(self):
+        """Run CESAR jobs in parallel."""
+        project_paths = []
+        project_names = []
+        jobs_managers = []
+        timestamp = str(time.time()).split(".")[1]
+
+        if self.cesar_buckets == "0":
+            buckets = [0]
+        else:
+            buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
+        to_log(f"Pushing {len(buckets)} CESAR job lists")
+
+        for bucket in buckets:
+            to_log(f"Pushing memory bucket {bucket}Gb to the executor")
+            # 0 means that that buckets were not split
+            mem_lim = bucket if bucket != 0 else self.cesar_mem_limit
+
+            project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_{bucket}"
+            project_names.append(project_name)
+            joblist_abspath = self.__locate_joblist_abspath(bucket)
+
+            project_path = os.path.join(self.nextflow_dir, project_name)
+            project_paths.append(project_path)
+
+            manager_data = {
+                "project_name": project_name,
+                "project_path": project_path,
+                "logs_dir": project_path,
+                "nextflow_dir": self.nextflow_dir,
+                "NF_EXECUTE": self.NF_EXECUTE,
+                "local_executor": self.local_executor,
+                "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
+                "keep_nf_logs": self.keep_nf_logs
+            }
+
+            jobs_manager = self.__get_paralellizer(self.para_strategy)
+            jobs_manager.execute_jobs(joblist_abspath,
+                                      manager_data,
+                                      project_name,
+                                      memory_limit=mem_lim,
+                                      wait=self.exec_cesar_parts_sequentially)
+            jobs_managers.append(jobs_manager)
+            time.sleep(CESAR_PUSH_INTERVAL)
+
+        self.__monitor_jobs(jobs_managers)
+        self.__save_para_time_output_if_applicable(project_names)
 
     @staticmethod
     def __get_bucket_val(mem_val, buckets):
@@ -1674,7 +1569,7 @@ class Toga:
                 bucket_to_jobs[bucket_lim].append(cmd_str)
         return bucket_to_jobs
 
-    def __check_cesar_completeness(self):
+    def __check_cesar_completeness_TO_REBUILD(self):
         """Check that all CESAR jobs were executed, quit otherwise."""
         to_log("\nChecking whether all CESAR results are complete")
         rejected_logs_filenames = [
@@ -1682,7 +1577,7 @@ class Toga:
         ]
         if len(rejected_logs_filenames) == 0:
             # nothing crashed
-            to_log("No CESAR jobs crashed accodring to rejection log")
+            to_log("No CESAR jobs crashed according to rejection log")
             return
         # collect crashed jobs
         crashed_jobs = []
@@ -1772,7 +1667,7 @@ class Toga:
             p_objects.append(p)
             time.sleep(CESAR_PUSH_INTERVAL)
         to_log(f"Monitoring CESAR jobs rerun")
-        self.__monitor_jobs(p_objects, project_paths, die_if_sc_1=True)
+        # self.__monitor_jobs(p_objects, project_paths, die_if_sc_1=True)
         # TODO: maybe some extra sanity check
 
         # need to check whether anything crashed again
@@ -1796,8 +1691,9 @@ class Toga:
         to_log(err_msg)
         self.die(err_msg, 1)
 
-    def __append_technicall_err_to_predef_class(self, transcripts_path, out_path):
-        """Append file with predefined clasifications."""
+    @staticmethod
+    def __append_technicall_err_to_predef_class(transcripts_path, out_path):
+        """Append file with predefined classifications."""
         if not os.path.isfile(transcripts_path):
             # in this case, we don't have transcripts with tech error
             # can simply quit the function
@@ -2137,14 +2033,6 @@ def parse_args():
             "a custom strategy implementation in the parallel_jobs_manager.py "
             "(to be enabled in future)"
         )
-    )
-    app.add_argument(
-        "--para",
-        "-p",
-        action="store_true",
-        dest="para",
-        help="Hillerlab feature, use para instead of nextflow to "
-        "manage cluster jobs.",
     )
     app.add_argument(
         "--para_bigmem",

@@ -65,6 +65,7 @@ class NextflowStrategy(ParallelizationStrategy):
         self.memory_limit = 16
         self.nf_master_script = None
         self.config_path = None
+        self.return_code = None
 
     def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         """Implementation for Nextflow."""
@@ -90,7 +91,11 @@ class NextflowStrategy(ParallelizationStrategy):
         os.mkdir(log_dir) if not os.path.isdir(log_dir) else None
         log_file_path = os.path.join(manager_data["logs_dir"], f"{label}.log")
         with open(log_file_path, "w") as log_file:
-            self._process = subprocess.Popen(cmd, shell=True, stdout=log_file, stderr=log_file)
+            self._process = subprocess.Popen(cmd,
+                                             shell=True,
+                                             stdout=log_file,
+                                             stderr=log_file,
+                                             cwd=self.nf_project_path)
         if wait:
             self._process.wait()
 
@@ -120,9 +125,12 @@ class NextflowStrategy(ParallelizationStrategy):
 
     def check_status(self):
         """Check if nextflow jobs are done."""
+        if self.return_code:
+            return self.return_code
         running = self._process.poll() is None
         if running:
             return None
+        self.return_code = self._process.returncode
         # the process just finished
         # nextflow provides a huge and complex tree of log files
         # remove them if user did not explicitly ask to keep them
@@ -132,7 +140,7 @@ class NextflowStrategy(ParallelizationStrategy):
         if self.config_path and self.label.startswith(self.CESAR_JOBS_PREFIX):
             # for cesar TOGA creates individual config files
             os.remove(self.config_path) if os.path.isfile(self.config_path) else None
-        return self._process.returncode
+        return self.return_code
 
 
 class ParaStrategy(ParallelizationStrategy):
@@ -145,6 +153,7 @@ class ParaStrategy(ParallelizationStrategy):
 
     def __init__(self):
         self._process = None
+        self.return_code = None
 
     def execute(self, joblist_path, manager_data, label, **kwargs):
         """Implementation for Para."""
@@ -166,9 +175,12 @@ class ParaStrategy(ParallelizationStrategy):
 
     def check_status(self):
         """Check if Para jobs are done."""
+        if self.return_code:
+            return self.return_code
         running = self._process.poll() is None
         if not running:
-            return self._process.returncode
+            self.return_code = self._process.returncode
+            return self.return_code
         else:
             return None
 
@@ -238,6 +250,7 @@ class ParallelJobsManager:
         :param strategy: The parallelization strategy to use.
         """
         self.strategy = strategy
+        self.return_code = None
 
     def execute_jobs(self, joblist_path, manager_data, label, **kwargs):
         """
@@ -249,7 +262,7 @@ class ParallelJobsManager:
         """
         self.strategy.execute(joblist_path, manager_data, label, **kwargs)
 
-    def check_jobs_status(self):
+    def check_status(self):
         """
         Check the status of the jobs using the specified strategy.
 
