@@ -288,7 +288,8 @@ class Toga:
         )
 
         self.__check_param_files()
-        self.paralellizer = self.__get_paralellizer(args.parallelisation_strategy)
+        self.para_strategy = args.parallelisation_strategy
+        self.jobs_manager = self.__get_paralellizer(self.para_strategy)
 
         # create symlinks to 2bits: let user know what 2bits were used
         self.t_2bit_link = os.path.join(self.wd, "t2bit.link")
@@ -958,38 +959,27 @@ class Toga:
 
     def __extract_chain_features(self):
         """Execute extract chain features jobs."""
-        # get timestamp to name the project and create a dir for that
-        #  time() returns something like: 1595861493.8344169
         timestamp = str(time.time()).split(".")[0]
         project_name = f"chain_feats__{self.project_name}_at_{timestamp}"
         project_path = os.path.join(self.nextflow_dir, project_name)
+
         to_log(f"Extracting chain features, NF project name: {project_name}")
         to_log(f"Project path: {project_path}")
 
-        if self.para:  # run jobs with para, skip nextflow
-            # Hillerlab-specific script to schedule slurm jobs
-            cmd = f'para make {project_name} {self.chain_cl_jobs_combined} -q="short"'
-            to_log(f"Calling parallel process with:\n{cmd}")
-            rc = subprocess.call(cmd, shell=True)
-        else:  # calling jobs with nextflow
-            cmd = (
-                f"nextflow {self.NF_EXECUTE} "
-                f"--joblist {self.chain_cl_jobs_combined}"
-            )
-            if not self.local_executor:
-                # not local executor -> provided config files
-                # need abspath for nextflow execution
-                cmd += f" -c {self.nf_chain_extr_config_file}"
-            to_log(f"Calling parallel process with:\n{cmd}")
-            os.mkdir(project_path) if not os.path.isdir(project_path) else None
-            rc = subprocess.call(cmd, shell=True, cwd=project_path)
+        # Prepare common data for the strategy to use
+        manager_data = {
+            "project_name": project_name,
+            "project_path": project_path,
+            "logs_dir": project_path,
+            "nextflow_dir": self.nextflow_dir,
+            "NF_EXECUTE": self.NF_EXECUTE,
+            "local_executor": self.local_executor,
+            "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
+            "keep_nf_logs": self.keep_nf_logs
+        }
 
-        if rc != 0:  # if process (para or nf) died: terminate execution
-            self.die(f"Error! Process {cmd} died")
-        if not self.keep_nf_logs and not self.para:
-            # remove nextflow intermediate files
-            # if para: this dir doesn't exist
-            shutil.rmtree(project_path) if os.path.isdir(project_path) else None
+        # Execute jobs via the Strategy pattern
+        self.jobs_manager.execute_jobs(self.chain_cl_jobs_combined, manager_data, project_name, wait=True)
 
     def __merge_chains_output(self):
         """Call parse results."""

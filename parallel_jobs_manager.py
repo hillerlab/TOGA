@@ -66,7 +66,7 @@ class NextflowStrategy(ParallelizationStrategy):
         self.nf_master_script = None
         self.config_path = None
 
-    def execute(self, joblist_path, manager_data, label, **kwargs):
+    def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         """Implementation for Nextflow."""
         # define parameters
         self.joblist_path = joblist_path
@@ -86,10 +86,13 @@ class NextflowStrategy(ParallelizationStrategy):
         if self.config_path:
             cmd += f" -c {self.config_path}"
 
+        log_dir = manager_data["logs_dir"]
+        os.mkdir(log_dir) if not os.path.isdir(log_dir) else None
         log_file_path = os.path.join(manager_data["logs_dir"], f"{label}.log")
         with open(log_file_path, "w") as log_file:
             self._process = subprocess.Popen(cmd, shell=True, stdout=log_file, stderr=log_file)
-        pass
+        if wait:
+            self._process.wait()
 
     def __create_config_file(self):
         """Create config file and return path to it if needed"""
@@ -155,6 +158,8 @@ class ParaStrategy(ParallelizationStrategy):
             cmd += f" --memoryMb={memory_mb}"
         # otherwise use default para's 10Gb
 
+        log_dir = manager_data["logs_dir"]
+        os.mkdir(log_dir) if not os.path.isdir(log_dir) else None
         log_file_path = os.path.join(manager_data["logs_dir"], f"{label}.log")
         with open(log_file_path, "w") as log_file:
             self._process = subprocess.Popen(cmd, shell=True, stdout=log_file, stderr=log_file)
