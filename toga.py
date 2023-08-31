@@ -14,7 +14,6 @@ import json
 import shutil
 from math import ceil
 from collections import defaultdict
-from twobitreader import TwoBitFile
 from modules.common import parts
 from modules.filter_bed import prepare_bed_file
 from modules.bed_hdf5_index import bed_hdf5_index
@@ -30,9 +29,13 @@ from modules.make_query_isoforms import get_query_isoforms_data
 from modules.collect_prefefined_glp_classes import collect_predefined_glp_cases
 from modules.collect_prefefined_glp_classes import add_transcripts_to_missing
 from modules.stitch_fragments import stitch_scaffolds
-from modules.common import read_isoforms_file
 from modules.common import to_log
 from modules.common import setup_logger
+from modules.common import make_symlink
+from modules.common import get_fst_col
+from modules.sanity_check_functions import check_2bit_file_completeness
+from modules.sanity_check_functions import check_and_write_u12_file
+from modules.sanity_check_functions import check_isoforms_file
 from parallel_jobs_manager import ParallelJobsManager
 from parallel_jobs_manager import NextflowStrategy
 from parallel_jobs_manager import ParaStrategy
@@ -74,9 +77,6 @@ MODULES_DIR = "modules"
 RUNNING = "RUNNING"
 CRASHED = "CRASHED"
 TEMP = "temp"
-
-# automatically enable flush
-# print = functools.partial(print, flush=True)
 
 
 class Toga:
@@ -285,8 +285,8 @@ class Toga:
         # create symlinks to 2bits: let user know what 2bits were used
         self.t_2bit_link = os.path.join(self.wd, "t2bit.link")
         self.q_2bit_link = os.path.join(self.wd, "q2bit.link")
-        self.__make_symlink(self.t_2bit, self.t_2bit_link)
-        self.__make_symlink(self.q_2bit, self.q_2bit_link)
+        make_symlink(self.t_2bit, self.t_2bit_link)
+        make_symlink(self.q_2bit, self.q_2bit_link)
 
         # dump input parameters, object state
         self.toga_params_file = os.path.join(self.temp_wd, "toga_init_state.json")
@@ -303,19 +303,6 @@ class Toga:
 
         to_log(f"Saving output to {self.wd}")
         to_log(f"Arguments stored in {self.toga_args_file}")
-
-    @staticmethod
-    def __make_symlink(src, dest):
-        """Create a symlink.
-
-        os.symlink expects that dest doesn't exist.
-        Need to make a couple of checks before calling it.
-        """
-        if os.path.islink(dest):
-            return
-        elif os.path.isfile(dest):
-            return
-        os.symlink(src, dest)
 
     @staticmethod
     def __gen_project_name():
@@ -389,18 +376,17 @@ class Toga:
             # None is just a placeholder that indicated that we don't need
             # to compare chrom lengths with 2bit
             chrom_sizes_in_bed = {x: None for x in chroms_in_bed}
-        self.__check_isoforms_file(t_in_bed)
-        self.__check_u12_file(t_in_bed)
-        self.__check_2bit_file(self.t_2bit, chrom_sizes_in_bed, self.ref_bed)
+        self.isoforms = check_isoforms_file(self.isoforms_arg, t_in_bed, self.temp_wd)
+        self.u12 = check_and_write_u12_file(t_in_bed, self.u12_arg, self.temp_wd)
+        check_2bit_file_completeness(self.t_2bit, chrom_sizes_in_bed, self.ref_bed)
         # need to check that chain chroms and their sizes match 2bit file data
         with open(self.chain_file, "r") as f:
             header_lines = [x.rstrip().split() for x in f if x.startswith("chain")]
             t_chrom_to_size = {x[2]: int(x[3]) for x in header_lines}
             q_chrom_to_size = {x[7]: int(x[8]) for x in header_lines}
-        # q_chrom_in_chain = set(x.split()[7] for x in f if x.startswith("chain"))
         f.close()
-        self.__check_2bit_file(self.t_2bit, t_chrom_to_size, self.chain_file)
-        self.__check_2bit_file(self.q_2bit, q_chrom_to_size, self.chain_file)
+        check_2bit_file_completeness(self.t_2bit, t_chrom_to_size, self.chain_file)
+        check_2bit_file_completeness(self.q_2bit, q_chrom_to_size, self.chain_file)
 
     def __get_nf_dir(self, nf_dir_arg):
         """Define nextflow directory."""
@@ -411,153 +397,6 @@ class Toga:
         else:
             os.mkdir(nf_dir_arg) if not os.path.isdir(nf_dir_arg) else None
             return nf_dir_arg
-
-    def __check_2bit_file(self, two_bit_file, chroms_sizes, chrom_file):
-        """Check that 2bit file is readable."""
-        try:  # try to catch EOFError: if 2bitreader cannot read file
-            two_bit_reader = TwoBitFile(two_bit_file)
-            # check what sequences are in the file:
-            twobit_seq_to_size = two_bit_reader.sequence_sizes()
-            twobit_sequences = set(twobit_seq_to_size.keys())
-            to_log(f"Found {len(twobit_sequences)} sequences in {two_bit_file}")
-        except EOFError as err:  # this is a file but twobit reader couldn't read it
-            twobit_seq_to_size = None  # to suppress linter
-            twobit_sequences = None
-            to_log(str(err))
-            to_log(f"Error! Twobitreader cannot open {two_bit_file}")
-            self.die("Abort")
-        # another check: that bed or chain chromosomes intersect 2bit file sequences
-        check_chroms = set(chroms_sizes.keys())  # chroms in the input file
-        intersection = twobit_sequences.intersection(check_chroms)
-        chroms_not_in_2bit = check_chroms.difference(twobit_sequences)
-
-        if len(chroms_not_in_2bit) > 0:
-            # err = (
-            #     f"Error! 2bit file: {two_bit_file}; chain/bed file: {chrom_file}; "
-            #     f"Different sets of chromosomes!"
-            # )
-            missing_top_100 = list(chroms_not_in_2bit)[:100]
-            missing_str = "\n".join(missing_top_100)
-            err = (
-                f"Error! 2bit file: {two_bit_file}; chain/bed file: {chrom_file}; "
-                f"Some chromosomes present in the chain/bed file are not found in the "
-                f"Two bit file. First <=100: {missing_str}"
-            )
-            self.die(err)
-        # check that sizes also match
-        for chrom in intersection:
-            twobit_seq_len = twobit_seq_to_size[chrom]
-            comp_file_seq_len = chroms_sizes[chrom]
-            # if None: this is from bed file: cannot compare
-            if comp_file_seq_len is None:
-                continue
-            if twobit_seq_len == comp_file_seq_len:
-                continue
-            # got different sequence length in chain and 2bit files
-            # which means these chains come from something different
-            err = (
-                f"Error! 2bit file: {two_bit_file}; chain_file: {chrom_file} "
-                f"Chromosome: {chrom}; Sizes don't match! "
-                f"Size in twobit: {twobit_seq_len}; size in chain: {comp_file_seq_len}"
-            )
-            self.die(err)
-        return
-
-    def __check_u12_file(self, t_in_bed):
-        """Sanity check for U12 file."""
-        if not self.u12_arg:
-            # just not provided: nothing to check
-            return
-        # U12 file provided
-        self.u12 = os.path.join(self.temp_wd, "u12_data.txt")
-        filt_lines = []
-        f = open(self.u12_arg, "r")
-        for num, line in enumerate(f, 1):
-            line_data = line.rstrip().split("\t")
-            if len(line_data) != U12_FILE_COLS:
-                err_msg = (
-                    f"Error! U12 file {self.u12} line {num} is corrupted, 3 fields expected; "
-                    f"Got {len(line_data)}; please note that a tab-separated file expected"
-                )
-                self.die(err_msg)
-            trans_id = line_data[0]
-            if trans_id not in t_in_bed:
-                # transcript doesn't appear in the bed file: skip it
-                continue
-            exon_num = line_data[1]
-            if not exon_num.isnumeric():
-                err_msg = (
-                    f"Error! U12 file {self.u12} line {num} is corrupted, "
-                    f"field 2 value is {exon_num}; This field must "
-                    f"contain a numeric value (exon number)."
-                )
-                self.die(err_msg)
-            acc_don = line_data[2]
-            if acc_don not in U12_AD_FIELD:
-                err_msg = (
-                    f"Error! U12 file {self.u12} line {num} is corrupted, field 3 value is {acc_don}"
-                    f"; This field could have either A or D value."
-                )
-                self.die(err_msg)
-            filt_lines.append(line)  # save this line
-        f.close()
-        # another check: what if there are no lines after filter?
-        if len(filt_lines) == 0:
-            err_msg = (
-                f"Error! No lines left in the {self.u12_arg} file after filter."
-                f"Please check that transcript IDs in this file and bed {self.ref_bed} are consistent"
-            )
-            self.die(err_msg)
-        with open(self.u12, "w") as f:
-            f.write("".join(filt_lines))
-
-    def __check_isoforms_file(self, t_in_bed):
-        """Sanity checks for isoforms file."""
-        if not self.isoforms_arg:
-            to_log("Continue without isoforms file: not provided")
-            return  # not provided: nothing to check
-        # isoforms file provided: need to check correctness and completeness
-        # then check isoforms file itself
-        _, isoform_to_gene, header = read_isoforms_file(self.isoforms_arg)
-        header_maybe_gene = header[
-            0
-        ]  # header is optional, if not the case: first field is a gene
-        header_maybe_trans = header[1]  # and the second is the isoform
-        # save filtered isoforms file here:  (without unused transcripts)
-        self.isoforms = os.path.join(self.temp_wd, "isoforms.tsv")
-        # this set contains isoforms found in the isoforms file
-        t_in_i = set(isoform_to_gene.keys())
-        # there are transcripts that appear in bed but not in the isoforms file
-        # if this set is non-empty: raise an error
-        u_in_b = t_in_bed.difference(t_in_i)
-
-        if len(u_in_b) != 0:  # isoforms file is incomplete
-            extra_t_list = "\n".join(
-                list(u_in_b)[:100]
-            )  # show first 100 (or maybe show all?)
-            err_msg = (
-                f"Error! There are {len(u_in_b)} transcripts in the bed "
-                f"file absent in the isoforms file! "
-                f"There are the transcripts (first 100):\n{extra_t_list}"
-            )
-            self.die(err_msg)
-
-        t_in_both = t_in_bed.intersection(t_in_i)  # isoforms data that we save
-        # if header absent: second field found in the bed file
-        # then we don't need to write the original header
-        # if present -> let keep it
-        # there is not absolutely correct: MAYBE there is no header at all, but
-        # the first line of the isoforms file is not in the bed file, so we still will write it
-        skip_header = header_maybe_trans in t_in_bed
-
-        # write isoforms file
-        f = open(self.isoforms, "w")
-        if not skip_header:
-            f.write(f"{header_maybe_gene}\t{header_maybe_trans}\n")
-        to_log(f"Writing isoforms data for {len(t_in_both)} transcripts.")
-        for trans in t_in_both:
-            gene = isoform_to_gene[trans]
-            f.write(f"{gene}\t{trans}\n")
 
     def die(self, msg, rc=1):
         """Show msg in stderr, exit with the rc given."""
@@ -687,12 +526,6 @@ class Toga:
 
     def __check_nf_config(self):
         """Check that nextflow configure files are here."""
-        # if self.nextflow_bigmem_config and not os.path.isfile(
-        #     self.nextflow_bigmem_config
-        # ):
-        #     # bigmem config is special for now | sanity check -> defined and no file -> crash
-        #     self.die(f"Error! File {self.nextflow_bigmem_config} not found!")
-
         if self.nextflow_config_dir is None:
             # no nextflow config provided -> using local executor
             self.cesar_config_template = None
@@ -800,7 +633,7 @@ class Toga:
         to_log("\n\n### STEP 7: Execute CESAR jobs: parallel step\n")
         self.__run_cesar_jobs()
         self.__time_mark("Cesar jobs done")
-        # self.__check_cesar_completeness()
+        self.__check_cesar_completeness()
         to_log(f"Logs from individual CESAR jobs are show below")
         self.__collapse_logs("cesar_")
 
@@ -894,13 +727,6 @@ class Toga:
         bed_hdf5_index(self.ref_bed, self.index_bed_file)
         self.temp_files.append(self.index_bed_file)
 
-    @staticmethod
-    def __get_fst_col(path):
-        """Just extract first file column."""
-        with open(path, "r") as f:
-            ret = [line.rstrip().split("\t")[0] for line in f]
-        return ret
-
     def __split_chain_jobs(self):
         """Wrap split_jobs.py script."""
         # define arguments
@@ -935,7 +761,7 @@ class Toga:
 
         self.__call_proc(split_jobs_cmd, "Could not split chain jobs!")
         # collect transcripts not intersected at all here
-        self._transcripts_not_intersected = self.__get_fst_col(rejected_path)
+        self._transcripts_not_intersected = get_fst_col(rejected_path)
 
     def __extract_chain_features(self):
         """Execute extract chain features jobs."""
@@ -999,7 +825,7 @@ class Toga:
         )
         # extract not classified transcripts
         # first column in the rejected log
-        self._transcripts_not_classified = self.__get_fst_col(cl_rej_log)
+        self._transcripts_not_classified = get_fst_col(cl_rej_log)
 
         if self.stop_at_chain_class:
             self.die("User requested to halt TOGA after chain features extraction", rc=0)

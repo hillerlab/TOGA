@@ -32,6 +32,9 @@ class Version:
     def __repr__(self):
         return self.version_repr
 
+    def to_string(self):
+        return self.version_repr
+
 
 __version__ = Version(1, 1, 5)
 

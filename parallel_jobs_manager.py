@@ -216,7 +216,7 @@ class CustomStrategy(ParallelizationStrategy):
     def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         """Custom implementation.
 
-        Please provide your implementation of parallel jobs executor.
+        Please provide your implementation of parallel jobs' executor.
         Jobs are stored in the joblist_path, manager_data is a dict
         containing project-wide TOGA parameters.
 

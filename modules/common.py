@@ -349,3 +349,23 @@ def read_isoforms_file(isoforms_file, pre_def_trans_list=None):
         gene_to_isoforms[gene].append(transcript)
     f.close()
     return gene_to_isoforms, isoform_to_gene, header
+
+
+def make_symlink(src, dest):
+    """Create a symlink.
+
+    os.symlink expects that dest doesn't exist.
+    Need to make a couple of checks before calling it.
+    """
+    if os.path.islink(dest):
+        return
+    elif os.path.isfile(dest):
+        return
+    os.symlink(src, dest)
+
+
+def get_fst_col(path):
+    """Just extract the first file's column."""
+    with open(path, "r") as f:
+        ret = [line.rstrip().split("\t")[0] for line in f]
+    return ret

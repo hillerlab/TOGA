@@ -2481,7 +2481,7 @@ def _check_seq_of_intervals_intersect(intervals):
         # if start of the next < end of the curr
         # -> they intersect
         if next_one[0] < curr_one[1]:
-            return (curr_one[0], curr_one[1])
+            return curr_one[0], curr_one[1]
     return None  # nothing suspicious found
 
 
@@ -2778,7 +2778,6 @@ def realign_exons(args):
         aa_block_sat = merge_dicts(aa_block_sat_chain.values())
         missing_exons = intersect_lists(chain_missed.values())
 
-
         query_seq_chunks = []
         for elem in fragments_data:
             # stitch query seq in a proper order; elem[0] -> chain_id
@@ -2839,9 +2838,6 @@ def realign_exons(args):
                                                               args["cesar_input_save_to"],
                                                               args["temp_dir"])
     # run cesar itself
-    # TODO: exclude later
-    # print(force_include_regions_opt_v)
-    cesar_bin = args.get("cesar_binary") if args.get("cesar_binary") else DEFAULT_CESAR
     if args.get("cesar_binary"):
         cesar_bin = args.get("cesar_binary")
     elif args["opt_cesar"] is True:
