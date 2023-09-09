@@ -14,7 +14,6 @@ from re import finditer, IGNORECASE
 import ctypes
 from twobitreader import TwoBitFile
 from modules.common import parts
-from modules.common import split_in_n_lists
 from modules.common import chain_extract_id
 from modules.common import make_cds_track
 from modules.common import die
@@ -410,7 +409,7 @@ def define_short_q_proj_stat(q_chrom, q_start, q_end, q_2bit):
     query_chrom = query_genome_sequence[q_chrom]
     query_seq = query_chrom[q_start:q_end].upper()
     # N are two-sided?
-    # simply copy pasted solution from CESAR wrapper.py
+    # simply copy-pasted solution from CESAR wrapper.py
     # can be further optimised
     gap_ranges = 0
     for match in finditer(ASM_GAP_PATTERN, query_seq, IGNORECASE):
@@ -614,7 +613,7 @@ def fill_buckets(buckets, all_jobs):
 
     to_log(f"{MODULE_NAME_FOR_LOG}: bucket and number of assigned jobs:")
     for b, jobs in filter_buckets.items():
-        to_log(f"* bucket {b}Gb: {jobs} jobs")
+        to_log(f"* bucket {b}Gb: {len(jobs)} jobs")
     return filter_buckets
 
 
@@ -697,8 +696,7 @@ def save_combined_joblist(
     inact_mut_dat,
     rejected_log,
     unproc_log,
-    cesar_logs_dir,
-    name=""
+    cesar_logs_dir
 ):
     """Save joblist of joblists (combined joblist)."""
     to_log(f"{MODULE_NAME_FOR_LOG}: saving combined CESAR jobs to {combined_file}")
@@ -980,7 +978,7 @@ def main():
 
     all_jobs = {}
     skipped_3 = []
-    bigmem_jobs = []
+    # bigmem_jobs = []
 
     for gene in batch.keys():
         u12_this_gene = u12_data.get(gene)

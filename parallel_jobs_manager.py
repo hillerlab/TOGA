@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 import subprocess
 import os
 import shutil
+import time
+from modules.common import to_log
 from version import __version__
 
 __author__ = "Bogdan M. Kirilenko"
@@ -92,6 +94,7 @@ class NextflowStrategy(ParallelizationStrategy):
         os.mkdir(log_dir) if not os.path.isdir(log_dir) else None
         log_file_path = os.path.join(manager_data["logs_dir"], f"{label}.log")
         with open(log_file_path, "w") as log_file:
+            to_log(f"Parallel manager: pushing job {cmd}")
             self._process = subprocess.Popen(cmd,
                                              shell=True,
                                              stdout=log_file,

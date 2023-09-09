@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Module to manage versioning."""
 
+__author__ = "Bogdan M. Kirilenko"
 
 class Version:
     def __init__(self, major, minor, patch, metadata=None):

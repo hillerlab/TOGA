@@ -369,3 +369,21 @@ def get_fst_col(path):
     with open(path, "r") as f:
         ret = [line.rstrip().split("\t")[0] for line in f]
     return ret
+
+
+def read_chain_arg(chains_arg):
+    """Read chain argument.
+
+    Return None if argument is invalid."""
+    try:
+        chain_ids = [int(x) for x in chains_arg.split(",") if x != ""]
+        return chain_ids
+    except ValueError:
+        return None
+
+
+def get_bucket_value(mem_val, buckets):
+    for b in buckets:
+        if b > mem_val:
+            return b
+    return None
