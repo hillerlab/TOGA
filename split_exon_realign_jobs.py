@@ -590,7 +590,7 @@ def precompute_regions(
 
 def fill_buckets(buckets, all_jobs):
     """Split jobs in buckets according their memory consumption."""
-    to_log(f"{MODULE_NAME_FOR_LOG}: filling the following RAM limit buckets: {buckets}")
+    to_log(f"{MODULE_NAME_FOR_LOG}: filling the following RAM limit buckets: {list(buckets.keys())}")
     if 0 in buckets.keys():  # do not split it
         to_log(f"No buckets to split, saving {len(all_jobs)} jobs into the same queue")
         buckets[0] = list(all_jobs.keys())
@@ -1082,7 +1082,7 @@ def main():
     bucket_jobs_num = {k: math.ceil(args.jobs_num * v) for k, v in buckets_prop.items()}
     to_log(f"Final numbers of cluster jobs per bucket are:")
     for b, jn in bucket_jobs_num.items():
-        to_log(f" * bucket {b}Gb: {jn} jobs")
+        to_log(f" * bucket {b}Gb: {len(jn)} jobs")
     # save jobs, get comb lines
     to_combine = save_jobs(filled_buckets, bucket_jobs_num, args.jobs_dir)
     # save combined jobs, combined is a file containing paths to separate jobs
