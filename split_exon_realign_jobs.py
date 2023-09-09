@@ -147,7 +147,7 @@ def parse_args():
     app.add_argument(
         "--combined", default="cesar_combined", help="Combined cluster jobs."
     )
-    app.add_argument("--bigmem", default="cesar_bigmem", help="CESAR bigmem joblist")
+    # app.add_argument("--bigmem", default="cesar_bigmem", help="CESAR bigmem joblist")
     app.add_argument("--results", default="cesar_results", help="Save results to.")
     app.add_argument(
         "--check_loss", default=None, help="Call internal gene loss pipeline"
@@ -660,34 +660,34 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
     return to_combine
 
 
-def save_bigmem_jobs(bigmem_joblist, jobs_dir):
-    """Save bigmem jobs."""
-    # TODO: try to merge with save_jobs() func
-    # one bigmem job per joblist, but not more than 100
-    # if > 100: something is wrong
-    joblist_size = len(bigmem_joblist)
-    num_of_parts = joblist_size if joblist_size <= BIGMEM_LIM else BIGMEM_JOBSNUM
-    if num_of_parts == 0:
-        return None  # no bigmem jobs
-    to_log(f"{MODULE_NAME_FOR_LOG}: saving {joblist_size} jobs to BIGMEM queue")
-    to_log(
-        f"!!{MODULE_NAME_FOR_LOG}: this part is a subject of being "
-        f"refactored or excluded from the pipeline"
-    )
-
-    bigmem_parts = split_in_n_lists(bigmem_joblist, num_of_parts)
-    bigmem_files_num = len(bigmem_parts)  # in case if num of jobs < BIGMEM_JOBSNUM
-    bigmem_paths = []
-    if bigmem_files_num == 0:
-        return None  # no bigmem jobs at all
-    for num, bigmem_part in enumerate(bigmem_parts):
-        file_name = f"cesar_job_{num}_bigmem"
-        file_path = os.path.abspath(os.path.join(jobs_dir, file_name))
-        f = open(file_path, "w")
-        f.write("\n".join(bigmem_part) + "\n")
-        f.close()
-        bigmem_paths.append(file_path)
-    return bigmem_paths
+# def save_bigmem_jobs(bigmem_joblist, jobs_dir):
+#     """Save bigmem jobs."""
+#     # TODO: try to merge with save_jobs() func
+#     # one bigmem job per joblist, but not more than 100
+#     # if > 100: something is wrong
+#     joblist_size = len(bigmem_joblist)
+#     num_of_parts = joblist_size if joblist_size <= BIGMEM_LIM else BIGMEM_JOBSNUM
+#     if num_of_parts == 0:
+#         return None  # no bigmem jobs
+#     to_log(f"{MODULE_NAME_FOR_LOG}: saving {joblist_size} jobs to BIGMEM queue")
+#     to_log(
+#         f"!!{MODULE_NAME_FOR_LOG}: this part is a subject of being "
+#         f"refactored or excluded from the pipeline"
+#     )
+#
+#     bigmem_parts = split_in_n_lists(bigmem_joblist, num_of_parts)
+#     bigmem_files_num = len(bigmem_parts)  # in case if num of jobs < BIGMEM_JOBSNUM
+#     bigmem_paths = []
+#     if bigmem_files_num == 0:
+#         return None  # no bigmem jobs at all
+#     for num, bigmem_part in enumerate(bigmem_parts):
+#         file_name = f"cesar_job_{num}_bigmem"
+#         file_path = os.path.abspath(os.path.join(jobs_dir, file_name))
+#         f = open(file_path, "w")
+#         f.write("\n".join(bigmem_part) + "\n")
+#         f.close()
+#         bigmem_paths.append(file_path)
+#     return bigmem_paths
 
 
 def save_combined_joblist(
@@ -701,7 +701,7 @@ def save_combined_joblist(
     name=""
 ):
     """Save joblist of joblists (combined joblist)."""
-    to_log(f"{MODULE_NAME_FOR_LOG}: saving combined CESAR jobs to {to_combine}")
+    to_log(f"{MODULE_NAME_FOR_LOG}: saving combined CESAR jobs to {combined_file}")
     f = open(combined_file, "w")
     for num, comb in enumerate(to_combine, 1):
         basename = os.path.basename(comb).split(".")[0]
@@ -1036,11 +1036,11 @@ def main():
             elif stat == MEM_BIGMEM:
                 to_app = (gene, chains_arg, f"requires {gig}) -> bigmem job")
                 skipped_3.append(to_app)
-                bigmem_jobs.append(job)
+                # bigmem_jobs.append(job)
                 msg = (
                     f"* !!job for transcript {gene}, chains {chains} requires "
-                    f"{gig}Gb of memory -> does not fit the memory requirements, "
-                    f"can be executed in the bigmem queue (if defined by user)"
+                    f"{gig}Gb of memory -> does not fit the memory requirements."
+                    # f"can be executed in the bigmem queue (if defined by user)"
                 )
                 to_log(msg)
                 for chain_id in chains_tup:
@@ -1105,18 +1105,18 @@ def main():
     )
 
     # save bigmem jobs, a bit different logic
-    bigmem_paths = save_bigmem_jobs(bigmem_jobs, args.jobs_dir)
-    if bigmem_paths:
-        save_combined_joblist(
-            bigmem_paths,
-            args.bigmem,
-            args.results,
-            args.check_loss,
-            args.rejected_log,
-            None,  # TODO: decide what we do with this branch
-            args.cesar_logs_dir,
-            name="bigmem",
-        )
+    # bigmem_paths = save_bigmem_jobs(bigmem_jobs, args.jobs_dir)
+    # if bigmem_paths:
+    #     save_combined_joblist(
+    #         bigmem_paths,
+    #         args.bigmem,
+    #         args.results,
+    #         args.check_loss,
+    #         args.rejected_log,
+    #         None,  # TODO: decide what we do with this branch
+    #         args.cesar_logs_dir,
+    #         name="bigmem",
+    #     )
 
     # save skipped genes if required
     if args.skipped_genes:
