@@ -34,10 +34,7 @@ WRAPPER_TEMPLATE = (
 CESAR_RUNNER = os.path.abspath(
     os.path.join(LOCATION, "cesar_runner.py")
 )  # script that will run jobs
-LONG_LOCI_FIELDS = {
-    "GGLOB",
-    "SPAN",
-}  # chain classes that could lead to very long query loci
+
 BIGMEM_LIM = 500  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 1000000
@@ -541,7 +538,7 @@ def precompute_regions(
             # or it's longer than 1M base and also this is a SPAN chain
             high_rel_len = delta_gene_times > REL_LENGTH_THR
             high_abs_len = len_delta > ABS_LENGTH_TRH
-            long_loci_field = field in LONG_LOCI_FIELDS
+            long_loci_field = field == SPAN
             if (high_rel_len or high_abs_len) and long_loci_field:
                 to_log(
                     f" * !!skipping transcript {transcript} / chain "

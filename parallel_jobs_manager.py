@@ -105,18 +105,14 @@ class NextflowStrategy(ParallelizationStrategy):
 
     def __create_config_file(self):
         """Create config file and return path to it if needed"""
-        to_log(f"DEBUG: self.label is {self.label}")
         if self.use_local_executor:
             # for local executor, no config file is needed
-            to_log("DEBUG: using local executor")
             return None
         if self.label.startswith(self.CHAIN_JOBS_PREFIX):
             config_path = os.path.abspath(os.path.join(self.nextflow_config_dir,
                                                        self.CHAIN_CONFIG_TEMPLATE_FILENAME))
-            to_log(f"DEBUG: using config {config_path}")
             return config_path
         if self.label.startswith(self.CESAR_JOBS_PREFIX):
-            to_log(f"DEBUG: making config for {self.label}")
             # need to craft CESAR joblist first
             config_template_path = os.path.abspath(os.path.join(self.nextflow_config_dir,
                                                                 self.CESAR_CONFIG_TEMPLATE_FILENAME))
@@ -129,7 +125,6 @@ class NextflowStrategy(ParallelizationStrategy):
             config_path = os.path.abspath(os.path.join(toga_temp_dir, config_filename))
             with open(config_path, "w") as f:
                 f.write(config_string)
-            to_log(f"DEBUG: using config {config_path}")
             return config_path
         self.use_local_executor = True  # ??? should not be reachable normally
         return None  # using local executor again
@@ -206,6 +201,7 @@ class SnakeMakeStrategy(ParallelizationStrategy):
     def __int__(self):
         self._process = None
         self.return_code = None
+        raise NotImplementedError("Snakemake strategy is not yet implemented")
 
     def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         raise NotImplementedError("Snakemake strategy is not yet implemented")
@@ -222,6 +218,7 @@ class CustomStrategy(ParallelizationStrategy):
     def __init__(self):
         self._process = None
         self.return_code = None
+        raise NotImplementedError("Custom strategy is not implemented -> pls see documentation")
 
     def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         """Custom implementation.
