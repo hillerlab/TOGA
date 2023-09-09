@@ -1079,7 +1079,7 @@ def main():
     bucket_jobs_num = {k: math.ceil(args.jobs_num * v) for k, v in buckets_prop.items()}
     to_log(f"Final numbers of cluster jobs per bucket are:")
     for b, jn in bucket_jobs_num.items():
-        to_log(f" * bucket {b}Gb: {len(jn)} jobs")
+        to_log(f" * bucket {b}Gb: {jn} jobs")
     # save jobs, get comb lines
     to_combine = save_jobs(filled_buckets, bucket_jobs_num, args.jobs_dir)
     # save combined jobs, combined is a file containing paths to separate jobs

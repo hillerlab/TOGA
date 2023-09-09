@@ -24,38 +24,20 @@ from modules.common import die
 from modules.common import flatten
 from modules.inact_mut_check import inact_mut_check
 from modules.parse_cesar_output import parse_cesar_out
+from constants import Constants
+from constants import GENETIC_CODE
+from constants import COMPLEMENT_BASE
 from version import __version__
 
 __author__ = "Bogdan M. Kirilenko"
 
-complement = {
-    "A": "T",
-    "T": "A",
-    "G": "C",
-    "C": "G",
-    "N": "N",
-    "a": "t",
-    "t": "a",
-    "g": "c",
-    "c": "G",
-    "n": "n",
-}
-
-STOPS = {"TAG", "TGA", "TAA"}
 LOCATION = os.path.dirname(os.path.abspath(__file__))
 VERBOSE = False
-UNDEF_REGION = "None:0-0"
+
 TMP_NAME_SIZE = 10
 
-
-ACCEPTOR_SITE = ("ag",)
-DONOR_SITE = (
-    "gt",
-    "gc",
-)
 EXP_REG_EXTRA_FLANK = 50
 EXON_SEQ_FLANK = 10
-
 ERR_CODE_FRAGM_ERR = 2
 
 # alias; works for Hillerlab-only
@@ -94,80 +76,6 @@ DEL_PEN = -1
 AA_FLANK = 15
 SS_SIZE = 2
 
-# genetic code: also need this
-AA_CODE = {
-    "TTT": "F",
-    "TTC": "F",
-    "TTA": "L",
-    "TTG": "L",
-    "TCT": "S",
-    "TCC": "S",
-    "TCA": "S",
-    "TCG": "S",
-    "TAT": "Y",
-    "TAC": "Y",
-    "TAA": "*",
-    "TAG": "*",
-    "TGT": "C",
-    "TGC": "C",
-    "TGA": "*",
-    "TGG": "W",
-    "CTT": "L",
-    "CTC": "L",
-    "CTA": "L",
-    "CTG": "L",
-    "CCT": "P",
-    "CCC": "P",
-    "CCA": "P",
-    "CCG": "P",
-    "CAT": "H",
-    "CAC": "H",
-    "CAA": "Q",
-    "CAG": "Q",
-    "CGT": "R",
-    "CGC": "R",
-    "CGA": "R",
-    "CGG": "R",
-    "ATT": "I",
-    "ATC": "I",
-    "ATA": "I",
-    "ATG": "M",
-    "ACT": "T",
-    "ACC": "T",
-    "ACA": "T",
-    "ACG": "T",
-    "AAT": "N",
-    "AAC": "N",
-    "AAA": "K",
-    "AAG": "K",
-    "AGT": "S",
-    "AGC": "S",
-    "AGA": "R",
-    "AGG": "R",
-    "GTT": "V",
-    "GTC": "V",
-    "GTA": "V",
-    "GTG": "V",
-    "GCT": "A",
-    "GCC": "A",
-    "GCA": "A",
-    "GCG": "A",
-    "GAT": "D",
-    "GAC": "D",
-    "GAA": "E",
-    "GAG": "E",
-    "GGT": "G",
-    "GGC": "G",
-    "GGA": "G",
-    "GGG": "G",
-    "---": "-",
-    "NNN": "X",
-}
-
-XXX_CODON = "XXX"
-GAP_CODON = "---"
-NNN_CODON = "NNN"
-
 # CESAR2.0 necessary files location
 FIRST_CODON_PROFILE = "extra/tables/human/firstCodon_profile.txt"
 LAST_CODON_PROFILE = "extra/tables/human/lastCodon_profile.txt"
@@ -175,10 +83,6 @@ ACC_PROFILE = "extra/tables/human/acc_profile.txt"
 DO_PROFILE = "extra/tables/human/do_profile.txt"
 EQ_ACC_PROFILE = os.path.join(LOCATION, "supply", "eq_acc_profile.txt")
 EQ_DO_PROFILE = os.path.join(LOCATION, "supply", "eq_donor_profile.txt")
-
-ORTH_LOC_LINE_SUFFIX = "#ORTHLOC"
-
-FRAGMENT = -1
 
 
 def verbose(msg):
@@ -481,7 +385,7 @@ def read_bed(gene, bed_file):
 def revert(line):
     """Revert string and change with complement bases."""
     line = line[::-1].upper()
-    new_str = "".join([complement.get(c) for c in line if complement.get(c)])
+    new_str = "".join([COMPLEMENT_BASE.get(c) for c in line if COMPLEMENT_BASE.get(c)])
     return new_str
 
 
@@ -520,7 +424,7 @@ def translate(codons_lst):
     if len(codons_lst) == 0:
         # empty list for empty sequence
         return []
-    aa_seq = [AA_CODE.get(c) if AA_CODE.get(c) else "X" for c in codons_lst]
+    aa_seq = [GENETIC_CODE.get(c) if GENETIC_CODE.get(c) else "X" for c in codons_lst]
     return aa_seq
 
 
@@ -622,16 +526,16 @@ def check_ref_exons(exon_seqs, mask_stops):
     codons = parts(gene_seq, n=3)  # split a seq of letters in chunks of len == 3
     if codons[0] != "ATG":
         eprint("Input is corrupted! Reference sequence should start with ATG!")
-    elif codons[-1] not in STOPS:
+    elif codons[-1] not in Constants.STOP_CODONS:
         eprint("Input is corrupted! Reference sequence should end with a stop codon!")
-    stop_codons = [(n, c) for n, c in enumerate(codons[:-1]) if c in STOPS]
+    stop_codons = [(n, c) for n, c in enumerate(codons[:-1]) if c in Constants.STOP_CODONS]
     if len(stop_codons) == 0:  # no stop codons -> nothing else to do
         return exon_seqs, set()
     # there are stop codons in reference sequence:
     eprint("Warning! There are inframe stop codons!")
     for stop in stop_codons:
         eprint(f"Codon num {stop[0] + 1} - {stop[1]}")
-        codons[stop[0]] = NNN_CODON if mask_stops else codons[stop[0]]
+        codons[stop[0]] = Constants.NNN_CODON if mask_stops else codons[stop[0]]
         if stop[1] == "TGA":
             # maybe a sec codon
             sec_codons.add(stop[0])
@@ -1596,7 +1500,7 @@ def translate_codons(codons_list):
         # anyways it's possible that we cannot translate the codon, reasons are various
         # maybe there's N somewhere in the codon, or it's frame-shifted
         ref_only_let = (
-            AA_CODE.get(ref_only_let_nul, "X") if len(ref_only_let_nul) > 0 else "-"
+            GENETIC_CODE.get(ref_only_let_nul, "X") if len(ref_only_let_nul) > 0 else "-"
         )
         # in case if N query codons correspond to a single reference codon
         # there is guarantee that ref_sequence has only one codon
@@ -1612,7 +1516,7 @@ def translate_codons(codons_list):
         else:
             # possible N query codons: split query sequence into pieces of 3 characters
             que_codons = parts(que_nuc_seq, 3)
-            que_AA = [AA_CODE.get(c, "X") for c in que_codons]
+            que_AA = [GENETIC_CODE.get(c, "X") for c in que_codons]
         ref_AA_seq.extend(ref_AA)
         que_AA_seq.extend(que_AA)
     return ref_AA_seq, que_AA_seq
@@ -1829,15 +1733,15 @@ def check_codons_for_aa_sat(codons_data):
 
 def check_codon(codon):
     """Mask codon if FS or stop."""
-    if codon in STOPS:
+    if codon in Constants.STOP_CODONS:
         # mask stop
-        return XXX_CODON
-    elif codon == GAP_CODON:
+        return Constants.XXX_CODON
+    elif codon == Constants.GAP_CODON:
         # just a gap
         return codon
     elif codon.count("-") > 0:
         # FS
-        return XXX_CODON
+        return Constants.XXX_CODON
     else:  # normal codon
         return codon
 
@@ -1864,28 +1768,28 @@ def extract_codon_data(codon_table, excl_exons=None):
             if len(ref_codon) == 3:
                 ref_codon = check_codon(ref_codon)
                 t_codons.append(ref_codon)
-                q_codons.append(GAP_CODON)
+                q_codons.append(Constants.GAP_CODON)
             elif len(que_codon) % 3 == 0:
                 # Frame-preserving ins
                 ref_subcodons = [check_codon(x) for x in parts(ref_codon, 3)]
-                que_subcodons = [GAP_CODON for x in range(len(ref_subcodons))]
+                que_subcodons = [Constants.GAP_CODON for x in range(len(ref_subcodons))]
                 t_codons.extend(ref_subcodons)
                 q_codons.extend(que_subcodons)
             elif len(ref_codon) < 3:
-                t_codons.append(XXX_CODON)
-                q_codons.append(GAP_CODON)
+                t_codons.append(Constants.XXX_CODON)
+                q_codons.append(Constants.GAP_CODON)
             elif ref_codon == "-" or ref_codon == "--":
                 # special case to be captured Apr 2023
-                t_codons.append(GAP_CODON)
-                q_codons.append(XXX_CODON)
+                t_codons.append(Constants.GAP_CODON)
+                q_codons.append(Constants.XXX_CODON)
             elif len(ref_codon) < 3:
-                t_codons.append(XXX_CODON)
-                q_codons.append(XXX_CODON)
+                t_codons.append(Constants.XXX_CODON)
+                q_codons.append(Constants.XXX_CODON)
             else:
                 # something strange
                 ref_int = check_codon(ref_codon[-3:])
                 t_codons.append(ref_int)
-                q_codons.append(GAP_CODON)
+                q_codons.append(Constants.GAP_CODON)
 
             if this_exon_to_del:
                 prev_exon_was_del = True
@@ -1923,13 +1827,13 @@ def extract_codon_data(codon_table, excl_exons=None):
             q_codons.extend(que_subcodons)
             continue
         elif len(ref_codon) < 3:
-            t_codons.append(XXX_CODON)
-            q_codons.append(XXX_CODON)
+            t_codons.append(Constants.XXX_CODON)
+            q_codons.append(Constants.XXX_CODON)
         else:
             ref_int = check_codon(ref_codon[-3:])
             que_int = check_codon(que_codon[-3:])
-            fs_ref = GAP_CODON
-            fs_que = XXX_CODON
+            fs_ref = Constants.GAP_CODON
+            fs_que = Constants.XXX_CODON
             t_codons.append(fs_ref)
             q_codons.append(fs_que)
             t_codons.append(ref_int)
@@ -1988,11 +1892,11 @@ def process_cesar_out(cesar_raw_out, query_loci, inverts):
         abs_query_end = int(region.split("-")[1])
         for exon_num, indexes in exon_query_inds.items():
             if exon_num in empty_q_exons:
-                abs_coords[exon_num] = UNDEF_REGION
+                abs_coords[exon_num] = Constants.UNDEF_REGION
                 continue
             elif len(indexes) == 0:
                 # 0 indexes: definitely cannot find the exon
-                abs_coords[exon_num] = UNDEF_REGION
+                abs_coords[exon_num] = Constants.UNDEF_REGION
                 continue
             rel_start, rel_len = indexes[0], len(indexes)
             exon_abs_start = (
@@ -2055,18 +1959,18 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
     chain_id_to_codon_table = {}  # chain id -> raw codon table
 
     codons_data = parse_cesar_out(target_seq_raw, query_seq_raw, v=VERBOSE)
-    chain_id_to_codon_table[FRAGMENT] = codons_data
+    chain_id_to_codon_table[Constants.FRAGMENT_CHAIN_ID] = codons_data
     # extract protein sequences also here, just to do it in one place
     part_pIDs, part_blosums, prot_seqs_part = compute_score(codons_data)
-    prot_seqs[FRAGMENT] = prot_seqs_part
+    prot_seqs[Constants.FRAGMENT_CHAIN_ID] = prot_seqs_part
     codon_seqs_part = extract_codon_data(codons_data)
-    codon_seqs[FRAGMENT] = codon_seqs_part
+    codon_seqs[Constants.FRAGMENT_CHAIN_ID] = codon_seqs_part
     exon_query_seqs, exon_ref_seqs, empty_q_exons, exon_query_inds = extract_query_seq(
         codons_data
     )
-    exon_num_corr[FRAGMENT] = get_exon_num_corr(codons_data)
+    exon_num_corr[Constants.FRAGMENT_CHAIN_ID] = get_exon_num_corr(codons_data)
     aa_sat_part = check_codons_for_aa_sat(codons_data)
-    aa_sat_seq[FRAGMENT] = aa_sat_part
+    aa_sat_seq[Constants.FRAGMENT_CHAIN_ID] = aa_sat_part
     abs_coords = {}
 
     # extract coordinates of different exons!
@@ -2085,11 +1989,11 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
         verbose(exon_num)
         if exon_num in empty_q_exons:
             verbose("In empty Q exons")
-            abs_coords[exon_num] = UNDEF_REGION
+            abs_coords[exon_num] = Constants.UNDEF_REGION
             continue
         elif len(indexes) == 0:
             verbose("Exon not mapped")
-            abs_coords[exon_num] = UNDEF_REGION
+            abs_coords[exon_num] = Constants.UNDEF_REGION
             continue
         rel_start_not_corr, rel_len = indexes[0], len(indexes)
         borders_below_start = [x for x in q_limits if x <= rel_start_not_corr]
@@ -2125,7 +2029,7 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
         if not left_side_ok or not right_size_ok:
             # out of borders: this is possible
             # let's just skip this exon
-            exon_grange = UNDEF_REGION
+            exon_grange = Constants.UNDEF_REGION
         else:
             # this is completely OK
             exon_grange = f"{q_chrom}:{exon_abs_start}-{exon_abs_end}"
@@ -2139,11 +2043,11 @@ def process_cesar_out__fragments(cesar_raw_out, fragm_data, query_loci, inverts)
         print("Abort")
         sys.exit(ERR_CODE_FRAGM_ERR)
     # add to the global dicts
-    exon_queries[FRAGMENT] = exon_query_seqs
-    exon_refs[FRAGMENT] = exon_ref_seqs
-    percIDs[FRAGMENT] = part_pIDs
-    blosums[FRAGMENT] = part_blosums
-    query_coords[FRAGMENT] = abs_coords
+    exon_queries[Constants.FRAGMENT_CHAIN_ID] = exon_query_seqs
+    exon_refs[Constants.FRAGMENT_CHAIN_ID] = exon_ref_seqs
+    percIDs[Constants.FRAGMENT_CHAIN_ID] = part_pIDs
+    blosums[Constants.FRAGMENT_CHAIN_ID] = part_blosums
+    query_coords[Constants.FRAGMENT_CHAIN_ID] = abs_coords
     # return the same values as process_cesar_out does
     ret = (
         exon_queries,
@@ -2227,7 +2131,7 @@ def arrange_output(
             query_seq = query_seqs.get(exon_num, "N")
             query_pid = query_pids.get(exon_num, 0.0)
             query_blo = query_blosums.get(exon_num, 0.0)
-            coord = query_coords.get(exon_num, UNDEF_REGION)
+            coord = query_coords.get(exon_num, Constants.UNDEF_REGION)
 
             # extract marks for the exon
             if exon_num in exons_missed or not extra_fields:
@@ -2287,7 +2191,7 @@ def invert_complement(seq):
     """Make inverted-complement sequence."""
     reverse = seq[::-1]
     reverse_complement = "".join(
-        [complement.get(c) if complement.get(c) else "N" for c in reverse]
+        [COMPLEMENT_BASE.get(c) if COMPLEMENT_BASE.get(c) else "N" for c in reverse]
     )
     return reverse_complement
 
@@ -2364,7 +2268,7 @@ def analyse_ref_ss(s_sites):
     for num, intron in enumerate(intron_elems, 1):
         don_ = intron[0].lower()
         acc_ = intron[1].lower()
-        if acc_ in ACCEPTOR_SITE and don_ in DONOR_SITE:
+        if acc_ in Constants.ACCEPTOR_SITE and don_ in Constants.DONOR_SITE:
             # too usual and boring
             continue
         verbose(f"Intron num {num} has don: {don_} acc: {acc_}")
@@ -2523,8 +2427,8 @@ def extract_prot_sequences_from_codon(gene_name, codon_s):
         proj_name = f"{gene_name}.{chain_id}"
         ref_codons = cds_data["ref"]
         que_codons = cds_data["que"]
-        ref_aa_seq = "".join([AA_CODE.get(x, "X") for x in ref_codons])
-        que_aa_seq = "".join([AA_CODE.get(x, "X") for x in que_codons])
+        ref_aa_seq = "".join([GENETIC_CODE.get(x, "X") for x in ref_codons])
+        que_aa_seq = "".join([GENETIC_CODE.get(x, "X") for x in que_codons])
         ret[proj_name] = {"ref": ref_aa_seq, "que": que_aa_seq}
     return ret
 
@@ -2622,7 +2526,7 @@ def realign_exons(args):
             # if you still like to do this in the main pipeline: exclude lines starting with
             # ORTH_LOC_LINE_SUFFIX from CESAR wrapper output
             g_ = args["gene"]
-            line = f"{ORTH_LOC_LINE_SUFFIX}\t{g_}\t{chain_id}\t{search_locus}\t{subch_locus}\n"
+            line = f"{Constants.ORTH_LOC_LINE_SUFFIX}\t{g_}\t{chain_id}\t{search_locus}\t{subch_locus}\n"
             sys.stdout.write(line)
 
         # chain data: t_strand, t_size, q_strand, q_size
@@ -2794,13 +2698,13 @@ def realign_exons(args):
             del chain_missed[chain_id]
             del query_sequences[chain_id]
         # load new values
-        chain_exon_gap[FRAGMENT] = exon_gap
-        chain_exon_class[FRAGMENT] = exon_class
-        chain_exon_exp_reg[FRAGMENT] = exon_exp_region
-        aa_block_sat_chain[FRAGMENT] = aa_block_sat
-        chain_missed[FRAGMENT] = missing_exons
-        query_sequences[FRAGMENT] = query_seq
-        inverts[FRAGMENT] = None
+        chain_exon_gap[Constants.FRAGMENT_CHAIN_ID] = exon_gap
+        chain_exon_class[Constants.FRAGMENT_CHAIN_ID] = exon_class
+        chain_exon_exp_reg[Constants.FRAGMENT_CHAIN_ID] = exon_exp_region
+        aa_block_sat_chain[Constants.FRAGMENT_CHAIN_ID] = aa_block_sat
+        chain_missed[Constants.FRAGMENT_CHAIN_ID] = missing_exons
+        query_sequences[Constants.FRAGMENT_CHAIN_ID] = query_seq
+        inverts[Constants.FRAGMENT_CHAIN_ID] = None
 
     # some queries might be skipped -> we can eventually skip all of them
     # which means that there is nothing to call CESAR on

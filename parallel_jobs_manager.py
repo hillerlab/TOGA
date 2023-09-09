@@ -11,7 +11,6 @@ from abc import ABC, abstractmethod
 import subprocess
 import os
 import shutil
-import time
 from modules.common import to_log
 from version import __version__
 
