@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Module to manage versioning."""
 
+__author__ = "Bogdan M. Kirilenko"
 
 class Version:
     def __init__(self, major, minor, patch, metadata=None):
@@ -30,6 +31,9 @@ class Version:
             print(f"Warning! The version {self.version_repr} is absent in the {filename}")
 
     def __repr__(self):
+        return self.version_repr
+
+    def to_string(self):
         return self.version_repr
 
 

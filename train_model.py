@@ -7,16 +7,13 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import cross_val_score
 import joblib
+from constants import Constants
 from version import __version__
 
 
 __author__ = "Bogdan Kirilenko, 2020."
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
-
-# lists of features required by single and multi exon models
-SE_MODEL_FEATURES = ["gl_exo", "flank_cov", "exon_perc", "synt_log"]
-ME_MODEL_FEATURES = ["gl_exo", "loc_exo", "flank_cov", "synt_log", "intr_perc"]
 
 
 def train_on(x, y, save_to, name=None):
@@ -67,11 +64,11 @@ df_me = df[df["single_exon"] == 0]
 # create X and y for both models
 # Single and multi-exon models require different sets of features
 X_se = df_se.copy()
-X_se = X_se[SE_MODEL_FEATURES]
+X_se = X_se[Constants.SE_MODEL_FEATURES]
 y_se = df_se["y"]
 
 X_me = df_me.copy()
-X_me = X_me[ME_MODEL_FEATURES]
+X_me = X_me[Constants.ME_MODEL_FEATURES]
 y_me = df_me["y"]
 
 print(f"Single exon train length: {len(X_se)}; multi exon: {len(X_me)}")

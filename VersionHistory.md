@@ -65,11 +65,17 @@ Documentation improvements.
 * A little improvement in the `run_test.sh` script.
 * Better versions management - added version.py
 
-# TOGA 1.1.5 (in progress) #
+# TOGA 1.1.5 (current release) #
 
+* extract_codon_alignment.py: "!" characters inserted my MACSE2.0 to compensate frameshifts are replaced with "N". 
 * CESAR_wrapper.py -> does not use `/dev/shm/` or `/tmp/` partitions anymore.
-* (in progress) Significantly improved logging - all logs are automatically stored in the output directory.
-* (planned) Step management - now user can rerun TOGA from any desired step.
-* (in progress) Improved parallelization strategy
+* Significantly improved logging - all logs are automatically stored in the output directory.
 * Nomenclature update: identifiers of TOGA-annotated genes now start with "TOGA_" instead of potentially confusing "reg_"
 * Nomenclature update: TRANS chain class (considered confusing) renamed to SPAN (better fits spanning chains)
+* Added `bed2gtf` submodule to facilitate results post-processing.
+* Improved parallelization strategy: using abstract class to handle different ways to parallelize computations.
+* (started): better code organisation - constants class
+
+# TOGA 1.1.6 (planned)
+
+* (planned) Step management - now user can rerun TOGA from any desired step.

@@ -14,7 +14,6 @@ from re import finditer, IGNORECASE
 import ctypes
 from twobitreader import TwoBitFile
 from modules.common import parts
-from modules.common import split_in_n_lists
 from modules.common import chain_extract_id
 from modules.common import make_cds_track
 from modules.common import die
@@ -35,10 +34,7 @@ WRAPPER_TEMPLATE = (
 CESAR_RUNNER = os.path.abspath(
     os.path.join(LOCATION, "cesar_runner.py")
 )  # script that will run jobs
-LONG_LOCI_FIELDS = {
-    "GGLOB",
-    "SPAN",
-}  # chain classes that could lead to very long query loci
+
 BIGMEM_LIM = 500  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 1000000
@@ -147,7 +143,7 @@ def parse_args():
     app.add_argument(
         "--combined", default="cesar_combined", help="Combined cluster jobs."
     )
-    app.add_argument("--bigmem", default="cesar_bigmem", help="CESAR bigmem joblist")
+    # app.add_argument("--bigmem", default="cesar_bigmem", help="CESAR bigmem joblist")
     app.add_argument("--results", default="cesar_results", help="Save results to.")
     app.add_argument(
         "--check_loss", default=None, help="Call internal gene loss pipeline"
@@ -410,7 +406,7 @@ def define_short_q_proj_stat(q_chrom, q_start, q_end, q_2bit):
     query_chrom = query_genome_sequence[q_chrom]
     query_seq = query_chrom[q_start:q_end].upper()
     # N are two-sided?
-    # simply copy pasted solution from CESAR wrapper.py
+    # simply copy-pasted solution from CESAR wrapper.py
     # can be further optimised
     gap_ranges = 0
     for match in finditer(ASM_GAP_PATTERN, query_seq, IGNORECASE):
@@ -542,7 +538,7 @@ def precompute_regions(
             # or it's longer than 1M base and also this is a SPAN chain
             high_rel_len = delta_gene_times > REL_LENGTH_THR
             high_abs_len = len_delta > ABS_LENGTH_TRH
-            long_loci_field = field in LONG_LOCI_FIELDS
+            long_loci_field = field == SPAN
             if (high_rel_len or high_abs_len) and long_loci_field:
                 to_log(
                     f" * !!skipping transcript {transcript} / chain "
@@ -591,7 +587,7 @@ def precompute_regions(
 
 def fill_buckets(buckets, all_jobs):
     """Split jobs in buckets according their memory consumption."""
-    to_log(f"{MODULE_NAME_FOR_LOG}: filling the following RAM limit buckets: {buckets}")
+    to_log(f"{MODULE_NAME_FOR_LOG}: filling the following RAM limit buckets: {list(buckets.keys())}")
     if 0 in buckets.keys():  # do not split it
         to_log(f"No buckets to split, saving {len(all_jobs)} jobs into the same queue")
         buckets[0] = list(all_jobs.keys())
@@ -614,7 +610,7 @@ def fill_buckets(buckets, all_jobs):
 
     to_log(f"{MODULE_NAME_FOR_LOG}: bucket and number of assigned jobs:")
     for b, jobs in filter_buckets.items():
-        to_log(f"* bucket {b}Gb: {jobs} jobs")
+        to_log(f"* bucket {b}Gb: {len(jobs)} jobs")
     return filter_buckets
 
 
@@ -660,34 +656,34 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
     return to_combine
 
 
-def save_bigmem_jobs(bigmem_joblist, jobs_dir):
-    """Save bigmem jobs."""
-    # TODO: try to merge with save_jobs() func
-    # one bigmem job per joblist, but not more than 100
-    # if > 100: something is wrong
-    joblist_size = len(bigmem_joblist)
-    num_of_parts = joblist_size if joblist_size <= BIGMEM_LIM else BIGMEM_JOBSNUM
-    if num_of_parts == 0:
-        return None  # no bigmem jobs
-    to_log(f"{MODULE_NAME_FOR_LOG}: saving {joblist_size} jobs to BIGMEM queue")
-    to_log(
-        f"!!{MODULE_NAME_FOR_LOG}: this part is a subject of being "
-        f"refactored or excluded from the pipeline"
-    )
-
-    bigmem_parts = split_in_n_lists(bigmem_joblist, num_of_parts)
-    bigmem_files_num = len(bigmem_parts)  # in case if num of jobs < BIGMEM_JOBSNUM
-    bigmem_paths = []
-    if bigmem_files_num == 0:
-        return None  # no bigmem jobs at all
-    for num, bigmem_part in enumerate(bigmem_parts):
-        file_name = f"cesar_job_{num}_bigmem"
-        file_path = os.path.abspath(os.path.join(jobs_dir, file_name))
-        f = open(file_path, "w")
-        f.write("\n".join(bigmem_part) + "\n")
-        f.close()
-        bigmem_paths.append(file_path)
-    return bigmem_paths
+# def save_bigmem_jobs(bigmem_joblist, jobs_dir):
+#     """Save bigmem jobs."""
+#     # TODO: try to merge with save_jobs() func
+#     # one bigmem job per joblist, but not more than 100
+#     # if > 100: something is wrong
+#     joblist_size = len(bigmem_joblist)
+#     num_of_parts = joblist_size if joblist_size <= BIGMEM_LIM else BIGMEM_JOBSNUM
+#     if num_of_parts == 0:
+#         return None  # no bigmem jobs
+#     to_log(f"{MODULE_NAME_FOR_LOG}: saving {joblist_size} jobs to BIGMEM queue")
+#     to_log(
+#         f"!!{MODULE_NAME_FOR_LOG}: this part is a subject of being "
+#         f"refactored or excluded from the pipeline"
+#     )
+#
+#     bigmem_parts = split_in_n_lists(bigmem_joblist, num_of_parts)
+#     bigmem_files_num = len(bigmem_parts)  # in case if num of jobs < BIGMEM_JOBSNUM
+#     bigmem_paths = []
+#     if bigmem_files_num == 0:
+#         return None  # no bigmem jobs at all
+#     for num, bigmem_part in enumerate(bigmem_parts):
+#         file_name = f"cesar_job_{num}_bigmem"
+#         file_path = os.path.abspath(os.path.join(jobs_dir, file_name))
+#         f = open(file_path, "w")
+#         f.write("\n".join(bigmem_part) + "\n")
+#         f.close()
+#         bigmem_paths.append(file_path)
+#     return bigmem_paths
 
 
 def save_combined_joblist(
@@ -697,11 +693,10 @@ def save_combined_joblist(
     inact_mut_dat,
     rejected_log,
     unproc_log,
-    cesar_logs_dir,
-    name=""
+    cesar_logs_dir
 ):
     """Save joblist of joblists (combined joblist)."""
-    to_log(f"{MODULE_NAME_FOR_LOG}: saving combined CESAR jobs to {to_combine}")
+    to_log(f"{MODULE_NAME_FOR_LOG}: saving combined CESAR jobs to {combined_file}")
     f = open(combined_file, "w")
     for num, comb in enumerate(to_combine, 1):
         basename = os.path.basename(comb).split(".")[0]
@@ -980,7 +975,7 @@ def main():
 
     all_jobs = {}
     skipped_3 = []
-    bigmem_jobs = []
+    # bigmem_jobs = []
 
     for gene in batch.keys():
         u12_this_gene = u12_data.get(gene)
@@ -1036,11 +1031,11 @@ def main():
             elif stat == MEM_BIGMEM:
                 to_app = (gene, chains_arg, f"requires {gig}) -> bigmem job")
                 skipped_3.append(to_app)
-                bigmem_jobs.append(job)
+                # bigmem_jobs.append(job)
                 msg = (
                     f"* !!job for transcript {gene}, chains {chains} requires "
-                    f"{gig}Gb of memory -> does not fit the memory requirements, "
-                    f"can be executed in the bigmem queue (if defined by user)"
+                    f"{gig}Gb of memory -> does not fit the memory requirements."
+                    # f"can be executed in the bigmem queue (if defined by user)"
                 )
                 to_log(msg)
                 for chain_id in chains_tup:
@@ -1105,18 +1100,18 @@ def main():
     )
 
     # save bigmem jobs, a bit different logic
-    bigmem_paths = save_bigmem_jobs(bigmem_jobs, args.jobs_dir)
-    if bigmem_paths:
-        save_combined_joblist(
-            bigmem_paths,
-            args.bigmem,
-            args.results,
-            args.check_loss,
-            args.rejected_log,
-            None,  # TODO: decide what we do with this branch
-            args.cesar_logs_dir,
-            name="bigmem",
-        )
+    # bigmem_paths = save_bigmem_jobs(bigmem_jobs, args.jobs_dir)
+    # if bigmem_paths:
+    #     save_combined_joblist(
+    #         bigmem_paths,
+    #         args.bigmem,
+    #         args.results,
+    #         args.check_loss,
+    #         args.rejected_log,
+    #         None,  # TODO: decide what we do with this branch
+    #         args.cesar_logs_dir,
+    #         name="bigmem",
+    #     )
 
     # save skipped genes if required
     if args.skipped_genes:

@@ -1,0 +1,10 @@
+# cloc --exclude-list-file=.clocignore .
+CESAR2.0
+bed2gtf
+micro_test_out
+test_input
+TOGAInput
+venv
+.idea
+.vscode
+.DS_Store

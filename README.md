@@ -407,6 +407,23 @@ at this stage!
 A flag.
 Consider long frame-preserving indels as inactivating mutations.
 
+##### --parallelization_strategy STRATEGY, --ps STRATEGY
+
+This option lets you choose the strategy for running jobs in parallel.
+
+📅 As of September 9, 2023, the available strategies are:
+
+* `nextflow` (default)
+* `para` (internal Hillerlab script to manage sbatch)
+* `custom`
+* 
+🛠 Custom Strategy:
+If you're feeling adventurous, you can roll your own strategy.
+Just dive into `parallel_jobs_manager.py` and implement the required methods.
+
+🔮 Coming Soon:
+We're planning to add `snakemake` support in future releases.
+
 ##### --nextflow_dir NEXTFLOW_DIR, --nd NEXTFLOW_DIR
 
 Nextflow working directory: from this directory
