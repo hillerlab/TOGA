@@ -111,13 +111,15 @@ class NextflowStrategy(ParallelizationStrategy):
             to_log("DEBUG: using local executor")
             return None
         if self.label.startswith(self.CHAIN_JOBS_PREFIX):
-            config_path = os.path.join(self.nextflow_config_dir, self.CHAIN_CONFIG_TEMPLATE_FILENAME)
+            config_path = os.path.abspath(os.path.join(self.nextflow_config_dir,
+                                                       self.CHAIN_CONFIG_TEMPLATE_FILENAME))
             to_log(f"DEBUG: using config {config_path}")
             return config_path
         if self.label.startswith(self.CESAR_JOBS_PREFIX):
             to_log(f"DEBUG: making config for {self.label}")
             # need to craft CESAR joblist first
-            config_template_path = os.path.join(self.nextflow_config_dir, self.CESAR_CONFIG_TEMPLATE_FILENAME)
+            config_template_path = os.path.abspath(os.path.join(self.nextflow_config_dir,
+                                                                self.CESAR_CONFIG_TEMPLATE_FILENAME))
             with open(config_template_path, "r") as f:
                 cesar_config_template = f.read()
             config_string = cesar_config_template.replace(self.CESAR_CONFIG_MEM_TEMPLATE,

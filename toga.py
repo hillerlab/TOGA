@@ -39,6 +39,7 @@ from modules.common import read_chain_arg
 from modules.sanity_check_functions import check_2bit_file_completeness
 from modules.sanity_check_functions import check_and_write_u12_file
 from modules.sanity_check_functions import check_isoforms_file
+from modules.sanity_check_functions import check_chains_classified
 from modules.parallel_jobs_manager_helpers import monitor_jobs
 from modules.parallel_jobs_manager_helpers import get_nextflow_dir
 from parallel_jobs_manager import ParallelJobsManager
@@ -792,6 +793,7 @@ class Toga:
 
         if self.stop_at_chain_class:
             self.die("User requested to halt TOGA after chain features extraction", rc=0)
+        check_chains_classified(self.chain_results_df)
 
     def __get_proc_pseudogenes_track(self):
         """Create annotation of processed genes in query."""

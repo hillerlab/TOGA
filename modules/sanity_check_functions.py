@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sanity check helper functions are stored here."""
 import os
+from itertools import islice
 from twobitreader import TwoBitFile
 from modules.common import to_log
 from modules.common import read_isoforms_file
@@ -153,6 +154,19 @@ def check_isoforms_file(isoforms_arg, t_in_bed, temp_wd):
 
     f.close()
     return isoforms_file
+
+
+def check_chains_classified(chain_results_df):
+    """Check whether chain classification result is non-empty."""
+    def has_more_than_one_line(file_path):
+        with open(file_path, 'r') as f:
+            return sum(1 for _ in islice(f, 2)) > 1
+
+    is_complete = has_more_than_one_line(chain_results_df)
+    if is_complete is False:
+        msg = f"Chain results file {chain_results_df} is empty! Abort."
+        to_log(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":
