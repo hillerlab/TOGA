@@ -780,8 +780,9 @@ class Toga:
             "nextflow_dir": self.nextflow_dir,
             "NF_EXECUTE": self.NF_EXECUTE,
             "local_executor": self.local_executor,
-            "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
-            "keep_nf_logs": self.keep_nf_logs
+            # "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
+            "keep_nf_logs": self.keep_nf_logs,
+            "nextflow_config_dir": self.nextflow_config_dir
         }
 
         # Execute jobs via the Strategy pattern
@@ -1069,8 +1070,9 @@ class Toga:
             "nextflow_dir": self.nextflow_dir,
             "NF_EXECUTE": self.NF_EXECUTE,
             "local_executor": self.local_executor,
-            "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
-            "keep_nf_logs": self.keep_nf_logs
+            # "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
+            "keep_nf_logs": self.keep_nf_logs,
+            "nextflow_config_dir": self.nextflow_config_dir
         }
 
         jobs_manager = self.__get_paralellizer(self.para_strategy)
@@ -1312,8 +1314,9 @@ class Toga:
                 "nextflow_dir": self.nextflow_dir,
                 "NF_EXECUTE": self.NF_EXECUTE,
                 "local_executor": self.local_executor,
-                "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
-                "keep_nf_logs": self.keep_nf_logs
+                # "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
+                "keep_nf_logs": self.keep_nf_logs,
+                "nextflow_config_dir": self.nextflow_config_dir
             }
 
             jobs_manager = self.__get_paralellizer(self.para_strategy)
@@ -1461,8 +1464,9 @@ class Toga:
                 "nextflow_dir": self.nextflow_dir,
                 "NF_EXECUTE": self.NF_EXECUTE,
                 "local_executor": self.local_executor,
-                "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
-                "keep_nf_logs": self.keep_nf_logs
+                # "nf_chain_extr_config_file": self.nf_chain_extr_config_file,
+                "keep_nf_logs": self.keep_nf_logs,
+                "nextflow_config_dir": self.nextflow_config_dir
             }
             jobs_manager = self.__get_paralellizer(self.para_strategy)
             jobs_manager.execute_jobs(bucket_batch_file,
