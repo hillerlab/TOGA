@@ -3,6 +3,9 @@ import os
 
 __author__ = "Bogdan M. Kirilenko"
 
+# TODO: complete and organise the class
+# TODO: think about splitting into subclasses
+
 
 class Constants:
     LOCATION = os.path.dirname(__file__)
