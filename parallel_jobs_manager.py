@@ -21,6 +21,8 @@ class ParallelizationStrategy(ABC):
     """
     Abstract base class for a parallelization strategy.
     """
+    def __init__(self):
+        self._process = None
 
     @abstractmethod
     def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
@@ -43,6 +45,11 @@ class ParallelizationStrategy(ABC):
         """
         pass
 
+    def terminate_process(self):
+        """Terminates the associated process"""
+        if self._process:
+            self._process.terminate()
+
 
 class NextflowStrategy(ParallelizationStrategy):
     """
@@ -55,6 +62,7 @@ class NextflowStrategy(ParallelizationStrategy):
     CESAR_CONFIG_MEM_TEMPLATE = "${_MEMORY_}"
 
     def __init__(self):
+        super().__init__()
         self._process = None
         self.joblist_path = None
         self.manager_data = None
@@ -157,6 +165,7 @@ class ParaStrategy(ParallelizationStrategy):
     """
 
     def __init__(self):
+        super().__init__()
         self._process = None
         self.return_code = None
 
@@ -215,6 +224,7 @@ class CustomStrategy(ParallelizationStrategy):
     """
 
     def __init__(self):
+        super().__init__()
         self._process = None
         self.return_code = None
         raise NotImplementedError("Custom strategy is not implemented -> pls see documentation")
@@ -280,3 +290,7 @@ class ParallelJobsManager:
         :return: Status of the jobs.
         """
         return self.strategy.check_status()
+
+    def terminate_process(self):
+        """Terminate associated process."""
+        self.strategy.terminate_process()
