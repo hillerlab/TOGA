@@ -49,17 +49,38 @@ class Constants:
     UNDEF_REGION = "None:0-0"
 
     # Sequence related #
+    ATG_CODON = "ATG"
     XXX_CODON = "XXX"
     GAP_CODON = "---"
     NNN_CODON = "NNN"
-
     STOP_CODONS = {"TAG", "TGA", "TAA"}
+
     ACCEPTOR_SITE = ("ag",)
     DONOR_SITE = (
         "gt",
         "gc",
     )
 
+
+class ConstColors:
+    BLUE = "0,0,200"
+    LIGHT_BLUE = "0,200,255"
+    LIGHT_RED = "255,50,50"
+    SALMON = "255,160,120"
+    GREY = "130,130,130"
+    BROWN = "159,129,112"
+    BLACK = "10,10,10"
+
+
+class InactMutClassesConst:
+    MISS_EXON = "Missing exon"
+    DEL_EXON = "Deleted exon"
+    DEL_MISS = {MISS_EXON, DEL_EXON}
+    COMPENSATION = "COMPENSATION"
+    SSM = "SSM"
+    # (ag)acceptor-EXON-donor(gt)
+    SSM_D = "SSMD"  # Donor, right, GT,GC
+    SSM_A = "SSMA"  # Acceptor, left, AG
 
 # Standalone constants #
 COMPLEMENT_BASE = {

@@ -74,8 +74,8 @@ Documentation improvements.
 * Nomenclature update: TRANS chain class (considered confusing) renamed to SPAN (better fits spanning chains)
 * Added `bed2gtf` submodule to facilitate results post-processing.
 * Improved parallelization strategy: using abstract class to handle different ways to parallelize computations.
+* (started): better code organisation - constants class
 
 # TOGA 1.1.6 (planned)
 
 * (planned) Step management - now user can rerun TOGA from any desired step.
-

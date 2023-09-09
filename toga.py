@@ -629,6 +629,7 @@ class Toga:
                 f"Please look at: {self.cesar_crashed_batches_log}"
             )
             to_log(cesar_not_ok_message)
+        self.__cleanup_parallelizer_files()
         self.__left_done_mark()
         tot_runtime = dt.now() - self.t0
         self.__time_mark("Everything is done")
@@ -1655,6 +1656,12 @@ class Toga:
         shutil.rmtree(self.chain_class_results) if os.path.isdir(
             self.chain_class_results
         ) else None
+
+    def __cleanup_parallelizer_files(self):
+        if not self.keep_nf_logs and self.nextflow_dir:
+            # remove nextflow intermediate files
+            shutil.rmtree(self.nextflow_dir) if os.path.isdir(self.nextflow_dir) else None
+        pass
 
 
 def parse_args():

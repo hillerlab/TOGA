@@ -139,9 +139,9 @@ class NextflowStrategy(ParallelizationStrategy):
         # the process just finished
         # nextflow provides a huge and complex tree of log files
         # remove them if user did not explicitly ask to keep them
-        if not self.keep_logs and self.nf_project_path:
-            # remove nextflow intermediate files
-            shutil.rmtree(self.nf_project_path) if os.path.isdir(self.nf_project_path) else None
+        # if not self.keep_logs and self.nf_project_path:
+        #     # remove nextflow intermediate files
+        #     shutil.rmtree(self.nf_project_path) if os.path.isdir(self.nf_project_path) else None
         if self.config_path and self.label.startswith(self.CESAR_JOBS_PREFIX):
             # for cesar TOGA creates individual config files
             os.remove(self.config_path) if os.path.isfile(self.config_path) else None

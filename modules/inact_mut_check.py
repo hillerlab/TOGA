@@ -3,41 +3,34 @@
 import sys
 import argparse
 from collections import defaultdict
-from collections import namedtuple
-from version import __version__
-
-try:  # for robustness
-    from modules.parse_cesar_output import parse_cesar_out
-    from modules.parse_cesar_output import classify_exon
-    from modules.common import die
-    from modules.common import eprint
-    from modules.common import parts
-    from modules.GLP_values import *
-except ImportError:
-    from parse_cesar_output import parse_cesar_out
-    from parse_cesar_output import classify_exon
-    from common import die
-    from common import eprint
-    from common import parts
-    from GLP_values import *
+from dataclasses import dataclass
+from dataclasses import asdict
+from constants import Constants
+from constants import InactMutClassesConst as MutClasses
+from modules.parse_cesar_output import (parse_cesar_out)
+from modules.parse_cesar_output import classify_exon
+from modules.common import die
+from modules.common import eprint
+from modules.common import parts
+# please look for all named constants in the
+# modules/GLP_values.py  # TODO: revise it later
+from modules.GLP_values import *
 
 __author__ = "Bogdan Kirilenko, 2020."
 __email__ = "bogdan.kirilenko@senckenberg.de"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
-# please look for all named constants in the
-# modules/GLP_values.py
 
-# mutation "struct"
-# gene, chain, exon -> exon identifier
-# position -> num of codon, 0 if entire exon missed/deleted
-# class -> SSM, FS_DEL, FS_INS, STOP, DELETED, MISSED, BIG_DEL, BIG_INS
-# mut:
-#    if stop -> stop codon
-#    if INS/DEL -> ins/del size
-#    if SSM -> show what exactly
-# masked -> if in first/last 10% -> ignore
-Mutation = namedtuple("Mutation", "gene chain exon position mclass mut masked mut_id")
+@dataclass
+class Mutation:
+    gene: str  # gene, chain, exon -> exon identifier
+    chain: str
+    exon: int
+    position: int  # num of codon, 0 if entire exon missed/deleted
+    mclass: str  # MutClasses.SSM, FS_DEL, etc.
+    mut: str  # if stop -> stop codon, if INS/DEL -> ins/del size, etc.
+    masked: bool  # if in first/last 10% -> ignore
+    mut_id: str  # mutation ID
 
 
 def parse_args():
@@ -109,19 +102,22 @@ def parse_u12_opt(gene, u12_data):
     return ans
 
 
-def mask_mut(mut):
-    """Mutation is immutable, need a func to return a masked version."""
-    # namedtuple("Mutation", "gene chain exon position mclass mut masked mut_id")
-    gene = mut.gene
-    chain = mut.chain
-    exon = mut.exon
-    position = mut.position
-    mclass = mut.mclass
-    mut_ = mut.mut
-    masked = True
-    mut_id = mut.mut_id
-    upd_mut = Mutation(gene, chain, exon, position, mclass, mut_, masked, mut_id)
-    return upd_mut
+def create_masked_mut(mut):
+    """To refactor later.
+
+    Previous implementation used named tuple which is immutable.
+    Dataclass is mutable, however, the logic should be still adjusted.
+    """
+    return Mutation(
+        gene=mut.gene,
+        chain=mut.chain,
+        exon=mut.exon,
+        position=mut.position,
+        mclass=mut.mclass,
+        mut=mut.mut,
+        masked=True,
+        mut_id=mut.mut_id,
+    )
 
 
 def analyse_splice_sites(
@@ -182,11 +178,11 @@ def analyse_splice_sites(
         # so we can get splice site coordinates
         # if there is N in the splice site -> we don't know what's there
         # -> we are not sure -> mask this mutation
-        acceptor_splice_site = query[start - 2 : start]  # donor
+        acceptor_splice_site = query[start - 2: start]  # donor
         acceptor_splice_site_N = (
             "n" in acceptor_splice_site or "N" in acceptor_splice_site
         )
-        donor_splice_site = query[end + 1 : end + 3]  # acceptor
+        donor_splice_site = query[end + 1: end + 3]  # acceptor
         donor_splice_size_N = "n" in donor_splice_site or "N" in donor_splice_site
 
         # assign to the last / first codon of the exon (depends on what splice site is affected)
@@ -231,7 +227,7 @@ def analyse_splice_sites(
 
             # create mutation object, describe what happened
             mut_ = f"{LEFT_SPLICE_CORR}->{acceptor_splice_site}"
-            mut_id = f"{SSM_A}_{mut_counter}"
+            mut_id = f"{MutClasses.SSM_A}_{mut_counter}"
             # print(mut_id)
             mut_counter += 1
             mut = Mutation(
@@ -239,7 +235,7 @@ def analyse_splice_sites(
                 chain=chain,
                 exon=exon_num,
                 position=acceptor_codon_num,
-                mclass=SSM_A,
+                mclass=MutClasses.SSM_A,
                 mut=mut_,
                 masked=mask,
                 mut_id=mut_id,
@@ -266,7 +262,7 @@ def analyse_splice_sites(
 
             # create mutation object
             mut_ = f"{RIGHT_SPLICE_CORR}->{donor_splice_site}"
-            mut_id = f"{SSM_D}_{mut_counter}"
+            mut_id = f"{MutClasses.SSM_D}_{mut_counter}"
             # print(mut_id)
             mut_counter += 1
             mut = Mutation(
@@ -274,7 +270,7 @@ def analyse_splice_sites(
                 chain=chain,
                 exon=exon_num,
                 position=donor_codon_num,
-                mclass=SSM_D,
+                mclass=MutClasses.SSM_D,
                 mut=mut_,
                 masked=mask,
                 mut_id=mut_id,
@@ -300,7 +296,6 @@ def analyse_splice_sites(
             # if current exon doesn't follow the previous immediately -> not the case
             # like prev mut exon is 3 and current is 6
             continue
-        
 
         # if exons follow each other (like 3 and 4) then continue
         curr_pos = curr.position
@@ -309,7 +304,7 @@ def analyse_splice_sites(
         prev_type = prev.mclass
 
         # they must belong to the same intron, check this
-        if not (prev_type == SSM_D and curr_type == SSM_A):
+        if not (prev_type == MutClasses.SSM_D and curr_type == MutClasses.SSM_A):
             continue
 
         prev_to_what = prev.mut.split("->")[1]
@@ -318,8 +313,8 @@ def analyse_splice_sites(
         # mask these mutations
         if prev_to_what == curr_to_what == "--":
             # intron deletion
-            sps_report[j] = mask_mut(prev)
-            sps_report[i] = mask_mut(curr)
+            sps_report[j].masked = True
+            sps_report[i].masked = True
         else:
             continue
     return sps_report
@@ -615,7 +610,7 @@ def scan_rf(
         # however, there migth be several codons in query
         # need to split query sequence in triplets
         # check that any of them is a stop-codon
-        stop_triplets = [x for x in triplets if x in STOPS]
+        stop_triplets = [x for x in triplets if x in Constants.STOP_CODONS]
         start_triplets = [x for x in triplets if x == "ATG"]
 
         if len(stop_triplets) > 0 and not last_codon:
@@ -754,11 +749,11 @@ def detect_compensations(inact_mut, codon_table):
         end_pos = comp_muts[-1].position
         # positions are 1-based, need to correct
         # get alt frame sequence
-        codons_seq = codon_table[start_pos - 1 : end_pos]
-        Q_seq = "".join([c["que_codon"] for c in codons_seq]).replace("-", "")
+        codons_seq = codon_table[start_pos - 1: end_pos]
+        que_seq = "".join([c["que_codon"] for c in codons_seq]).replace("-", "")
         # split this sequence in codons:
-        upd_codons = parts(Q_seq, n=3)
-        if len(STOPS.intersection(upd_codons)) > 0:
+        upd_codons = parts(que_seq, n=3)
+        if len(Constants.STOP_CODONS.intersection(upd_codons)) > 0:
             # there are stops in the compensated sequence
             continue
         # add compensation track
@@ -770,7 +765,7 @@ def detect_compensations(inact_mut, codon_table):
         chain = ethalon_mut.chain
         exon = ethalon_mut.exon  # not applicable really, but let it be
         position = ethalon_mut.position
-        mclass = COMPENSATION
+        mclass = MutClasses.COMPENSATION
         mut_id = f"C_{m_counter}"
         # mutation -> comma-separated list of compensated mutation IDs
         fs_ids = [x.split("_")[1] for x in comp]
@@ -800,7 +795,7 @@ def detect_compensations(inact_mut, codon_table):
 
 def mask_compensated_fs(mut_list):
     """Mask compensated mutations."""
-    comp_muts = [m for m in mut_list if m.mclass == COMPENSATION]
+    comp_muts = [m for m in mut_list if m.mclass == MutClasses.COMPENSATION]
     if len(comp_muts) == 0:
         # no compensations, no worries
         return mut_list
@@ -819,7 +814,7 @@ def mask_compensated_fs(mut_list):
     not_touch = [m for m in mut_list if m.mut_id not in comp_fs_ids]
     # to_mask -> these we'd like to mask
     to_mask = [m for m in mut_list if m.mut_id in comp_fs_ids]
-    masked = [mask_mut(m) for m in to_mask]
+    masked = [create_masked_mut(m) for m in to_mask]
     filtered = not_touch + masked
     return filtered
 
@@ -890,7 +885,7 @@ def classify_exons(
                 exon=ex_num_,
                 position=0,
                 mut="-",
-                mclass=MISS_EXON,
+                mclass=MutClasses.MISS_EXON,
                 masked=False,
                 mut_id=f"MIS_{miss_num}",
             )
@@ -919,7 +914,7 @@ def classify_exons(
                 exon=ex_num_,
                 position=0,
                 mut="-",
-                mclass=MISS_EXON,
+                mclass=MutClasses.MISS_EXON,
                 masked=False,
                 mut_id=f"MIS_{miss_num}",
             )
@@ -947,7 +942,7 @@ def classify_exons(
                 exon=ex_num_,
                 position=0,
                 mut="-",
-                mclass=DEL_EXON,
+                mclass=MutClasses.DEL_EXON,
                 masked=atg_mask,
                 mut_id=f"DEL_{del_num}",
             )
@@ -974,7 +969,7 @@ def muts_to_text(
     # first, save all inactivating mutations:
     for elem in ordered:
         # convert named tuple to list:
-        elem_values = list(elem._asdict().values())
+        elem_values = list(asdict(elem).values())
         # last field masked values False and True might be confusing
         # make explicit "masked" and "unmasked"
         if elem_values[6] is False:
@@ -982,11 +977,11 @@ def muts_to_text(
         else:
             elem_values[6] = "masked"
         elem_values = [str(x) for x in elem_values]
-        # hash-tag to distinguish CESAR output from GeneLossScanner
+        # hashtag to distinguish CESAR output from GeneLossScanner
         elem_string = "# " + "\t".join(elem_values)
         strings.append(elem_string)
     # then same %intact-related features, just fill the template
-    # again, hash-tag to distinguish from CESAR output
+    # again, hashtag to distinguish from CESAR output
     for q, val in perc_intact_1.items():
         p_intact_line = f"# {gene}\t{q}\tINTACT_PERC_IGNORE_M {val}"
         strings.append(p_intact_line)
@@ -1037,12 +1032,12 @@ def compute_intact_perc(
     codon_status = ["I" if c["que_codon"] != "---" else "D" for c in codon_table]
     # get numbers of deleted/missing exons
     del_exons = {
-        m.exon - 1 for m in query_muts if m.mclass == DEL_EXON and m.masked is False
+        m.exon - 1 for m in query_muts if m.mclass == MutClasses.DEL_EXON and m.masked is False
     }
     safe_del_exons = {
-        m.exon - 1 for m in query_muts if m.mclass == DEL_EXON and m.masked is True
+        m.exon - 1 for m in query_muts if m.mclass == MutClasses.DEL_EXON and m.masked is True
     }
-    miss_exons = {m.exon - 1 for m in query_muts if m.mclass == MISS_EXON}
+    miss_exons = {m.exon - 1 for m in query_muts if m.mclass == MutClasses.MISS_EXON}
     # using this data, get numbers of codons in missing/deleted exons
     del_codon_nums = [
         n for n, c in enumerate(codon_table) if c["t_exon_num"] in del_exons
@@ -1073,7 +1068,7 @@ def compute_intact_perc(
         codon_status[miss_codon] = "M"
 
     # get IDs of compensated FS
-    compensations = [m for m in query_muts if m.mclass == COMPENSATION]
+    compensations = [m for m in query_muts if m.mclass == MutClasses.COMPENSATION]
     comp_fs = []  # list to keep compensated frameshifts
     for comp in compensations:
         comp_field = comp.mut
@@ -1101,15 +1096,15 @@ def compute_intact_perc(
         if m.mut_id in comp_fs:
             # if compensated FS -> does not affect %intact
             continue
-        elif m.mclass in DEL_MISS:
+        elif m.mclass in MutClasses.DEL_MISS:
             # exon missing or deletion -> already considered
             continue
-        elif m.mclass == COMPENSATION:
+        elif m.mclass == MutClasses.COMPENSATION:
             # compensation is also an event in this list -> skip
             continue
         elif m.masked is True:
             continue
-        elif m.mclass == SSM_A or m.mclass == SSM_D:
+        elif m.mclass == MutClasses.SSM_A or m.mclass == MutClasses.SSM_D:
             # deal with splice site mutations
             if m.masked is True:
                 # U12 or N-containing splice site -> do not consider
@@ -1221,8 +1216,8 @@ def filter_mutations(mut_list):
     # get mutations of deleted and missing exons
     # select exon deletions and missing events itself
     # we don't want to mask them, only the rest
-    del_exon_muts = [m for m in mut_list if m.mclass == DEL_EXON]
-    mis_exon_muts = [m for m in mut_list if m.mclass == MISS_EXON]
+    del_exon_muts = [m for m in mut_list if m.mclass == MutClasses.DEL_EXON]
+    mis_exon_muts = [m for m in mut_list if m.mclass == MutClasses.MISS_EXON]
     del_exons = [m.exon for m in del_exon_muts]
     missing_exons = [m.exon for m in mis_exon_muts]
     del_and_missed = set(missing_exons + del_exons)
@@ -1343,7 +1338,7 @@ def find_safe_ex_dels(mut_list, ex_stat_, ex_lens, no_fpi=False):
                 chain=m.chain,
                 exon=m.exon,
                 position=m.position,
-                mclass=MISS_EXON,
+                mclass=MutClasses.MISS_EXON,
                 mut_id=f"MDEL_{mdel_num}",
                 mut=m.mut,
                 masked=m.masked,
@@ -1354,7 +1349,7 @@ def find_safe_ex_dels(mut_list, ex_stat_, ex_lens, no_fpi=False):
             continue
         elif frame_pres and fp_ex_len_cond:
             # exon del is frame-preserving and short
-            masked_m = mask_mut(m)  # mask this mutation then
+            masked_m = create_masked_mut(m)  # mask this mutation then
             upd_mut_list.append(masked_m)
             ex_stat_[m.exon] = "mD"  # mD -> minor deletion
         else:
@@ -1467,10 +1462,10 @@ def detect_split_stops(
             continue
         # cut corresponding seq
         f_ex_seq = f_ex_split["que_codon"][: f_ex_split["split_"]]
-        s_ex_seq = s_ex_split["que_codon"][s_ex_split["split_"] :]
+        s_ex_seq = s_ex_split["que_codon"][s_ex_split["split_"]:]
         split_codon_seq = f_ex_seq + s_ex_seq
         split_triplets = parts(split_codon_seq, 3)
-        stops_in = [x for x in split_triplets if x in STOPS]
+        stops_in = [x for x in split_triplets if x in Constants.STOP_CODONS]
         if len(stops_in) == 0:
             # no stops on split
             continue
@@ -1601,7 +1596,7 @@ def inact_mut_check(
         codon_table = parse_cesar_out(ref, query)
         atg_codons_data = make_atg_data(codon_table)
 
-                # next loop -> for deleted/missed exons
+        # next loop -> for deleted/missed exons
         if ex_prop:  # if extra data provided by CESAR wrapper we can classify exons
             # dm list -> list of 0-based exon nums which are del or missing
             exon_del_miss_, exon_stat_, dm_list = classify_exons(
@@ -1669,8 +1664,6 @@ def inact_mut_check(
             v=v,
         )
         fraction_mutations.extend(sps_mutations)
-
-
 
         # get a list of split stop codons: stop codons that appear after exon deletions
         # such as:
