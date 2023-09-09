@@ -751,7 +751,10 @@ class Toga:
 
         # Execute jobs via the Strategy pattern
         jobs_manager = self.__get_paralellizer(self.para_strategy)
-        jobs_manager.execute_jobs(self.chain_cl_jobs_combined, manager_data, project_name, wait=True)
+        try:
+            jobs_manager.execute_jobs(self.chain_cl_jobs_combined, manager_data, project_name, wait=True)
+        except KeyboardInterrupt:
+            self.__terminate_parallel_processes([jobs_manager, ])
 
     def __merge_chains_output(self):
         """Call parse results."""
@@ -1040,7 +1043,10 @@ class Toga:
         }
 
         jobs_manager = self.__get_paralellizer(self.para_strategy)
-        jobs_manager.execute_jobs(precomp_mem_joblist, manager_data, project_name, wait=True)
+        try:
+            jobs_manager.execute_jobs(precomp_mem_joblist, manager_data, project_name, wait=True)
+        except KeyboardInterrupt:
+            self.__terminate_parallel_processes([jobs_manager, ])
         self.__merge_dir(mem_dir, self.precomp_mem_cesar)
         self.cesar_mem_was_precomputed = True
 
@@ -1218,50 +1224,54 @@ class Toga:
         project_paths = []
         project_names = []
         jobs_managers = []
-        timestamp = str(time.time()).split(".")[1]
+        try:
+            timestamp = str(time.time()).split(".")[1]
 
-        if self.cesar_buckets == "0":
-            buckets = [0]
-        else:
-            buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
-        to_log(f"Pushing {len(buckets)} CESAR job lists")
+            if self.cesar_buckets == "0":
+                buckets = [0]
+            else:
+                buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
+            to_log(f"Pushing {len(buckets)} CESAR job lists")
 
-        for bucket in buckets:
-            to_log(f"Pushing memory bucket {bucket}Gb to the executor")
-            # 0 means that that buckets were not split
-            mem_lim = bucket if bucket != 0 else self.cesar_mem_limit
+            for bucket in buckets:
+                to_log(f"Pushing memory bucket {bucket}Gb to the executor")
+                # 0 means that that buckets were not split
+                mem_lim = bucket if bucket != 0 else self.cesar_mem_limit
 
-            project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_{bucket}"
-            project_names.append(project_name)
-            joblist_abspath = self.__locate_joblist_abspath(bucket)
+                project_name = f"cesar_jobs__{self.project_name}_at_{timestamp}_q_{bucket}"
+                project_names.append(project_name)
+                joblist_abspath = self.__locate_joblist_abspath(bucket)
 
-            project_path = os.path.join(self.nextflow_dir, project_name)
-            project_paths.append(project_path)
+                project_path = os.path.join(self.nextflow_dir, project_name)
+                project_paths.append(project_path)
 
-            manager_data = {
-                "project_name": project_name,
-                "project_path": project_path,
-                "logs_dir": project_path,
-                "nextflow_dir": self.nextflow_dir,
-                "NF_EXECUTE": self.NF_EXECUTE,
-                "local_executor": self.local_executor,
-                "keep_nf_logs": self.keep_nf_logs,
-                "nextflow_config_dir": self.nextflow_config_dir,
-                "temp_wd": self.temp_wd
-            }
+                manager_data = {
+                    "project_name": project_name,
+                    "project_path": project_path,
+                    "logs_dir": project_path,
+                    "nextflow_dir": self.nextflow_dir,
+                    "NF_EXECUTE": self.NF_EXECUTE,
+                    "local_executor": self.local_executor,
+                    "keep_nf_logs": self.keep_nf_logs,
+                    "nextflow_config_dir": self.nextflow_config_dir,
+                    "temp_wd": self.temp_wd
+                }
 
-            jobs_manager = self.__get_paralellizer(self.para_strategy)
-            jobs_manager.execute_jobs(joblist_abspath,
-                                      manager_data,
-                                      project_name,
-                                      memory_limit=mem_lim,
-                                      wait=self.exec_cesar_parts_sequentially)
-            jobs_managers.append(jobs_manager)
-            time.sleep(Constants.CESAR_PUSH_INTERVAL)
+                jobs_manager = self.__get_paralellizer(self.para_strategy)
+                jobs_manager.execute_jobs(joblist_abspath,
+                                          manager_data,
+                                          project_name,
+                                          memory_limit=mem_lim,
+                                          wait=self.exec_cesar_parts_sequentially)
+                jobs_managers.append(jobs_manager)
+                time.sleep(Constants.CESAR_PUSH_INTERVAL)
 
-        if self.exec_cesar_parts_sequentially is False:
-            monitor_jobs(jobs_managers)
-        self.__save_para_time_output_if_applicable(project_names)
+            if self.exec_cesar_parts_sequentially is False:
+                monitor_jobs(jobs_managers)
+            self.__save_para_time_output_if_applicable(project_names)
+        except KeyboardInterrupt:
+            # to kill detached cluster jobs, just in case
+            self.__terminate_parallel_processes(jobs_managers)
 
     def __rebuild_crashed_jobs(self, crashed_jobs):
         """If TOGA has to re-run CESAR jobs we still need some buckets."""
@@ -1333,65 +1343,70 @@ class Toga:
         temp_jobs_dir = os.path.join(self.wd, "RERUN_CESAR_JOBS")
         os.mkdir(temp_jobs_dir) if not os.path.isdir(temp_jobs_dir) else None
         timestamp = str(time.time()).split(".")[1]  # for project name
-        jobs_managers = []
-        project_paths = []
+
         self.rejected_dir_rerun = os.path.join(self.temp_wd, "cesar_jobs_crashed_again")
         os.mkdir(self.rejected_dir_rerun) if not os.path.isdir(
             self.rejected_dir_rerun
         ) else None
+
+        jobs_managers = []
+        project_paths = []
         err_log_files = []
 
-        for bucket, jobs in bucket_to_jobs.items():
-            to_log(f"!!RERUN CESAR JOBS: Pushing {len(jobs)} jobs into {bucket} GB queue")
-            batch_path = f"_cesar_rerun_batch_{bucket}"
-            bucket_batch_file = os.path.join(self.wd, batch_path)
-            batch_commands = []
-            for num, job in enumerate(jobs, 1):
-                job_file = f"rerun_job_{num}_{bucket}"
-                job_path = os.path.join(temp_jobs_dir, job_file)
-                f = open(job_path, "w")
-                f.write(job)
+        try:
+            for bucket, jobs in bucket_to_jobs.items():
+                to_log(f"!!RERUN CESAR JOBS: Pushing {len(jobs)} jobs into {bucket} GB queue")
+                batch_path = f"_cesar_rerun_batch_{bucket}"
+                bucket_batch_file = os.path.join(self.wd, batch_path)
+                batch_commands = []
+                for num, job in enumerate(jobs, 1):
+                    job_file = f"rerun_job_{num}_{bucket}"
+                    job_path = os.path.join(temp_jobs_dir, job_file)
+                    f = open(job_path, "w")
+                    f.write(job)
+                    f.write("\n")
+                    f.close()
+                    out_filename = f"rerun_job_{num}_{bucket}.txt"
+                    output_path = os.path.join(self.cesar_results, out_filename)
+                    inact_path = os.path.join(self.gene_loss_data, out_filename)
+                    rejected = os.path.join(self.rejected_dir_rerun, out_filename)
+                    err_log_files.append(rejected)
+                    batch_cmd = Constants.CESAR_RUNNER_TMP.format(
+                        Constants.CESAR_RUNNER, job_path, output_path, inact_path, rejected
+                    )
+                    batch_commands.append(batch_cmd)
+                f = open(bucket_batch_file, "w")
+                f.write("\n".join(batch_commands))
                 f.write("\n")
                 f.close()
-                out_filename = f"rerun_job_{num}_{bucket}.txt"
-                output_path = os.path.join(self.cesar_results, out_filename)
-                inact_path = os.path.join(self.gene_loss_data, out_filename)
-                rejected = os.path.join(self.rejected_dir_rerun, out_filename)
-                err_log_files.append(rejected)
-                batch_cmd = Constants.CESAR_RUNNER_TMP.format(
-                    Constants.CESAR_RUNNER, job_path, output_path, inact_path, rejected
-                )
-                batch_commands.append(batch_cmd)
-            f = open(bucket_batch_file, "w")
-            f.write("\n".join(batch_commands))
-            f.write("\n")
-            f.close()
 
-            project_name = f"cesar_jobs__RERUN_{self.project_name}_at_{timestamp}_q_{bucket}"
-            project_path = os.path.join(self.nextflow_dir, project_name)
-            project_paths.append(project_path)
+                project_name = f"cesar_jobs__RERUN_{self.project_name}_at_{timestamp}_q_{bucket}"
+                project_path = os.path.join(self.nextflow_dir, project_name)
+                project_paths.append(project_path)
 
-            manager_data = {
-                "project_name": project_name,
-                "project_path": project_path,
-                "logs_dir": project_path,
-                "nextflow_dir": self.nextflow_dir,
-                "NF_EXECUTE": self.NF_EXECUTE,
-                "local_executor": self.local_executor,
-                "keep_nf_logs": self.keep_nf_logs,
-                "nextflow_config_dir": self.nextflow_config_dir,
-                "temp_wd": self.temp_wd
-            }
-            jobs_manager = self.__get_paralellizer(self.para_strategy)
-            jobs_manager.execute_jobs(bucket_batch_file,
-                                      manager_data,
-                                      project_name,
-                                      memory_limit=bucket,
-                                      wait=self.exec_cesar_parts_sequentially)
-            jobs_managers.append(jobs_manager)
-            time.sleep(Constants.CESAR_PUSH_INTERVAL)
-        to_log(f"Monitoring CESAR jobs rerun")
-        monitor_jobs(jobs_managers, die_if_sc_1=True)
+                manager_data = {
+                    "project_name": project_name,
+                    "project_path": project_path,
+                    "logs_dir": project_path,
+                    "nextflow_dir": self.nextflow_dir,
+                    "NF_EXECUTE": self.NF_EXECUTE,
+                    "local_executor": self.local_executor,
+                    "keep_nf_logs": self.keep_nf_logs,
+                    "nextflow_config_dir": self.nextflow_config_dir,
+                    "temp_wd": self.temp_wd
+                }
+                jobs_manager = self.__get_paralellizer(self.para_strategy)
+                jobs_manager.execute_jobs(bucket_batch_file,
+                                          manager_data,
+                                          project_name,
+                                          memory_limit=bucket,
+                                          wait=self.exec_cesar_parts_sequentially)
+                jobs_managers.append(jobs_manager)
+                time.sleep(Constants.CESAR_PUSH_INTERVAL)
+            to_log(f"Monitoring CESAR jobs rerun")
+            monitor_jobs(jobs_managers, die_if_sc_1=True)
+        except KeyboardInterrupt:
+            self.__terminate_parallel_processes(jobs_managers)
 
         # need to check whether anything crashed again
         to_log("!!Checking whether any CESAR jobs crashed twice")
@@ -1656,6 +1671,12 @@ class Toga:
         shutil.rmtree(self.chain_class_results) if os.path.isdir(
             self.chain_class_results
         ) else None
+
+    @staticmethod
+    def __terminate_parallel_processes(jobs_managers):
+        to_log(f"KeyboardInterrupt: terminating {len(jobs_managers)} running parallel processes")
+        for job_manager in jobs_managers:
+            job_manager.terminate_process()
 
     def __cleanup_parallelizer_files(self):
         if not self.keep_nf_logs and self.nextflow_dir:
