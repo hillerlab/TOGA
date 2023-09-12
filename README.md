@@ -20,7 +20,18 @@ It shows how to install and execute TOGA, and how to handle possible issues that
 
 For more details, please check out the [TOGA wiki](https://github.com/hillerlab/TOGA/wiki).
 
-[Changelog](https://github.com/hillerlab/TOGA/blob/master/VersionHistory.md).
+
+## GitHub discussions section
+
+Interested in contributing, have questions, or want to discuss the science behind TOGA?
+Head over to our [Discussions section](https://github.com/hillerlab/TOGA/discussions).
+It's a new, experimental space (authors did not have a chance to try this GitHub function yet) where we can talk
+about anything that doesn't quite fit into the Issues framework.
+
+## Changelog
+
+For a detailed history of changes made to the TOGA project, please refer to the [Changelog](https://github.com/hillerlab/TOGA/blob/master/VersionHistory.md).
+This document provides version-specific updates, including new features, bug fixes, and other modifications.
 
 ## Installation
 

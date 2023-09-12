@@ -75,6 +75,7 @@ Documentation improvements.
 * Added `bed2gtf` submodule to facilitate results post-processing.
 * Improved parallelization strategy: using abstract class to handle different ways to parallelize computations.
 * (started): better code organisation - constants class
+* Replaced CESAR2.0 submodule with Kirilenko's lightweight fork (without Kent, etc.)
 
 # TOGA 1.1.6 (planned)
 
