@@ -237,6 +237,8 @@ it would not consider them as inactivating.
 #### Genome alignment
 
 This section explains what "please provide a genome alignment" actually means.
+Chain-formatted genome alignments suitable for running TOGA can
+be generated using our [make_lastz_chain pipeline](https://github.com/hillerlab/make_lastz_chains).
 
 ##### Chain file
 
