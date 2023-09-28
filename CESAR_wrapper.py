@@ -62,8 +62,6 @@ extract_subchain_lib_path = os.path.join(
     LOCATION, "modules", "extract_subchain_slib.so"
 )
 DEFAULT_CESAR = os.path.join(LOCATION, "CESAR2.0", "cesar")
-OPT_CESAR_LOCATION = os.path.join(LOCATION, "cesar_input_optimiser.py")
-
 ex_lib = ctypes.CDLL(extract_subchain_lib_path)
 ex_lib.extract_subchain.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
 ex_lib.extract_subchain.restype = ctypes.POINTER(ctypes.c_char_p)
@@ -251,43 +249,6 @@ def parse_args():
         help="Stitch scaffolds -> in case of a fragmented genome",
     )
     app.add_argument(
-        "--opt_cesar",
-        "--oc",
-        action="store_true",
-        dest="opt_cesar",
-        help="Using LASTZ-optimized CESAR",
-    )
-    app.add_argument(
-        "--opt_regions_save",
-        default=None,
-        help="Predefine temp file containing expected regions per exon",
-    )
-    app.add_argument(
-        "--exon_flanks_file",
-        default=None,
-        help=("Temporary file containing exon flanks; do use only if you run "
-              "the optimized CESAR version"),
-    )
-    app.add_argument(
-        "--predefined_regions",
-        "--pr",
-        default=None,
-        help="Predefined relative query coordinates "
-        "for CESAR optimisation. If set: call optimised CESAR without LASTZ",
-    )
-    app.add_argument(
-        "--opt_precompute",
-        action="store_true",
-        dest="opt_precompute",
-        help="Do only precompute memory consumption for the optimized CESAR version"
-    )
-    app.add_argument(
-        "--save_orth_locus",
-        action="store_true",
-        dest="save_orth_locus",
-        help="Do only precompute orth regions for the optimized CESAR version"
-    )
-    app.add_argument(
         "--precomputed_orth_loci",
         default=None,
         help="Path to loci saved with --save_orth_locus"
@@ -389,13 +350,13 @@ def revert(line):
     return new_str
 
 
-def get_2bit_path(db_opt):
+def get_2bit_path(db_arg):
     """Check if alias and return a path to 2bit file."""
-    if os.path.isfile(db_opt):  # not an alias
-        return db_opt  # there is nothing to do
-    elif os.path.islink(db_opt):
-        return os.readlink(db_opt)
-    aliased = two_bit_templ.format(db_opt)
+    if os.path.isfile(db_arg):  # not an alias
+        return db_arg  # there is nothing to do
+    elif os.path.islink(db_arg):
+        return os.readlink(db_arg)
+    aliased = two_bit_templ.format(db_arg)
     # check that it's a file
     die(f"Error! Cannot find {aliased} file", 1) if not os.path.isfile(
         aliased
@@ -1168,15 +1129,15 @@ def find_exons_gaps(
 def make_query_seq(chain_id, search_locus, q_db, chain_strand, bed_strand):
     """Extract query sequence."""
     query_genome = TwoBitFile(get_2bit_path(q_db))
-    qName, region = search_locus.split(":")
-    Q_start = int(region.split("-")[0])
-    Q_end = int(region.split("-")[1])
-    chrom_seq = query_genome[qName]
+    q_name, region = search_locus.split(":")
+    query_start = int(region.split("-")[0])
+    query_end = int(region.split("-")[1])
+    chrom_seq = query_genome[q_name]
     # find the locus
     verbose(
-        f"Looking for exons in range: {qName}:{Q_start}-{Q_end} for chain {chain_id}"
+        f"Looking for exons in range: {q_name}:{query_start}-{query_end} for chain {chain_id}"
     )
-    query_seq_no_dir = chrom_seq[Q_start:Q_end]
+    query_seq_no_dir = chrom_seq[query_start:query_end]
     directed = chain_strand == bed_strand
     query_seq = query_seq_no_dir if directed else revert(query_seq_no_dir)
     verbose(f"Query length for {chain_id} in locus {search_locus}: {len(query_seq)}")
@@ -1213,42 +1174,6 @@ def make_in_filename(cesar_in, temp_dir):
     cesar_in_path = os.path.join(temp_dir, filename)
     # mark that it is a temp file with True
     return cesar_in_path, True
-
-
-def make_reg_file(is_opt, incl_lines, temp_dir, predefined_file=None):
-    """Make temp file containing force-include regions."""
-    if is_opt is False:
-        # not optimized CESAR doesn't take this argument
-        return None
-    # create a file then
-    if predefined_file is None:
-        filename, _ = make_in_filename(False, temp_dir)
-    else:
-        filename = predefined_file
-    f = open(filename, "w")
-    f.write("\n".join(incl_lines))
-    f.write("\n")
-    f.close()
-    return filename
-
-
-def make_exon_flanks_file(is_opt, flanks_dict, temp_dir, predefined_file=None):
-    """Make temp file containing force-include regions."""
-    if is_opt is False:
-        # not optimized CESAR doesn't take this argument
-        return None
-    # create a file then
-    if predefined_file is None:
-        filename, _ = make_in_filename(False, temp_dir)
-    else:
-        filename = predefined_file
-    f = open(filename, "w")
-    for key, flanks in flanks_dict.items():
-        l_f = flanks.get("L", "X")
-        r_f = flanks.get("R", "X")
-        f.write(f"{key}\t{l_f}\t{r_f}\n")
-    f.close()
-    return filename
 
 
 def make_cesar_in(exons, queries, u12_elems, cesar_in_filename, cesar_temp_dir):
@@ -1316,7 +1241,7 @@ def memory_check(block_sizes, qlength_max, estimate_memory):
         num_codons = block_size // 3
         num_states += 6 + 6 * num_codons + 1 + 2 + 2 + 22 + 6
         rlength += block_size
-    MEM = (
+    mem = (
         (num_states * 4 * 8)
         + (num_states * qlength_max * 4)
         + (num_states * 304)
@@ -1325,11 +1250,11 @@ def memory_check(block_sizes, qlength_max, estimate_memory):
         + extra
     )
     # bytes to GB
-    GB = MEM / 1000000000
+    mem_gb = mem / 1000000000
     if estimate_memory:
-        sys.stdout.write(f"Expected memory consumption of:\n{GB} GB\n")
+        sys.stdout.write(f"Expected memory consumption of:\n{mem_gb} GB\n")
         sys.exit(0)
-    return GB
+    return mem_gb
 
 
 def run_cesar(
@@ -1337,11 +1262,7 @@ def run_cesar(
     input_data,
     memory_raw,
     memlim,
-    cesar_binary,
-    force_incl_file,
-    flanks_file,
-    predef_regs,
-    opt_precompute,
+    cesar_binary
 ):
     """Run CESAR for the input file or data.
 
@@ -1364,20 +1285,6 @@ def run_cesar(
     else:
         raise ValueError("run_cesar: both input_file and input_data are missing!")
 
-    # additional parameters if calling optimised CESAR version instead of canonical one
-    if force_incl_file:
-        # 1) this is optimised cesar
-        # 2) we need to add an argument
-        cesar_cmd += ["--regions_file", force_incl_file]
-    if flanks_file:
-        # also for optimised cesar only
-        cesar_cmd += ["--exon_flanks", flanks_file]
-    if predef_regs:
-        # do not call lastz if there are predefined regions
-        cesar_cmd += ["--no_lastz"]
-    if opt_precompute:
-        cesar_cmd += ["--memory_consumption"]
-
     verbose(f"Calling CESAR command:\n{' '.join(cesar_cmd)}")
 
     p = subprocess.Popen(
@@ -1393,13 +1300,16 @@ def run_cesar(
         b_stdout, b_stderr = p.communicate()
     elif input_data:
         # otherwise, feed the input_data using stdin
-        b_stdout, b_stderr = p.communicate(input=input_data.encode())  
+        b_stdout, b_stderr = p.communicate(input=input_data.encode())
+    else:
+        b_stdout, b_stderr = None, None
+        raise RuntimeError("Unreachable condition")
 
     rc = p.returncode
     if rc != 0:
         # CESAR job failed: die
         stderr = b_stderr.decode("utf-8")
-        # os.remove(input_file) if istemp else None
+        # os.remove(input_file) if is temp else None
         eprint("CESAR wrapper command crashed: {0}".format(" ".join(sys.argv)))
         die(f"CESAR failed run for {cesar_cmd}: {stderr}", 1)
         return None  # to suppress linter
@@ -2324,21 +2234,12 @@ def get_relative_coordinates(exon_exp_region, search_locus, directed, max_len=50
         # just subtract absolute start coord
         include_regions_rel = [(x[0] - start, x[1] - start) for x in include_regions]
     else:
-        # bit more complicated
+        # a bit more complicated
         include_regions_rel = [(end - x[0], end - x[1]) for x in include_regions]
     include_regions_len_filt = [
         x for x in include_regions_rel if abs(x[0] - x[1]) < max_len
     ]
     return include_regions_len_filt
-
-
-def fmt_incl_reg(chain_id, incl_regions):
-    """Format force-include regions for optimised cesar wrapper."""
-    ret = []
-    for (start, end) in incl_regions:
-        item = f"{chain_id} {start} {end}"
-        ret.append(item)
-    return ret
 
 
 def extend_rel_regions(extended_regions, query_len):
@@ -2353,26 +2254,6 @@ def extend_rel_regions(extended_regions, query_len):
         new_reg = (ext_start, ext_end)
         ext_regions.append(new_reg)
     return ext_regions
-
-
-def read_predefined_regions(arg, gene):
-    """Read predefined regions."""
-    ret = defaultdict(list)
-    if arg is None:
-        return ret
-    f = open(arg, "r")
-    for line in f:
-        line_data = line.rstrip().split("\t")
-        line_gene = line_data[0]
-        if line_gene != gene:
-            continue
-        chain_id = int(line_data[1])
-        start = line_data[2]
-        end = line_data[3]
-        line_to_out = f"{chain_id}\t{start}\t{end}"
-        ret[chain_id].append(line_to_out)
-    f.close()
-    return ret
 
 
 def _check_seq_of_intervals_intersect(intervals):
@@ -2474,14 +2355,6 @@ def realign_exons(args):
     fragments_data = []  # required for fragmented genomes
     chains_in_input = True
 
-    # regions we force to include in the optimized version
-    # those regions != orthologous loci in the query, those are used in optimised 
-    # cesar versions as regions within ortholoogus regions that must be included
-    # in the CESAR run itself
-    force_include_regions_opt_v = []
-    verbose("Reading query regions")
-    chain_to_predefined_regions = read_predefined_regions(args["predefined_regions"], args["gene"])
-
     # no need to extract chain blocks and compute where is the orthologous locus
     # it's already precomputed
     chain_to_precomp_search_loci = {}
@@ -2518,16 +2391,6 @@ def realign_exons(args):
             search_locus, subch_locus, chain_data = chain_cut(
                 chain_str, gene_range, args["gene_flank"], args["extra_flank"]
             )
-
-        if args["save_orth_locus"]:
-            # write STDOUT LINE about orthologous locus
-            # warning: to be used only on precomoute step
-            # do not use it for main CESAR calls (those that actually run CESAR)
-            # if you still like to do this in the main pipeline: exclude lines starting with
-            # ORTH_LOC_LINE_SUFFIX from CESAR wrapper output
-            g_ = args["gene"]
-            line = f"{Constants.ORTH_LOC_LINE_SUFFIX}\t{g_}\t{chain_id}\t{search_locus}\t{subch_locus}\n"
-            sys.stdout.write(line)
 
         # chain data: t_strand, t_size, q_strand, q_size
         chain_qStrand = chain_data[2]
@@ -2588,21 +2451,6 @@ def realign_exons(args):
         exon_class, exon_exp_region = classify_predict_exons(
             exon_blocks, subchain_blocks, margin_cases
         )
-        relative_regions_for_chain = get_relative_coordinates(
-            exon_exp_region, search_locus, directed
-        )
-        relative_regions_for_chain_extended = extend_rel_regions(
-            relative_regions_for_chain, len(query_seq)
-        )
-        relative_regions_formatted = fmt_incl_reg(
-            chain_id, relative_regions_for_chain_extended
-        )
-
-        force_include_regions_opt_v.extend(relative_regions_formatted)
-        # if there are predefined regions (by lastz for example)
-        extra_regions = chain_to_predefined_regions[chain_id]
-        force_include_regions_opt_v.extend(extra_regions)
-
         # check whether any exon intersects assembly gap in the corresponding region
         exon_gap = find_exons_gaps(
             exon_coordinates, exon_blocks, subchain_blocks, blocks_gaps, gap_coordinates
@@ -2714,20 +2562,6 @@ def realign_exons(args):
     qlength_max = max([len(v) for v in query_sequences.values()])
     memory = memory_check(bed_data["block_sizes"], qlength_max, args["estimate_memory"])
     verbose(f"\nExpecting a memory consumption of: {memory} GB")
-    # arrange input for CESAR and save it
-    # is_temp is True if /dev/shm is in use; flag to remove that
-    # create temp file for force-include regions, if required
-    force_include_reg_file = make_reg_file(
-        args["opt_cesar"],
-        force_include_regions_opt_v,
-        args["temp_dir"],
-        predefined_file=args["opt_regions_save"],
-    )
-    # for LASTZ-optimised CESAR we may also add +/-10 bp exon flanks
-    exon_flanks_file = make_exon_flanks_file(args["opt_cesar"],
-                                             exon_flanks,
-                                             args["temp_dir"],
-                                             predefined_file=args["exon_flanks_file"])
     # check whether some reference splice sites are non-canonical
     # doesn't apply to single-exon genes
     ref_ss_data = analyse_ref_ss(s_sites) if len(exon_sequences) != 1 else None
@@ -2744,10 +2578,6 @@ def realign_exons(args):
     # run cesar itself
     if args.get("cesar_binary"):
         cesar_bin = args.get("cesar_binary")
-    elif args["opt_cesar"] is True:
-        cesar_bin = OPT_CESAR_LOCATION
-    elif args["opt_precompute"]:
-        cesar_bin = OPT_CESAR_LOCATION
     else:
         cesar_bin = DEFAULT_CESAR
 
@@ -2757,15 +2587,8 @@ def realign_exons(args):
             cesar_in_data,
             memory,
             memlim,
-            cesar_bin,
-            force_include_reg_file,
-            exon_flanks_file,
-            args["predefined_regions"],
-            args["opt_precompute"],
+            cesar_bin
         )
-        if args["opt_precompute"]:
-            print(cesar_raw_out)
-            exit(0)
     else:  # very specific case, load already saved CESAR output
         with open(args["cesar_output"], "r") as f:
             cesar_raw_out = f.read()

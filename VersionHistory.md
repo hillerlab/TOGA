@@ -65,7 +65,7 @@ Documentation improvements.
 * A little improvement in the `run_test.sh` script.
 * Better versions management - added version.py
 
-# TOGA 1.1.5 (current release) #
+# TOGA 1.1.5 #
 
 * extract_codon_alignment.py: "!" characters inserted my MACSE2.0 to compensate frameshifts are replaced with "N". 
 * CESAR_wrapper.py -> does not use `/dev/shm/` or `/tmp/` partitions anymore.
@@ -77,6 +77,12 @@ Documentation improvements.
 * (started): better code organisation - constants class
 * Replaced CESAR2.0 submodule with Kirilenko's lightweight fork (without Kent, etc.)
 
-# TOGA 1.1.6 (planned)
+# TOGA 1.1.6 (current release) #
+
+* Removed obsolete optimised CESAR path.
+* Fixed a minor bug with re-running CESAR jobs memory parameter if no buckets were specified.
+
+# TOGA 1.1.7 (planned) #
 
 * (planned) Step management - now user can rerun TOGA from any desired step.
+* (planned) Using CESAR in the single exon mode for most of the exons to solve the RAM bottleneck (maybe TOGA 1.2.x?)

@@ -1099,20 +1099,6 @@ def main():
         args.cesar_logs_dir
     )
 
-    # save bigmem jobs, a bit different logic
-    # bigmem_paths = save_bigmem_jobs(bigmem_jobs, args.jobs_dir)
-    # if bigmem_paths:
-    #     save_combined_joblist(
-    #         bigmem_paths,
-    #         args.bigmem,
-    #         args.results,
-    #         args.check_loss,
-    #         args.rejected_log,
-    #         None,  # TODO: decide what we do with this branch
-    #         args.cesar_logs_dir,
-    #         name="bigmem",
-    #     )
-
     # save skipped genes if required
     if args.skipped_genes:
         skipped = skipped_1 + skipped_2 + skipped_3

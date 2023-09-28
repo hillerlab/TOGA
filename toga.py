@@ -174,11 +174,6 @@ class Toga:
         self.cesar_binary = (
             self.DEFAULT_CESAR if not args.cesar_binary else args.cesar_binary
         )
-        self.opt_cesar_binary = os.path.abspath(
-            os.path.join(LOCATION, "cesar_input_optimiser.py")
-        )
-        self.cesar_is_opt = args.using_optimized_cesar
-        self.output_opt_cesar_regions = args.output_opt_cesar_regions
         self.time_log = args.time_marks
         self.stop_at_chain_class = args.stop_at_chain_class
         self.rejected_log = os.path.join(self.wd, "genes_rejection_reason.tsv")
@@ -246,7 +241,6 @@ class Toga:
             self.temp_wd, Constants.CESAR_PRECOMPUTED_MEMORY_DATA
         )
         self.precomp_reg_dir = None
-        self.cesar_mem_was_precomputed = False
         self.u12_arg = args.u12
         self.u12 = None  # assign after U12 file check
 
@@ -426,9 +420,6 @@ class Toga:
         self.ORTHOLOGY_TYPE_MAP = os.path.join(
             self.LOCATION, Constants.MODULES_DIR, "orthology_type_map.py"
         )
-        self.PRECOMPUTE_OPT_CESAR_DATA = os.path.join(
-            self.LOCATION, Constants.MODULES_DIR, "precompute_regions_for_opt_cesar.py"
-        )
         self.MODEL_TRAINER = os.path.join(self.LOCATION, "train_model.py")
         self.DEFAULT_CESAR = os.path.join(self.LOCATION, "CESAR2.0", "cesar")
         self.nextflow_rel_ = os.path.join(self.LOCATION, "execute_joblist.nf")
@@ -584,7 +575,6 @@ class Toga:
         # 5) create cluster jobs for CESAR2.0
         to_log("\n\n#### STEP 5: Generate CESAR jobs")
         # experimental feature, not publically available:
-        self.__precompute_data_for_opt_cesar()
         self.__split_cesar_jobs()
         self.__time_mark("Split cesar jobs done")
 
@@ -807,258 +797,6 @@ class Toga:
             self.pred_scores, self.chain_file, self.index_bed_file, proc_pgenes_track
         )
 
-    @staticmethod
-    def __split_file(src, dst_dir, pieces_num):
-        """Split file src into pieces_num pieces and save them to dst_dir."""
-        f = open(src, "r")
-        # skip header
-        lines = list(f.readlines())[1:]
-        f.close()
-        lines_num = len(lines)
-        piece_size = ceil(lines_num / pieces_num)
-        paths_to_pieces = []
-        for num, piece in enumerate(parts(lines, piece_size), 1):
-            f_name = f"part_{num}"
-            f_path = os.path.join(dst_dir, f_name)
-            paths_to_pieces.append(f_path)
-            f = open(f_path, "w")
-            f.write("".join(piece))
-            f.close()
-        return paths_to_pieces
-    
-    def __get_transcript_to_strand(self):
-        """Get """
-        ret = {}
-        f = open(self.ref_bed, 'r')
-        for line in f:
-            ld = line.rstrip().split("\t")
-            trans = ld[3]
-            direction = ld[5]
-            ret[trans] = direction
-        f.close()
-        return ret
-
-    def __get_chain_to_qstrand(self):
-        ret = {}
-        f = open(self.chain_file, "r")
-        for line in f:
-            if not line.startswith("chain"):
-                continue
-            fields = line.rstrip().split()
-            chain_id = int(fields[-1])
-            q_strand = fields[9]
-            ret[chain_id] = q_strand
-        f.close()
-        return ret
-
-    def __fold_exon_data(self, exons_data, out_bed):
-        """Convert exon data into bed12."""
-        projection_to_exons = defaultdict(list)
-        # 1: make projection:
-        f = open(exons_data, "r")
-        for line in f:
-            ld = line.rstrip().split("\t")
-            transcript, _chain, _start, _end = ld
-            chain = int(_chain)
-            start = int(_start)
-            end = int(_end)
-            region = (start, end)
-            projection_to_exons[(transcript, chain)].append(region)
-        # 2 - get search loci for each projection
-        projection_to_search_loc = {}
-
-        f = open(self.precomp_query_loci_path, "r")
-        for elem in f:
-            elem_data = elem.split("\t")
-            transcript = elem_data[1]
-            chain = int(elem_data[2])
-            search_locus = elem_data[3]
-            chrom, s_e = search_locus.split(":")
-            s_e_split = s_e.split("-")
-            start, end = int(s_e_split[0]), int(s_e_split[1])
-            projection_to_search_loc[(transcript, chain)] = (chrom, start, end)
-        f.close()
-        trans_to_strand = self.__get_transcript_to_strand()
-        chain_to_qstrand = self.__get_chain_to_qstrand()
-        # 3 - save bed 12
-
-        # WARNING DOING BED4
-        f = open(out_bed, "w")
-        f2 = open(f"{out_bed}4", "w")
-
-        for (transcript, chain), exons in projection_to_exons.items():
-            projection = f"{transcript}.{chain}"
-            trans_strand = trans_to_strand[transcript]
-            chain_strand = chain_to_qstrand[chain]
-            to_invert = trans_strand != chain_strand
-
-            exons_sort = sorted(exons, key=lambda x: x[0])
-            if to_invert:
-                exons_sort = exons_sort[::-1]
-
-            # crash here
-            search_locus = projection_to_search_loc[(transcript, chain)]
-            chrom = search_locus[0]
-            search_start = search_locus[1]
-            search_end = search_locus[2]
-
-            if to_invert:
-                bed_start = search_end - exons_sort[0][1]
-                bed_end = search_end - exons_sort[-1][0]
-            else:
-                bed_start = exons_sort[0][0] + search_start
-                bed_end = exons_sort[-1][1] + search_start
-
-            block_sizes, block_starts = [], []
-            for exon in exons_sort:
-                abs_start_in_s, abs_end_in_s = exon
-
-                if to_invert:
-                    abs_start = search_end - abs_end_in_s
-                    abs_end = search_end - abs_start_in_s
-                else:
-                    abs_start = abs_start_in_s + search_start
-                    abs_end = abs_end_in_s + search_start
-
-                f2.write(f"{chrom}\t{abs_start}\t{abs_end}\t{projection}\n")
-
-                rel_start = abs_start - bed_start
-                block_size = abs_end - abs_start
-                block_sizes.append(block_size)
-                block_starts.append(rel_start)
-            block_sizes_field = ",".join(map(str, block_sizes))
-            block_starts_field = ",".join(map(str, block_starts))
-            all_fields = (
-                chrom,
-                bed_start,
-                bed_end,
-                projection,
-                0,
-                0,
-                bed_start,
-                bed_end,
-                "0,0,0",
-                len(exons),
-                block_sizes_field,
-                block_starts_field,
-            )
-            f.write("\t".join(map(str, all_fields)))
-            f.write("\n")
-        f.close()
-        f2.close()
-
-    def __prepare_precompute_data_for_opt_cesar_joblist(self, chain_class_temp_dir, mem_dir):
-        # split file containing gene: orthologous/paralogous chains into 100 pieces
-        class_pieces = self.__split_file(
-            self.transcript_to_chain_classes,
-            chain_class_temp_dir,
-            Constants.NUM_CESAR_MEM_PRECOMP_JOBS
-        )
-        precompute_jobs = []
-        # for nextflow abspath is better:
-        precomputed_data_abspath = os.path.abspath(self.PRECOMPUTE_OPT_CESAR_DATA)
-        # cesar_bin_abspath = os.path.abspath(self.cesar_binary)
-
-        # create joblist: one job per piece
-        for num, class_piece in enumerate(class_pieces, 1):
-            out_m_path = os.path.join(mem_dir, f"part_{num}")
-            out_reg_path = os.path.join(self.precomp_reg_dir, f"part_{num}")
-            out_ol_path = os.path.join(self.precomp_query_loci_dir, f"path_{num}")
-
-            cmd = (
-                f"{precomputed_data_abspath} {class_piece} {self.wd} {self.opt_cesar_binary} "
-                f"{self.t_2bit} {self.q_2bit} {out_m_path} --ro {out_reg_path} --ol {out_ol_path}"
-            )
-            precompute_jobs.append(cmd)
-
-        # save joblist
-        precomp_mem_joblist = os.path.join(self.wd, "_temp_cesar_precompute_memory_joblist.txt")
-        with open(precomp_mem_joblist, "w") as f:
-            f.write("\n".join(precompute_jobs))
-            f.write("\n")
-
-        return precomp_mem_joblist
-
-    def __precompute_data_for_opt_cesar(self):
-        """Precompute memory data for optimised CESAR.
-
-        LASTZ optimised CESAR requires different (lesser) amounts of memory.
-        To compute them we need to run another cluster-dependent step.
-        """
-        if not self.cesar_is_opt:
-            return  # in case we use standard CESAR this procedure is not needed
-
-        # need gene: chains
-        # artificial bed file with all possible exons per gene, maybe the longest if intersection... or not?
-        # what if there is a giant exon that does not align but smaller versions do?
-        to_log("Computing memory requirements for optimized CESAR")
-        to_log("Warning! This is an experimental feature")
-
-        mem_dir = os.path.join(self.wd, Constants.CESAR_PRECOMPUTED_MEMORY_DIRNAME)
-        chain_class_temp_dir = os.path.join(self.wd, Constants.TEMP_CHAIN_CLASS)
-
-        self.precomp_reg_dir = os.path.join(self.wd, Constants.CESAR_PRECOMPUTED_REGIONS_DIRNAME)
-        self.precomp_query_loci_dir = os.path.join(
-            self.wd, Constants.CESAR_PRECOMPUTED_ORTHO_LOCI_DIRNAME
-        )
-        self.precomp_query_loci_path = os.path.join(
-            self.temp_wd, Constants.CESAR_PRECOMPUTED_ORTHO_LOCI_DATA
-        )
-
-        os.mkdir(mem_dir) if not os.path.isdir(mem_dir) else None
-        os.mkdir(chain_class_temp_dir) if not os.path.isdir(
-            chain_class_temp_dir
-        ) else None
-        os.mkdir(self.precomp_reg_dir) if not os.path.isdir(
-            self.precomp_reg_dir
-        ) else None
-        os.mkdir(self.precomp_query_loci_dir) if not os.path.isdir(
-            self.precomp_query_loci_dir
-        ) else None
-
-        self.temp_files.append(mem_dir)
-        self.temp_files.append(chain_class_temp_dir)
-        self.temp_files.append(self.precomp_reg_dir)
-        self.temp_files.append(self.precomp_query_loci_dir)
-
-        precomp_mem_joblist = self.__prepare_precompute_data_for_opt_cesar_joblist(chain_class_temp_dir, mem_dir)
-        # now push these jobs to cluster
-        timestamp = str(time.time()).split(".")[0]
-        project_name = f"{self.project_name}_cesar_precompute_{timestamp}"
-        project_path = os.path.join(self.nextflow_dir, project_name)
-        to_log(f"Precomputing cesar regions, project name: {project_name}")
-        to_log(f"Project path: {project_path}")
-
-        # Prepare common data for the strategy to use
-        manager_data = {
-            "project_name": project_name,
-            "project_path": project_path,
-            "logs_dir": project_path,
-            "nextflow_dir": self.nextflow_dir,
-            "NF_EXECUTE": self.NF_EXECUTE,
-            "local_executor": self.local_executor,
-            "keep_nf_logs": self.keep_nf_logs,
-            "nextflow_config_dir": self.nextflow_config_dir,
-            "temp_wd": self.temp_wd
-        }
-
-        jobs_manager = self.__get_paralellizer(self.para_strategy)
-        try:
-            jobs_manager.execute_jobs(precomp_mem_joblist, manager_data, project_name, wait=True)
-        except KeyboardInterrupt:
-            self.__terminate_parallel_processes([jobs_manager, ])
-        self.__merge_dir(mem_dir, self.precomp_mem_cesar)
-        self.cesar_mem_was_precomputed = True
-
-        if self.output_opt_cesar_regions:
-            save_to = os.path.join(self.wd, "precomp_regions_for_cesar.bed")
-            exon_regions_df = os.path.join(self.wd, "precomp_regions_exons.tsv")
-            self.__merge_dir(self.precomp_reg_dir, exon_regions_df)
-            self.__merge_dir(self.precomp_query_loci_dir, self.precomp_query_loci_path)
-            self.__fold_exon_data(exon_regions_df, save_to)
-            to_log(f"Bed file containing precomputed regions is saved to: {save_to}")
-            sys.exit(0)
-
     def __split_cesar_jobs(self):
         """Call split_exon_realign_jobs.py."""
         if self.fragmented_genome:
@@ -1098,9 +836,6 @@ class Toga:
         self.temp_files.append(self.gene_loss_data)
         skipped_path = os.path.join(self.rejected_dir, "SPLIT_CESAR.txt")
         self.paralogs_log = os.path.join(self.temp_wd, "paralogs.txt")
-        cesar_binary_to_use = (
-            self.opt_cesar_binary if self.cesar_is_opt else self.cesar_binary
-        )
 
         split_cesar_cmd = (
             f"{self.SPLIT_EXON_REALIGN_JOBS} "
@@ -1118,7 +853,7 @@ class Toga:
             f"--chains_limit {self.cesar_chain_limit} "
             f"--skipped_genes {skipped_path} "
             f"--rejected_log {self.rejected_dir} "
-            f"--cesar_binary {cesar_binary_to_use} "
+            f"--cesar_binary {self.cesar_binary} "
             f"--paralogs_log {self.paralogs_log} "
             f"--uhq_flank {self.uhq_flank} "
             f"--predefined_glp_class_path {self.predefined_glp_cesar_split} "
@@ -1131,11 +866,6 @@ class Toga:
             split_cesar_cmd += f" --annotate_paralogs"
         if self.mask_all_first_10p:
             split_cesar_cmd += f" --mask_all_first_10p"
-        # split_cesar_cmd = split_cesar_cmd + f" --cesar_binary {self.cesar_binary}" \
-        #     if self.cesar_binary else split_cesar_cmd
-        split_cesar_cmd = (
-            split_cesar_cmd + f" --opt_cesar" if self.cesar_is_opt else split_cesar_cmd
-        )
         split_cesar_cmd = (
             split_cesar_cmd + " --mask_stops" if self.mask_stops else split_cesar_cmd
         )
@@ -1152,9 +882,6 @@ class Toga:
             split_cesar_cmd += f" --check_loss {self.gene_loss_data}"
         if fragm_dict_file:
             split_cesar_cmd += f" --fragments_data {fragm_dict_file}"
-        if self.cesar_mem_was_precomputed:
-            split_cesar_cmd += f" --precomp_memory_data {self.precomp_mem_cesar}"
-            split_cesar_cmd += f" --precomp_regions_data_dir {self.precomp_reg_dir}"
         self.__call_proc(split_cesar_cmd, "Could not split CESAR jobs!")
 
     def __get_cesar_jobs_for_bucket(self, comb_file, bucket_req):
@@ -1355,6 +1082,7 @@ class Toga:
 
         try:
             for bucket, jobs in bucket_to_jobs.items():
+                mem_lim = bucket if bucket != 0 and bucket else self.cesar_mem_limit
                 to_log(f"!!RERUN CESAR JOBS: Pushing {len(jobs)} jobs into {bucket} GB queue")
                 batch_path = f"_cesar_rerun_batch_{bucket}"
                 bucket_batch_file = os.path.join(self.wd, batch_path)
@@ -1399,7 +1127,7 @@ class Toga:
                 jobs_manager.execute_jobs(bucket_batch_file,
                                           manager_data,
                                           project_name,
-                                          memory_limit=bucket,
+                                          memory_limit=mem_lim,
                                           wait=self.exec_cesar_parts_sequentially)
                 jobs_managers.append(jobs_manager)
                 time.sleep(Constants.CESAR_PUSH_INTERVAL)
@@ -1498,22 +1226,6 @@ class Toga:
             f.close()
             # but need to notify user anyway
             self.cesar_ok_merged = False
-
-    def __transcript_quality(self):
-        # TODO: think about excluding this part from the TOGA pipeline
-        """Call module to get transcript quality."""
-        self.trans_quality_file = os.path.join(self.temp_wd, "transcript_quality.tsv")
-        to_log(
-            "Running module to classify annotated transcripts by quality. "
-            "The module will be potentially excluded later: this informations is "
-            "not used anywhere."
-        )
-        classify_transcripts(
-            self.meta_data,
-            self.pred_scores,
-            self.hq_orth_threshold,
-            self.trans_quality_file,
-        )
 
     def __gene_loss_summary(self):
         """Call gene loss summary."""
@@ -1691,8 +1403,7 @@ def parse_args():
     app.add_argument(
         "chain_input",
         type=str,
-        help="Chain file. Extensions like "
-        "FILE.chain or FILE.chain.gz are applicable.",
+        help="Chain file. Extensions like FILE.chain or FILE.chain.gz are applicable."
     )
     app.add_argument(
         "bed_input", type=str, help="Bed file with annotations for the target genome."
@@ -1706,27 +1417,33 @@ def parse_args():
         "--project_dir",
         "--pd",
         default=None,
-        help="Project directory. TOGA will save all intermediate and output files "
-        "exactly in this directory. If not specified, use CURRENT_DIR/PROJECT_NAME "
-        "as default (see below).",
+        help=(
+            "Project directory. TOGA will save all intermediate and output files "
+            "exactly in this directory. If not specified, use CURRENT_DIR/PROJECT_NAME "
+            "as default (see below)."
+        )
     )
     app.add_argument(
         "--project_name",
         "--pn",
         default=None,
-        help="If you don't like to provide a full path to the project directory with "
-        "--project_dir you can use this parameter. In this case TOGA will "
-        "create project directory in the current directory as "
-        '"CURRENT_DIR/PROJECT_NAME". If not provided, TOGA will try to extract '
-        "the project name from chain filename, which is not recommended.",
+        help=(
+            "If you don't like to provide a full path to the project directory with "
+            "--project_dir you can use this parameter. In this case TOGA will "
+            "create project directory in the current directory as "
+            '"CURRENT_DIR/PROJECT_NAME". If not provided, TOGA will try to extract '
+            "the project name from chain filename, which is not recommended."
+        )
     )
     app.add_argument(
         "--min_score",
         "--msc",
         type=int,
         default=15000,
-        help="Chain score threshold. Exclude chains that have a lower score "
-        "from the analysis. Default value is 15000.",
+        help=(
+            "Chain score threshold. Exclude chains that have a lower score "
+            "from the analysis. Default value is 15000."
+        )
     )
     app.add_argument(
         "--isoforms", "-i", type=str, default="", help="Path to isoforms data file"
@@ -1747,16 +1464,20 @@ def parse_args():
         "--nextflow_dir",
         "--nd",
         default=None,
-        help="Nextflow working directory: from this directory nextflow is "
-        "executed, also there all nextflow log files are kept",
+        help=(
+            "Nextflow working directory: from this directory nextflow is "
+            "executed, also there all nextflow log files are kept"
+        )
     )
     app.add_argument(
         "--nextflow_config_dir",
         "--nc",
         default=None,
-        help="Directory containing nextflow configuration files "
-        "for cluster, pls see nextflow_config_files/readme.txt "
-        "for details.",
+        help=(
+            "Directory containing nextflow configuration files "
+            "for cluster, pls see nextflow_config_files/readme.txt "
+            "for details."
+        )
     )
     app.add_argument(
         "--do_not_del_nf_logs", "--nfnd", action="store_true", dest="do_not_del_nf_logs"
@@ -1769,7 +1490,6 @@ def parse_args():
         help=(
             "The parallelization strategy to use. If custom -> please provide "
             "a custom strategy implementation in the parallel_jobs_manager.py "
-            "(to be enabled in future)"
         )
     )
     # chain features related
@@ -1778,16 +1498,20 @@ def parse_args():
         "--chn",
         type=int,
         default=100,
-        help="Number of cluster jobs for extracting chain features. "
-        "Recommended from 150 to 200 jobs.",
+        help=(
+            "Number of cluster jobs for extracting chain features. "
+            "Recommended from 150 to 200 jobs."
+        )
     )
     app.add_argument(
         "--no_chain_filter",
         "--ncf",
         action="store_true",
         dest="no_chain_filter",
-        help="A flag. Do not filter the chain file (make sure you specified "
-        "a .chain but not .gz file in this case)",
+        help=(
+            "A flag. Do not filter the chain file (make sure you specified a "
+            ".chain but not .gz file in this case)"
+        ),
     )
     app.add_argument(
         "--orth_score_threshold",
@@ -1808,51 +1532,40 @@ def parse_args():
         "--cesar_binary", default=None, help="CESAR binary address, cesar as default."
     )
     app.add_argument(
-        "--using_optimized_cesar",
-        "--uoc",
-        action="store_true",
-        dest="using_optimized_cesar",
-        help="Instead of CESAR, use lastz-based optimized version",
-    )
-    app.add_argument(
-        "--output_opt_cesar_regions",
-        "--oocr",
-        action="store_true",
-        dest="output_opt_cesar_regions",
-        help="If optimised CESAR is used, save the included regions, "
-        "and quit. The parameter is defined for debugging purposes only.",
-    )
-    app.add_argument(
         "--mask_stops",
         "--ms",
         action="store_true",
         dest="mask_stops",
-        help="Mask stop codons in target sequences. "
-        "CESAR cannot process them. Using this "
-        "parameter please make sure you know what you are doing.",
+        help=(
+            "Mask stop codons in target sequences. "
+            "CESAR cannot process them. Using this "
+            "parameter please make sure you know what you are doing."
+        )
     )
     app.add_argument(
         "--cesar_buckets",
         "--cb",
         default="0",
-        help="Comma-separated list of integers. Split CESAR jobs in buckets "
-        "depending on their memory requirements. "
-        "See README.md for explanation.",
+        help=(
+            "Comma-separated list of integers. Split CESAR jobs in buckets "
+            "depending on their memory requirements. See README.md for explanation."
+        )
     )
     app.add_argument(
         "--cesar_exec_seq",
         "--ces",
         action="store_true",
         dest="cesar_exec_seq",
-        help="Execute different CESAR jobs partitions sequentially, "
-        "not in parallel.",
+        help="Execute different CESAR jobs partitions sequentially, not in parallel."
     )
     app.add_argument(
         "--cesar_chain_limit",
         type=int,
         default=100,
-        help="Skip genes that have more that CESAR_CHAIN_LIMIT orthologous "
-        "chains. Recommended values are a 50-100.",
+        help=(
+            "Skip genes that have more that CESAR_CHAIN_LIMIT orthologous "
+            "chains. Recommended values are a 50-100."
+        )
     )
     app.add_argument(
         "--cesar_mem_limit",
@@ -1888,8 +1601,7 @@ def parse_args():
         "--no_fpi",
         action="store_true",
         dest="no_fpi",
-        help="Consider some frame-preserving mutations as inactivating. "
-        "See documentation for details.",
+        help="Consider some frame-preserving mutations as inactivating. See documentation for details."
     )
     app.add_argument(
         "--disable_fragments_joining",
@@ -1909,31 +1621,25 @@ def parse_args():
         "--ap",
         dest="annotate_paralogs",
         action="store_true",
-        help="Annotate paralogs instead of orthologs. "
-        "(experimental feature for very specific needs)",
+        help="Annotate paralogs instead of orthologs. (experimental feature for very specific needs)",
     )
     app.add_argument(
         "--mask_all_first_10p",
         "--m_f10p",
         action="store_true",
         dest="mask_all_first_10p",
-        help="Automatically mask all inactivating mutations in first 10 percent of "
-        "the reading frame, ignoring ATG codons distribution. "
-        "(Default mode in V1.0, not recommended to use in later versions)",
+        help=(
+            "Automatically mask all inactivating mutations in first 10 percent of "
+            "the reading frame, ignoring ATG codons distribution. "
+            "(Default mode in V1.0, not recommended to use in later versions)"
+        )
     )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
         sys.exit(0)
-    args = app.parse_args()
 
-    # some sanity checks
-    if args.output_opt_cesar_regions and not args.using_optimized_cesar:
-        err_msg = (
-            "Error! Please use --output_opt_cesar_regions parameter "
-            " with --using_optimized_cesar flag only"
-        )
-        sys.exit(err_msg)
+    args = app.parse_args()
     return args
 
 
