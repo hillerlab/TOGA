@@ -57,7 +57,7 @@ def check_2bit_file_completeness(two_bit_file, chroms_sizes, chrom_file):
     return
 
 
-def check_and_write_u12_file(t_in_bed, u12_arg, temp_wd):
+def check_and_write_u12_file(u12_arg, t_in_bed, temp_wd):
     """Sanity check for U12 file."""
     if u12_arg is None:
         return None
