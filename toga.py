@@ -170,7 +170,7 @@ class Toga:
         # mics things
         self.isoforms_arg = args.isoforms if args.isoforms else None
         self.isoforms = None  # will be assigned after completeness check
-        self.u12_arg = args.u12
+        self.u12_arg = args.u12 if args.u12 else None
         self.u12 = None  # assign after U12 file check
         self.chain_jobs = args.chain_jobs_num
         self.cesar_binary = (
