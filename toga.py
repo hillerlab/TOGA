@@ -381,19 +381,19 @@ class Toga:
         self.LOCATION = os.path.dirname(__file__)  # folder containing pipeline scripts
         self.CONFIGURE = os.path.join(self.LOCATION, "configure.sh")
         self.CHAIN_SCORE_FILTER = os.path.join(
-            self.LOCATION, "modules", "chain_score_filter"
+            self.LOCATION, Constants.MODULES_DIR, "chain_score_filter"
         )
         self.CHAIN_SCORE_FILTER_AWK = os.path.join(
-            self.LOCATION, "modules", "chain_score_filter.awk"
+            self.LOCATION, Constants.MODULES_DIR, "chain_score_filter.awk"
         )
         self.CHAIN_COORDS_CONVERT_LIB = os.path.join(
-            self.LOCATION, "modules", "chain_coords_converter_slib.so"
+            self.LOCATION, Constants.MODULES_DIR, "chain_coords_converter_slib.so"
         )
         self.EXTRACT_SUBCHAIN_LIB = os.path.join(
-            self.LOCATION, "modules", "extract_subchain_slib.so"
+            self.LOCATION, Constants.MODULES_DIR, "extract_subchain_slib.so"
         )
         self.CHAIN_FILTER_BY_ID = os.path.join(
-            self.LOCATION, "modules", "chain_filter_by_id"
+            self.LOCATION, Constants.MODULES_DIR, "chain_filter_by_id"
         )
         self.CHAIN_BDB_INDEX = os.path.join(
             self.LOCATION, Constants.MODULES_DIR, "chain_bst_index.py"
