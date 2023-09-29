@@ -329,13 +329,13 @@ class Toga:
     def __check_param_files(self):
         """Check that all parameter files exist."""
         files_to_check = [
-            self.u12,
             self.t_2bit,
             self.q_2bit,
             self.cesar_binary,
             self.ref_bed,
             self.chain_file,
             self.isoforms_arg,
+            self.u12_arg,
         ]
         for item in files_to_check:
             if not item:
