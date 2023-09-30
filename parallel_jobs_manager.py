@@ -83,7 +83,7 @@ class NextflowStrategy(ParallelizationStrategy):
         self.joblist_path = joblist_path
         self.manager_data = manager_data
         self.label = label
-        self.memory_limit = int(kwargs.get("memory_limit", 16))
+        self.memory_limit = int(kwargs.get("memory_limit", "16"))
 
         self.nf_project_path = manager_data.get("nextflow_dir", None)  # in fact, contains NF logs
         self.keep_logs = manager_data.get("keep_nf_logs", False)

@@ -35,6 +35,8 @@ CESAR_RUNNER = os.path.abspath(
     os.path.join(LOCATION, "cesar_runner.py")
 )  # script that will run jobs
 
+# TODO: remove everything related to bigmem partition, see issue
+# https://github.com/hillerlab/TOGA/issues/102
 BIGMEM_LIM = 500  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 1000000
@@ -181,23 +183,6 @@ def parse_args():
     )
     app.add_argument(
         "--fragments_data", help="Gene: fragments file for fragmented genomes."
-    )
-    app.add_argument(
-        "--opt_cesar",
-        action="store_true",
-        dest="opt_cesar",
-        help="Using lastz-optimized version of CESAR",
-    )
-    app.add_argument(
-        "--precomp_memory_data",
-        default=None,
-        help="Memory consumption was already precomputed",
-    )
-    app.add_argument(
-        "--precomp_regions_data_dir",
-        default=None,
-        help=("Directory containing files with precomputed regions. "
-              "Likely is not needed for standalone script scenario. ")
     )
     app.add_argument(
         "--predefined_glp_class_path",
@@ -408,17 +393,20 @@ def define_short_q_proj_stat(q_chrom, q_start, q_end, q_2bit):
     # N are two-sided?
     # simply copy-pasted solution from CESAR wrapper.py
     # can be further optimised
-    gap_ranges = 0
-    for match in finditer(ASM_GAP_PATTERN, query_seq, IGNORECASE):
-        span_start, span_end = match.span()
+    # gap_ranges = 0
+    for _ in finditer(ASM_GAP_PATTERN, query_seq, IGNORECASE):
+        # span_start, span_end = match.span()
         # gap_ranges.append((seq_start + span_start, seq_start + span_end))
-        gap_ranges += 1
-    if gap_ranges == 0:
-        # no assembly gaps: really deleted -> Lost
-        return L
-    else:
-        # there are assembly gaps -> Missing
+        # gap_ranges += 1
         return M
+    # M if ranges num > 1 else L
+    return L
+    # if gap_ranges == 0:
+    #     # no assembly gaps: really deleted -> Lost
+    #     return L
+    # else:
+    #     # there are assembly gaps -> Missing
+    #     return M
 
 
 def precompute_regions(
@@ -656,36 +644,6 @@ def save_jobs(filled_buckets, bucket_jobs_num, jobs_dir):
     return to_combine
 
 
-# def save_bigmem_jobs(bigmem_joblist, jobs_dir):
-#     """Save bigmem jobs."""
-#     # TODO: try to merge with save_jobs() func
-#     # one bigmem job per joblist, but not more than 100
-#     # if > 100: something is wrong
-#     joblist_size = len(bigmem_joblist)
-#     num_of_parts = joblist_size if joblist_size <= BIGMEM_LIM else BIGMEM_JOBSNUM
-#     if num_of_parts == 0:
-#         return None  # no bigmem jobs
-#     to_log(f"{MODULE_NAME_FOR_LOG}: saving {joblist_size} jobs to BIGMEM queue")
-#     to_log(
-#         f"!!{MODULE_NAME_FOR_LOG}: this part is a subject of being "
-#         f"refactored or excluded from the pipeline"
-#     )
-#
-#     bigmem_parts = split_in_n_lists(bigmem_joblist, num_of_parts)
-#     bigmem_files_num = len(bigmem_parts)  # in case if num of jobs < BIGMEM_JOBSNUM
-#     bigmem_paths = []
-#     if bigmem_files_num == 0:
-#         return None  # no bigmem jobs at all
-#     for num, bigmem_part in enumerate(bigmem_parts):
-#         file_name = f"cesar_job_{num}_bigmem"
-#         file_path = os.path.abspath(os.path.join(jobs_dir, file_name))
-#         f = open(file_path, "w")
-#         f.write("\n".join(bigmem_part) + "\n")
-#         f.close()
-#         bigmem_paths.append(file_path)
-#     return bigmem_paths
-
-
 def save_combined_joblist(
     to_combine,
     combined_file,
@@ -738,50 +696,10 @@ def read_fragments_data(in_file):
     return ret
 
 
-def read_precomp_mem(precomp_file):
-    """Read precomputed memory if exists."""
-    ret = {}
-    to_log(f"{MODULE_NAME_FOR_LOG}: reading precomputed memory requirements from {precomp_file}")
-    if precomp_file is None:
-        to_log(f"{MODULE_NAME_FOR_LOG}: no data provided: skip")
-        return ret
-    f = open(precomp_file, "r")
-    for line in f:
-        if line == "\n":
-            continue
-        line_data = line.rstrip().split("\t")
-        transcript = line_data[0]
-        mem_raw = float(line_data[1])
-        mem = math.ceil(mem_raw) + 1.25
-        ret[transcript] = mem
-    to_log(f"{MODULE_NAME_FOR_LOG}: got precomputed CESAR RAM requirements for {len(ret)} transcripts")
-    f.close()
-    return ret
-
-
-def get_trans_to_regions_file(precomp_regions_data_dir):
-    ret = {}
-    to_log(f"{MODULE_NAME_FOR_LOG}: loading precomputed regions from {precomp_regions_data_dir}")
-    if precomp_regions_data_dir is None:
-        to_log(f"{MODULE_NAME_FOR_LOG}: no data provided: skipping this step")
-        return ret
-    files_in = os.listdir(precomp_regions_data_dir)
-    for filename in files_in:
-        path = os.path.abspath(os.path.join(precomp_regions_data_dir, filename))
-        f = open(path, "r")
-        transcripts_in_file = set(x.split("\t")[0] for x in f)
-        f.close()
-        for t in transcripts_in_file:
-            ret[t] = path
-    to_log(f"{MODULE_NAME_FOR_LOG}: got data for {len(ret)} transcripts")
-    return ret
-
-
 def build_job(gene,
               chains_arg,
               args,
               gene_fragments,
-              trans_to_reg_precomp_file,
               u12_this_gene,
               cesar_temp_dir,
               mask_all_first_10p=False
@@ -805,11 +723,7 @@ def build_job(gene,
     job = job + " --check_loss" if args.check_loss else job
     job = job + " --no_fpi" if args.no_fpi else job
     job = job + " --fragments" if gene_fragments else job
-    job = job + " --opt_cesar" if args.opt_cesar else job
     job = job + " --alt_frame_del"  # TODO: toga master script parameter
-
-    precomp_file = trans_to_reg_precomp_file.get(gene)
-    job = job + f" --predefined_regions {precomp_file}" if precomp_file else job
 
     # add U12 introns data if this gene has them:
     job = job + f" --u12 {os.path.abspath(args.u12)}" if u12_this_gene else job
@@ -851,11 +765,8 @@ def _get_chain_arg_and_gig_arg(chains_list, chain_to_mem):
     return gig_arg
 
 
-def compute_memory(chains, precomp_gig, block_sizes, gene_chains_data, gene_fragments, mem_limit):
+def compute_memory(chains, block_sizes, gene_chains_data, gene_fragments, mem_limit):
     """Compute memory requirements for different chains."""
-    if precomp_gig:
-        # chains arg: just all chains, everything is precomputed
-        return {tuple(chains): (precomp_gig, MEM_FIT)}
     # proceed to memory estimation
     # the same procedure as inside CESAR2.0 code
     # required memory depends on numerous params
@@ -918,11 +829,6 @@ def main():
     # need it to make subsequent commands
     u12_data = read_u12_data(args.u12)
 
-    # if memory is precomputed: use it
-    precomp_mem = read_precomp_mem(args.precomp_memory_data)
-
-    # TODO: to optimize later
-    trans_to_reg_precomp_file = get_trans_to_regions_file(args.precomp_regions_data_dir)
     # get lists of orthologous chains per each gene
     # skipped_1 - no chains found -> log them
     predefined_glp_class = {}  # for projections which are M and L without CESAR
@@ -975,7 +881,6 @@ def main():
 
     all_jobs = {}
     skipped_3 = []
-    # bigmem_jobs = []
 
     for gene in batch.keys():
         u12_this_gene = u12_data.get(gene)
@@ -1001,9 +906,7 @@ def main():
         if len(chains) == 0:
             continue
 
-        precomp_gig = precomp_mem.get(gene, None)
         chain_arg_to_gig = compute_memory(chains,
-                                          precomp_gig,
                                           block_sizes,
                                           gene_chains_data,
                                           gene_fragments,
@@ -1014,7 +917,6 @@ def main():
                             chains_arg,
                             args,
                             gene_fragments,
-                            trans_to_reg_precomp_file,
                             u12_this_gene,
                             cesar_temp_dir,
                             mask_all_first_10p=args.mask_all_first_10p)
@@ -1098,20 +1000,6 @@ def main():
         args.unprocessed_log,
         args.cesar_logs_dir
     )
-
-    # save bigmem jobs, a bit different logic
-    # bigmem_paths = save_bigmem_jobs(bigmem_jobs, args.jobs_dir)
-    # if bigmem_paths:
-    #     save_combined_joblist(
-    #         bigmem_paths,
-    #         args.bigmem,
-    #         args.results,
-    #         args.check_loss,
-    #         args.rejected_log,
-    #         None,  # TODO: decide what we do with this branch
-    #         args.cesar_logs_dir,
-    #         name="bigmem",
-    #     )
 
     # save skipped genes if required
     if args.skipped_genes:
