@@ -168,6 +168,7 @@ class Toga:
         )
 
         # mics things
+        self.gene_prefix = args.gene_prefix
         self.isoforms_arg = args.isoforms if args.isoforms else None
         self.isoforms = None  # will be assigned after completeness check
         self.chain_jobs = args.chain_jobs_num
@@ -1262,6 +1263,7 @@ class Toga:
             self.query_annotation,
             query_isoforms_file,
             save_genes_track=query_gene_spans,
+            gene_prefix=self.gene_prefix,
         )
         to_log("Calling orthology types mapping step...")
         skipped_ref_trans = os.path.join(self.wd, "ref_orphan_transcripts.txt")
@@ -1434,6 +1436,12 @@ def parse_args():
             '"CURRENT_DIR/PROJECT_NAME". If not provided, TOGA will try to extract '
             "the project name from chain filename, which is not recommended."
         )
+    )
+    app.add_argument(
+        "--gene_prefix",
+        "--gp",
+        default="TOGA",
+        help="Prefix to use for query gene identifiers. Default value is TOGA",
     )
     app.add_argument(
         "--min_score",

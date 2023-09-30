@@ -33,7 +33,6 @@ BED_COLORS_TO_KEEP = {BLUE, LIGHT_BLUE, SALMON}
 MODULE_NAME_FOR_LOG = "make_query_isoforms"
 TOGA_GENE_PREFIX = "TOGA"
 
-
 def parse_args():
     """Read CMD args."""
     app = argparse.ArgumentParser()
@@ -47,6 +46,12 @@ def parse_args():
         help="Disable color filter",
     )
     app.add_argument("--log_file", help="Log file")
+    app.add_argument(
+        "--gene_prefix",
+        "--gp",
+        default="TOGA",
+        help="Prefix to use for query gene identifiers. Default value is TOGA",
+    )
     if len(sys.argv) < 3:
         app.print_help()
         sys.exit(0)
@@ -202,7 +207,7 @@ def intersect_exons(chr_dir_exons, exon_id_to_transcript):
     return G
 
 
-def parse_components(components, trans_to_range):
+def parse_components(components, trans_to_range, gene_prefix=None):
     """Get genes data.
 
     Each gene has the following data:
@@ -211,9 +216,10 @@ def parse_components(components, trans_to_range):
     3) Genomic range.
     """
     to_log(f"{MODULE_NAME_FOR_LOG}: parsing components data to identify query genes")
+    gp = TOGA_GENE_PREFIX if gene_prefix is None else gene_prefix
     genes_data = []  # save gene objects here
     for num, component in enumerate(components, 1):
-        gene_id = f"{TOGA_GENE_PREFIX}_{num}"  # need to name them somehow
+        gene_id = f"{gp}_{num:011}"  # need to name them somehow
         # get transcripts and their ranges
         transcripts = set(component.nodes())
         regions = [trans_to_range[t] for t in transcripts]
@@ -266,7 +272,7 @@ def save_regions(genes_data, output):
 
 
 def get_query_isoforms_data(
-    query_bed, query_isoforms, save_genes_track=None, ignore_color=False
+    query_bed, query_isoforms, save_genes_track=None, ignore_color=False, gene_prefix=None,
 ):
     """Create isoforms track for query."""
     to_log(f"{MODULE_NAME_FOR_LOG}: inferring genes from annotated isoforms in the query")
@@ -291,7 +297,7 @@ def get_query_isoforms_data(
     components = get_graph_components(conn_graph)
     to_log(f"{MODULE_NAME_FOR_LOG}: identified {len(components)} connected components in the graph")
     # covert components to isoforms table
-    genes_data = parse_components(components, trans_to_range)
+    genes_data = parse_components(components, trans_to_range, gene_prefix)
     # save the results
     save_isoforms(genes_data, query_isoforms)
     save_regions(genes_data, save_genes_track)
@@ -305,4 +311,5 @@ if __name__ == "__main__":
         args.output,
         save_genes_track=args.genes_track,
         ignore_color=args.ignore_color,
+        gene_prefix=args.gene_prefix,
     )
