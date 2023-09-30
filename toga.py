@@ -171,6 +171,8 @@ class Toga:
         self.gene_prefix = args.gene_prefix
         self.isoforms_arg = args.isoforms if args.isoforms else None
         self.isoforms = None  # will be assigned after completeness check
+        self.u12_arg = args.u12 if args.u12 else None
+        self.u12 = None  # assign after U12 file check
         self.chain_jobs = args.chain_jobs_num
         self.cesar_binary = (
             self.DEFAULT_CESAR if not args.cesar_binary else args.cesar_binary
@@ -242,6 +244,7 @@ class Toga:
             self.temp_wd, Constants.CESAR_PRECOMPUTED_MEMORY_DATA
         )
         self.precomp_reg_dir = None
+
         self.u12_arg = args.u12
         self.u12 = None  # assign after U12 file check
 
@@ -324,13 +327,13 @@ class Toga:
     def __check_param_files(self):
         """Check that all parameter files exist."""
         files_to_check = [
-            self.u12,
             self.t_2bit,
             self.q_2bit,
             self.cesar_binary,
             self.ref_bed,
             self.chain_file,
             self.isoforms_arg,
+            self.u12_arg,
         ]
         for item in files_to_check:
             if not item:
@@ -350,7 +353,7 @@ class Toga:
             # to compare chrom lengths with 2bit
             chrom_sizes_in_bed = {x: None for x in chroms_in_bed}
         self.isoforms = check_isoforms_file(self.isoforms_arg, t_in_bed, self.temp_wd)
-        self.u12 = check_and_write_u12_file(t_in_bed, self.u12_arg, self.temp_wd)
+        self.u12 = check_and_write_u12_file(self.u12_arg, t_in_bed, self.temp_wd)
         check_2bit_file_completeness(self.t_2bit, chrom_sizes_in_bed, self.ref_bed)
         # need to check that chain chroms and their sizes match 2bit file data
         with open(self.chain_file, "r") as f:
@@ -376,19 +379,19 @@ class Toga:
         self.LOCATION = os.path.dirname(__file__)  # folder containing pipeline scripts
         self.CONFIGURE = os.path.join(self.LOCATION, "configure.sh")
         self.CHAIN_SCORE_FILTER = os.path.join(
-            self.LOCATION, "modules", "chain_score_filter"
+            self.LOCATION, Constants.MODULES_DIR, "chain_score_filter"
         )
         self.CHAIN_SCORE_FILTER_AWK = os.path.join(
-            self.LOCATION, "modules", "chain_score_filter.awk"
+            self.LOCATION, Constants.MODULES_DIR, "chain_score_filter.awk"
         )
         self.CHAIN_COORDS_CONVERT_LIB = os.path.join(
-            self.LOCATION, "modules", "chain_coords_converter_slib.so"
+            self.LOCATION, Constants.MODULES_DIR, "chain_coords_converter_slib.so"
         )
         self.EXTRACT_SUBCHAIN_LIB = os.path.join(
-            self.LOCATION, "modules", "extract_subchain_slib.so"
+            self.LOCATION, Constants.MODULES_DIR, "extract_subchain_slib.so"
         )
         self.CHAIN_FILTER_BY_ID = os.path.join(
-            self.LOCATION, "modules", "chain_filter_by_id"
+            self.LOCATION, Constants.MODULES_DIR, "chain_filter_by_id"
         )
         self.CHAIN_BDB_INDEX = os.path.join(
             self.LOCATION, Constants.MODULES_DIR, "chain_bst_index.py"
