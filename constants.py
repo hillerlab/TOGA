@@ -82,6 +82,7 @@ class InactMutClassesConst:
     SSM_D = "SSMD"  # Donor, right, GT,GC
     SSM_A = "SSMA"  # Acceptor, left, AG
 
+
 # Standalone constants #
 COMPLEMENT_BASE = {
     "A": "T",
