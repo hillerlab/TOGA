@@ -377,18 +377,6 @@ def find_chain_file(ref_name, chain_arg):
     return chain_path
 
 
-def translate(codons_lst):
-    """Translate codons sequence."""
-    if len(codons_lst[-1]) != 3:
-        # if last codon is partial -> skip this
-        del codons_lst[-1]
-    if len(codons_lst) == 0:
-        # empty list for empty sequence
-        return []
-    aa_seq = [GENETIC_CODE.get(c) if GENETIC_CODE.get(c) else "X" for c in codons_lst]
-    return aa_seq
-
-
 def get_exons(bed_data, t_db):
     """Extract exons sequences for reference."""
     exons_raw = (
@@ -548,7 +536,6 @@ def prepare_exons_for_cesar(exon_seqs):
     return cesar_input_exons
 
 
-# def get_chain(chain_file, chain_id, chain_index):
 def get_chain(chain_file, chain_id):
     """Return chain string according the parameters passed."""
     chain = None  # to calm IDE down
@@ -1302,7 +1289,7 @@ def run_cesar(
         # otherwise, feed the input_data using stdin
         b_stdout, b_stderr = p.communicate(input=input_data.encode())
     else:
-        b_stdout, b_stderr = None, None
+        # b_stdout, b_stderr = None, None
         raise RuntimeError("Unreachable condition")
 
     rc = p.returncode
@@ -1453,7 +1440,7 @@ def compute_score(codon_data):
     exon_to_seq_que = defaultdict(str)
     for codon in codon_data:
         exon_num = codon["q_exon_num"]
-        split = codon["split_"]  # if split codon it's bit tricky
+        split = codon["split_"]  # if split codon - it's a bit tricky
         if split == 0:
             # not a split codon: the codon lies in some exon entirely
             exon_to_seq_tar[exon_num] += codon["ref_codon"]
@@ -1682,7 +1669,7 @@ def extract_codon_data(codon_table, excl_exons=None):
             elif len(que_codon) % 3 == 0:
                 # Frame-preserving ins
                 ref_subcodons = [check_codon(x) for x in parts(ref_codon, 3)]
-                que_subcodons = [Constants.GAP_CODON for x in range(len(ref_subcodons))]
+                que_subcodons = [Constants.GAP_CODON for _ in range(len(ref_subcodons))]
                 t_codons.extend(ref_subcodons)
                 q_codons.extend(que_subcodons)
             elif len(ref_codon) < 3:
@@ -1711,6 +1698,7 @@ def extract_codon_data(codon_table, excl_exons=None):
         if t_exon_num in _excl_exons:
             prev_exon_was_del = True
             if len(ref_codon) == 3:
+                # TODO: check what is that
                 ref_codon = check_codon(ref_codon)
             continue
 
@@ -2216,8 +2204,8 @@ def merge_dicts(dicts_list):
 
 def intersect_lists(lists):
     """Perform intersection operation on several lists."""
-    sets = [set(x) for x in lists]
-    intersection = reduce(and_, sets)
+    # noinspection PyTypeChecker
+    intersection = reduce(and_, [set(x) for x in lists])
     return list(intersection)
 
 
@@ -2240,20 +2228,6 @@ def get_relative_coordinates(exon_exp_region, search_locus, directed, max_len=50
         x for x in include_regions_rel if abs(x[0] - x[1]) < max_len
     ]
     return include_regions_len_filt
-
-
-def extend_rel_regions(extended_regions, query_len):
-    """Add flanks to expected regions."""
-    ext_regions = []
-    for reg in extended_regions:
-        ext_start = min(reg) - EXP_REG_EXTRA_FLANK
-        ext_end = max(reg) + EXP_REG_EXTRA_FLANK
-        # aboid overflow
-        ext_start = ext_start if ext_start > 0 else 0
-        ext_end = ext_end if ext_end < query_len else query_len - 1
-        new_reg = (ext_start, ext_end)
-        ext_regions.append(new_reg)
-    return ext_regions
 
 
 def _check_seq_of_intervals_intersect(intervals):
@@ -2393,22 +2367,22 @@ def realign_exons(args):
             )
 
         # chain data: t_strand, t_size, q_strand, q_size
-        chain_qStrand = chain_data[2]
-        chain_qSize = chain_data[3]
+        chain_query_strand = chain_data[2]
+        chain_query_size = chain_data[3]
         verbose("Chain cut is done.")
 
         # this call of make_query_seq is actually for extracting
         # query sequence for CESAR:
         verbose("Extracting query sequence...")
         query_seq, directed = make_query_seq(
-            chain_id, search_locus, args["qDB"], chain_qStrand, bed_data["strand"]
+            chain_id, search_locus, args["qDB"], chain_query_strand, bed_data["strand"]
         )
         verbose("Query sequence extracted")
         q_seq_len = len(query_seq)
         # this is extended query seq (larger locus) for assembly gaps search only!
         # We do not call CESAR for this _query_seq_ext sequence
         _query_seq_ext, directed = make_query_seq(
-            chain_id, subch_locus, args["qDB"], chain_qStrand, bed_data["strand"]
+            chain_id, subch_locus, args["qDB"], chain_query_strand, bed_data["strand"]
         )
 
         if args["ic"]:  # invert complement required for some reason
@@ -2486,7 +2460,7 @@ def realign_exons(args):
             t_start,
             t_end,
             q_seq_len,
-            chain_qSize,
+            chain_query_size,
         )
         fragments_data.append(fragment_data)
 
@@ -2599,7 +2573,7 @@ def realign_exons(args):
     save(cesar_raw_out, args["raw_output"], t0) if args["raw_output"] else None
     # process the output, extract different features per exon
     if args["fragments"]:
-        # bit more complicated parsing of fragmented output
+        # a bit more complicated parsing of fragmented output
         proc_out = process_cesar_out__fragments(
             cesar_raw_out, fragments_data, query_loci, inverts
         )
@@ -2611,12 +2585,12 @@ def realign_exons(args):
     pBl = proc_out[3]  # BLOSUM scores for protein sequences
     query_coords = proc_out[4]  # genomic coordinates in the query
     exon_num_corr = proc_out[5]  # in case of intron del: ref/que correspondence
+    # TODO: prot_s variable is unised -> probably no need to compute it upstream?
     prot_s = proc_out[6]  # protein sequences in query
     codon_s = proc_out[7]  # dict containing sequences of ref and query codons
     aa_cesar_sat = proc_out[8]  # says whether an exon has outstanding quality
     # raw codon table \ superset of "codon_s" basically
     # after changes in TOGA1.1 is needed again
-    # TODO: needs refactoring
     codon_tables = proc_out[9]  
     aa_eq_len = aa_eq_len_check(exon_sequences, query_exon_sequences)
 

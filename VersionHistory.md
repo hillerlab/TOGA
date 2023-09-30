@@ -81,6 +81,9 @@ Documentation improvements.
 
 * Removed obsolete optimised CESAR path.
 * Fixed a minor bug with re-running CESAR jobs memory parameter if no buckets were specified.
+* (by shjenkins94) added gene_prefix argument
+* (by shjenkins94) fixed U12 argument check bug
+* minor code style improvements
 
 # TOGA 1.1.7 (planned) #
 
