@@ -35,6 +35,8 @@ CESAR_RUNNER = os.path.abspath(
     os.path.join(LOCATION, "cesar_runner.py")
 )  # script that will run jobs
 
+# TODO: remove everything related to bigmem partition, see issue
+# https://github.com/hillerlab/TOGA/issues/102
 BIGMEM_LIM = 500  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 1000000
@@ -391,9 +393,9 @@ def define_short_q_proj_stat(q_chrom, q_start, q_end, q_2bit):
     # N are two-sided?
     # simply copy-pasted solution from CESAR wrapper.py
     # can be further optimised
-    gap_ranges = 0
-    for match in finditer(ASM_GAP_PATTERN, query_seq, IGNORECASE):
-        span_start, span_end = match.span()
+    # gap_ranges = 0
+    for _ in finditer(ASM_GAP_PATTERN, query_seq, IGNORECASE):
+        # span_start, span_end = match.span()
         # gap_ranges.append((seq_start + span_start, seq_start + span_end))
         # gap_ranges += 1
         return M
@@ -879,7 +881,6 @@ def main():
 
     all_jobs = {}
     skipped_3 = []
-    # bigmem_jobs = []
 
     for gene in batch.keys():
         u12_this_gene = u12_data.get(gene)
