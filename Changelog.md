@@ -79,7 +79,7 @@ Documentation improvements.
 
 # TOGA 1.1.6 (current release) #
 
-* Removed obsolete optimised CESAR path.
+* (suggested by shjenkins94) Removed obsolete optimised CESAR path.
 * Fixed a minor bug with re-running CESAR jobs memory parameter if no buckets were specified.
 * (by shjenkins94) added gene_prefix argument
 * (by shjenkins94) fixed U12 argument check bug
@@ -87,5 +87,8 @@ Documentation improvements.
 
 # TOGA 1.1.7 (planned) #
 
+* Code cleanup - removed "bigmem" branch.
+* (planned by shjenkins94) - adding UGE parallelization strategy
+* (planned) - add collecting logs method to parallelization abstract class + better logs parsing for nextflow strategy
 * (planned) Step management - now user can rerun TOGA from any desired step.
 * (planned) Using CESAR in the single exon mode for most of the exons to solve the RAM bottleneck (maybe TOGA 1.2.x?)

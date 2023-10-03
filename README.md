@@ -30,7 +30,7 @@ about anything that doesn't quite fit into the Issues framework.
 
 ## Changelog
 
-For a detailed history of changes made to the TOGA project, please refer to the [Changelog](https://github.com/hillerlab/TOGA/blob/master/VersionHistory.md).
+For a detailed history of changes made to the TOGA project, please refer to the [Changelog](https://github.com/hillerlab/TOGA/blob/master/Changelog.md).
 This document provides version-specific updates, including new features, bug fixes, and other modifications.
 
 ## Installation

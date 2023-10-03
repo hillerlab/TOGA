@@ -23,7 +23,7 @@ class Version:
                     line = f'![version](https://img.shields.io/badge/version-{self.version_repr}-blue)\n'
                 f.write(line)
 
-    def check_changelog(self, filename="VersionHistory.md"):
+    def check_changelog(self, filename="Changelog.md"):
         with open(filename, "r") as f:
             header_lines = [x for x in f if x.startswith("# ") and x.endswith(" #\n")]
         header_lines_with_this_v = [x for x in header_lines if f" {self.version_repr} " in x]

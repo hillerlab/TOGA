@@ -35,13 +35,9 @@ CESAR_RUNNER = os.path.abspath(
     os.path.join(LOCATION, "cesar_runner.py")
 )  # script that will run jobs
 
-# TODO: remove everything related to bigmem partition, see issue
-# https://github.com/hillerlab/TOGA/issues/102
-BIGMEM_LIM = 500  # mem limit for bigmem partition
 REL_LENGTH_THR = 50
 ABS_LENGTH_TRH = 1000000
 EXTRA_MEM = 100000  # extra memory "just in case"
-BIGMEM_JOBSNUM = 100  # TODO: make a parameter?
 REF_LEN_THRESHOLD = 0.05  # if query length < 5% CDS then skip it
 
 ASM_GAP_SIZE = 10
@@ -57,8 +53,7 @@ PROJECTION = "PROJECTION"
 TRANSCRIPT = "TRANSCRIPT"
 
 MEM_FIT = "MEM_FIT"
-MEM_BIGMEM = "MEM_BIGMEM"
-MEM_DONTFIT = "MEM_DONTFIT"
+MEM_DONT_FIT = "MEM_DONT_FIT"
 
 MODULE_NAME_FOR_LOG = "split_cesar_jobs"
 
@@ -145,7 +140,6 @@ def parse_args():
     app.add_argument(
         "--combined", default="cesar_combined", help="Combined cluster jobs."
     )
-    # app.add_argument("--bigmem", default="cesar_bigmem", help="CESAR bigmem joblist")
     app.add_argument("--results", default="cesar_results", help="Save results to.")
     app.add_argument(
         "--check_loss", default=None, help="Call internal gene loss pipeline"
@@ -522,8 +516,8 @@ def precompute_regions(
             min_query_length = cds_length * REF_LEN_THRESHOLD
             field = chain_gene_field.get((chain_id, transcript))
             # check that corresponding region in the query is not too long
-            # for instance query locus is 50 times longer than the gene
-            # or it's longer than 1M base and also this is a SPAN chain
+            # for instance query locus is 50 times longer than the gene, or
+            # it's longer than 1M base and also this is a SPAN chain
             high_rel_len = delta_gene_times > REL_LENGTH_THR
             high_abs_len = len_delta > ABS_LENGTH_TRH
             long_loci_field = field == SPAN
@@ -533,7 +527,6 @@ def precompute_regions(
                     f"{chain_id} projection: too long query locus"
                 )
                 skipped.append((transcript, chain_id, "too long query locus"))
-                # print(f"TOO LONG: {proj_id}")
                 predef_glp[proj_id] = f"{PROJECTION}\t{M}"
                 continue
             # in contrast, if query locus is too short (<5% CDS length)
@@ -549,10 +542,8 @@ def precompute_regions(
                 # in the corresponding locus or is missing
                 # to separate these cases, TOGA checks whether the region contains
                 # assembly gaps
-                # skipped.append((gene, chain_id, "too short query locus"))
                 proj_stat = define_short_q_proj_stat(q_chrom, q_start, q_end, q_2bit)
                 predef_glp[proj_id] = f"{PROJECTION}\t{proj_stat}"
-                # print(f"Too short query: {proj_id}: {que_len}: {proj_stat}")
                 to_log(
                     f" * !! class assigned to transcript {transcript} / chain {chain_id} pair "
                     f"is {proj_stat}. M - if query locus intersects assembly gap, L otherwise (deletion)"
@@ -581,18 +572,18 @@ def fill_buckets(buckets, all_jobs):
         buckets[0] = list(all_jobs.keys())
         return buckets
     # buckets were set
-    memlims = sorted(buckets.keys())
+    memory_limits = sorted(buckets.keys())
     prev_lim = 0
-    for memlim in memlims:
+    for memory_limit in memory_limits:
         # buckets and memory limits are pretty much the same
         # if buckets are 5 and 10 then:
-        # memlim[5] -> jobs that require <= 5Gb
-        # memlim[10] -> jobs that require > 5Gb AND <= 10Gb
-        buckets[memlim] = [
-            f"{job} --memlim {memlim}" for job, job_mem in all_jobs.items()
-            if prev_lim < job_mem <= memlim
+        # memory_limit[5] -> jobs that require <= 5Gb
+        # memory_limit[10] -> jobs that require > 5Gb AND <= 10Gb
+        buckets[memory_limit] = [
+            f"{job} --memory_limit {memory_limit}" for job, job_mem in all_jobs.items()
+            if prev_lim < job_mem <= memory_limit
         ]
-        prev_lim = memlim
+        prev_lim = memory_limit
     # remove empty
     filter_buckets = {k: v for k, v in buckets.items() if len(v) > 0}
 
@@ -788,24 +779,20 @@ def compute_memory(chains, block_sizes, gene_chains_data, gene_fragments, mem_li
     for chain_id, q_length in gene_chains_data.items():
         chain_gig = compute_memory_gig_for_qlen(num_states, q_length, q_length)
         chain_to_mem_consumption[chain_id] = chain_gig
-    # for every chain, we have the memory consumption
+
+    # for every chain, we have the memory consumption -> separate into those that fit into
+    # max memory requirements, and those that do not.
     chains_that_fit = [c_id for c_id, gig in chain_to_mem_consumption.items() if gig <= mem_limit]
-    chain_that_goto_bigmem = [c_id for c_id, gig in chain_to_mem_consumption.items() if mem_limit < gig <= BIGMEM_LIM]
-    chains_that_dont_fit = [c_id for c_id, gig in chain_to_mem_consumption.items() if gig > BIGMEM_LIM]
+    chains_that_dont_fit = [c_id for c_id, gig in chain_to_mem_consumption.items() if gig > mem_limit]
 
     # process each bucket of chains individually
     if len(chains_that_fit) > 0:
         # good, there are some chains that can be easily processed
         mem = _get_chain_arg_and_gig_arg(chains_that_fit, chain_to_mem_consumption)
         ret[tuple(chains_that_fit)] = (mem, MEM_FIT)
-    if len(chain_that_goto_bigmem) > 0:
-        # there are some bigmem jobs -> to be executed separately
-        # Deprecated branch, TODO: check whether it makes sense nowadays
-        mem = _get_chain_arg_and_gig_arg(chain_that_goto_bigmem, chain_to_mem_consumption)
-        ret[tuple(chain_that_goto_bigmem)] = (mem, MEM_BIGMEM)
     if len(chains_that_dont_fit) > 0:
         mem = _get_chain_arg_and_gig_arg(chains_that_dont_fit, chain_to_mem_consumption)
-        ret[tuple(chains_that_dont_fit)] = (mem, MEM_DONTFIT)
+        ret[tuple(chains_that_dont_fit)] = (mem, MEM_DONT_FIT)
     return ret
 
 
@@ -855,7 +842,7 @@ def main():
         f"Error! Cannot find cesar executable at {args.cesar_binary}!"
     ) if not os.path.isfile(args.cesar_binary) else None
 
-    # if this is a fragmmented genome: we need to change CESAR commands for
+    # if this is a fragmented genome: we need to change CESAR commands for
     # split genes
     if args.fragments_data:
         gene_fragments_dict = read_fragments_data(args.fragments_data)
@@ -873,7 +860,7 @@ def main():
         args.qDB,
     )
     predefined_glp_class.update(predef_glp)
-    predef_glp_class__chains_step = {}
+    predefined_glp_class__chains_step = {}
 
     # start making the jobs
     to_log(f"{MODULE_NAME_FOR_LOG}: building commands for {len(batch)} transcripts")
@@ -921,7 +908,6 @@ def main():
                             cesar_temp_dir,
                             mask_all_first_10p=args.mask_all_first_10p)
 
-            # define whether it's an ordinary or a bigmem job
             # depending on the memory requirements
             if stat == MEM_FIT:  # ordinary job
                 msg = (
@@ -930,35 +916,22 @@ def main():
                 )
                 to_log(msg)
                 all_jobs[job] = gig
-            elif stat == MEM_BIGMEM:
-                to_app = (gene, chains_arg, f"requires {gig}) -> bigmem job")
-                skipped_3.append(to_app)
-                # bigmem_jobs.append(job)
-                msg = (
-                    f"* !!job for transcript {gene}, chains {chains} requires "
-                    f"{gig}Gb of memory -> does not fit the memory requirements."
-                    # f"can be executed in the bigmem queue (if defined by user)"
-                )
-                to_log(msg)
-                for chain_id in chains_tup:
-                    proj_id = f"{gene}.{chain_id}"
-                    predef_glp_class__chains_step[proj_id] = f"{PROJECTION}\tM"
-            else:
-                to_app = (gene, chains_arg, f"big mem limit ({BIGMEM_LIM} gig) exceeded (needs {gig})",)
+            else:  # mem dont fit
+                to_app = (gene, chains_arg, f"memory limit ({mem_limit}) exceeded (needs {gig})",)
                 skipped_3.append(to_app)
                 msg = (
                     f"* !!job for transcript {gene}, chains {chains} requires "
-                    f"{gig}Gb of memory -> exceeded the limit {BIGMEM_LIM};"
+                    f"{gig}Gb of memory -> exceeded the limit {mem_limit};"
                     f"skipping the transcript completely "
                 )
                 to_log(msg)
                 for chain_id in chains_tup:
                     proj_id = f"{gene}.{chain_id}"
-                    predef_glp_class__chains_step[proj_id] = f"{PROJECTION}\tM"
+                    predefined_glp_class__chains_step[proj_id] = f"{PROJECTION}\tM"
                     to_log(f"* !!assigning status MISSING to projection {proj_id}")
     
     # TODO: predefined GLP classes to be refactored 
-    predefined_glp_class.update(predef_glp_class__chains_step)
+    predefined_glp_class.update(predefined_glp_class__chains_step)
 
     # eprint(f"\nThere are {len(all_jobs.keys())} jobs in total.")
     # eprint("Splitting the jobs.")
