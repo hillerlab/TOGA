@@ -11,6 +11,7 @@ import subprocess
 import time
 from datetime import datetime as dt
 import json
+import jsonschema
 import shutil
 from math import ceil
 from collections import defaultdict
@@ -501,6 +502,8 @@ class Toga:
 
         # Check any config_files
         self.__check_nf_config_files()
+        self.__check_para_config_files()
+
         # Finally set manager_data, which will be given to the parallelization strategy
         self.manager_data = {
             "para_dir": self.para_dir,
@@ -508,7 +511,8 @@ class Toga:
             "local_executor": self.local_executor,
             "keep_para_logs": self.keep_para_logs,
             "nextflow_config_dir": self.nextflow_config_dir,
-            "temp_wd": self.temp_wd
+            "temp_wd": self.temp_wd,
+            "para_config": self.para_config
             }
 
 
@@ -543,6 +547,39 @@ class Toga:
                 f"Error! File {nf_chain_extr_config_file} not found!\n{err_msg}"
             )
         self.local_executor = False
+
+    def __check_para_config_files(self):
+        """Use schema to validate parallel config file if needed and set para_config."""
+
+        # Do nothing if strategy doesn't require config
+        if not self.para_strategy in Constants.CONFIG_STRATEGIES:
+            self.para_config = None
+            return
+        # Check if config file is present
+        elif self.para_config_file is None:
+            self.die(
+                f"Error! Parallelization strategy {self.para_strategy} requires "
+                f"--parallel_config_file input!"
+            )
+        elif not os.path.isfile(self.para_config_file):
+            self.die(f"Error! Parallel config file {self.para_config_file} not found!")
+        
+        # get schemas file and check it exists
+        schema_file = os.path.join(Constants.PARA_SCHEMA_DIR, f"{self.para_strategy}_schema.json")
+        if not os.path.isfile(schema_file):
+            self.die(f"Error! Parallel configuration schema file {schema_file} not found!")
+        
+        # load config and schema and validate
+        with open(self.para_config_file) as pcf:
+            para_config = json.load(pcf)
+
+        with open(schema_file) as sf:
+            config_schema = json.load(sf)
+
+        jsonschema.validate(para_config, config_schema)
+
+        self.para_config = para_config
+
 
     def __call_proc(self, cmd, extra_msg=None):
         """Call a subprocess and catch errors."""
@@ -1504,6 +1541,12 @@ def parse_args():
             "for cluster, pls see nextflow_config_files/readme.txt "
             "for details."
         )
+    )
+    app.add_argument(
+        "--parallel_config_file",
+        "--pc",
+        default=None,
+        help="JSON file for configuring a parallel strategy."
     )
     app.add_argument(
         "--do_not_del_para_logs", "--pnd", action="store_true", dest="do_not_del_para_logs"

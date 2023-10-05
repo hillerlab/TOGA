@@ -13,5 +13,7 @@ dependencies:
 # Different version from pip
   - h5py==3.3.0
   - py-xgboost=1.7.6
+# New
+  - jsonschema==4.19.1
 # For Nextflow
   - nextflow=23.04.3

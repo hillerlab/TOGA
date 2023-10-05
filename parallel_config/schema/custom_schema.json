@@ -1,0 +1,29 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Custom config",
+    "description": "Configuration for running TOGA with a custom parallelization strategy",
+    "type": "object",
+    "properties": {
+        "strat": {
+            "description": "The name of the parellization strategy to use",
+            "type": "string",
+            "const": "custom"
+        },
+        "steps": {
+            "description": "separate properties for each step of TOGA",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "uniqueItems": true,
+                "minItems": 3,
+                "properties": {
+                    "step": {
+                        "description": "Name of step",
+                        "enum": ["extract_chains", "run_cesar", "rerun_cesar"]
+                    }
+                },
+                "required": ["step"]
+            }
+        }
+    }
+}
