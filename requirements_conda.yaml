@@ -18,3 +18,5 @@ dependencies:
   - jinja2==3.1.2
 # For Nextflow
   - nextflow=23.04.3
+# For UGE
+  - parallel=20170422

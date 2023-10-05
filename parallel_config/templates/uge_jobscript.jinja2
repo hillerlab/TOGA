@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#$ -S /bin/bash
+#$ -N {{ jobname }}
+#$ -o {{ logdir }}/{{ step }}.o
+#$ -e {{ logdir }}/{{ step }}.e
+#$ -V
+#$ -sync y
+{# Queue #}
+{% if queue %}
+#$ -q {{ queue }}
+{% endif %}
+{# Memory #}
+{% if memGB %}
+{% for marg in mem_args %}
+#$ -l {{ marg }}={{ memGB }}G
+{% endfor %}
+{% endif %}
+{# Runtime #}
+{% if runtime %}
+{% for targ in time_args %}
+#$ -l {{ targ }}={{ runtime }}
+{% endfor %}
+{% endif %}
+{# Extra args #}
+{% if l_extra_args %}
+{% for earg in l_extra_args %}
+#$ {{ earg }}
+{% endfor %}
+{% endif %}
+{% if g_extra_args %}
+{% for earg in g_extra_args %}
+#$ {{ earg }}
+{% endfor %}
+{% endif %}
+{# Max array jobs to spawn at a time #}
+{% if conc %}
+#$ -tc {{ conc }}
+{% endif %}
+{# Parallel environment #}
+{% if slots > 1 %}
+#$ -pe {{ penv }} {{ slots }}
+{% endif %}
+{# Either run 1 task per job or inc tasks #}
+#$ -t 1-{{ jobnum }}{% if inc %}:{{ inc }}{% endif %}
+
+
+{% if inc %}
+let QUIT_ID=${SGE_TASK_ID}+{{ inc }}
+let END_ID=${QUIT_ID}-1
+
+sed -n "${SGE_TASK_ID},${END_ID}p;${QUIT_ID}q" {{ joblist }} | 
+{% else %}
+sed -n ${SGE_TASK_ID}p {{ joblist }} |
+{% endif %}
+parallel -j {{ slots }} --halt soon,fail=1 --retries 3 --joblog {{ logdir }}/{{ step }}_${SGE_TASK_ID}.log
+
+exit $?

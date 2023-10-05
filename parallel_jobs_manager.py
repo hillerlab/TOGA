@@ -222,6 +222,100 @@ class SnakeMakeStrategy(ParallelizationStrategy):
         raise NotImplementedError("Snakemake strategy is not yet implemented")
 
 
+class UGEStrategy(ParallelizationStrategy):
+    """
+    Strategy for running TOGA on UGE, using JSON configuration
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._process = None
+        self.return_code = None
+        self.joblist_path = None
+        self.manager_data = None
+        self.label = None
+        self.project_path = None
+        self.log_dir = None
+        self.para_config = None
+        self.uge_jobscript = None
+        self.uge_template = load_template("uge_jobscript.jinja2")
+
+    def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
+        """Implementation for UGE
+
+        """
+        # define parameters
+        self.joblist_path = joblist_path
+        self.manager_data = manager_data
+        self.label = label
+        self.project_path = manager_data["temp_wd"]
+        self.log_dir = self.manager_data["logs_dir"]
+        self.para_config = self.manager_data["para_config"]
+        self.cur_step = self.__get_cur_step()
+
+        # get number of jobs
+        with open(self.joblist_path, "rbU") as f:
+            self.jobnum = sum(1 for _ in f)
+        
+        os.mkdir(self.log_dir) if not os.path.isdir(self.log_dir) else None
+
+        # create jobscript
+        self.uge_jobscript = self.__create_jobscript()
+
+        # create job process
+        cmd = f"{self.para_config['qsub_cmd']} {self.uge_jobscript}"
+
+        self._process = subprocess.Popen(cmd,
+                                         shell=True,
+                                         cwd=self.project_path)
+        
+        if wait:
+            self._process.wait()
+
+    def __get_cur_step(self):
+        """Get data for the step of TOGA that's running"""
+        for s in self.para_config["steps"]:
+            if s["step"] == self.manager_data["step"]:
+                return s
+        
+    def __create_jobscript(self):
+        """Render jinja2 template to get jobscript and return jobscript path"""
+        rendered = self.uge_template.render(
+            jobname = self.manager_data["project_name"],
+            step = self.manager_data["step"],
+            logdir = self.log_dir,
+            queue = self.cur_step.get("queue"),
+            mem_args = self.para_config["mem_args"],
+            memGB = self.cur_step.get("memGB"),
+            time_args = self.para_config["time_args"],
+            runtime = self.cur_step.get("runtime"),
+            l_extra_args = self.cur_step.get("extra_args"),
+            g_extra_args = self.para_config.get("extra_args"),
+            conc = self.cur_step.get("conc"),
+            penv = self.para_config.get("parallel_env"),
+            slots = self.cur_step.get("slots", 1),
+            inc = self.cur_step.get("inc"),
+            jobnum = self.jobnum,
+            joblist = self.joblist_path,
+        )
+
+        uge_jobscript = os.path.join(self.project_path, f"uge_{self.manager_data['step']}_jobscript.sh")
+        with open(uge_jobscript, 'w') as f:
+            f.write(rendered)
+        return uge_jobscript
+
+    def check_status(self):
+        """Check if UGE jobs are done."""
+        if self.return_code:
+            return self.return_code
+        running = self._process.poll() is None
+        if not running:
+            self.return_code = self._process.returncode
+            return self.return_code
+        else:
+            return None
+
+
 class CustomStrategy(ParallelizationStrategy):
     """
     Custom parallel jobs execution strategy.

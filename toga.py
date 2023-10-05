@@ -45,6 +45,7 @@ from modules.parallel_jobs_manager_helpers import monitor_jobs
 from parallel_jobs_manager import ParallelJobsManager
 from parallel_jobs_manager import NextflowStrategy
 from parallel_jobs_manager import ParaStrategy
+from parallel_jobs_manager import UGEStrategy
 from parallel_jobs_manager import CustomStrategy
 from version import __version__
 
@@ -289,6 +290,8 @@ class Toga:
             selected_strategy = NextflowStrategy()
         elif selected_strategy == "para":
             selected_strategy = ParaStrategy()
+        elif selected_strategy == "uge":
+            selected_strategy = UGEStrategy()
         else:
             selected_strategy = CustomStrategy()
         jobs_manager = ParallelJobsManager(selected_strategy)
@@ -452,6 +455,14 @@ class Toga:
             msg = (
                 "Error! Cannot find nextflow executable. Please make sure you "
                 "have a nextflow binary in a directory listed in your $PATH"
+            )
+            self.die(msg)
+
+        not_gnu_parallel = shutil.which(Constants.GNU_PARALLEL) is None
+        if self.para_strategy == "uge" and not_gnu_parallel:
+            msg = (
+                "Error! Cannot find gnu parallel executable. Please make sure you "
+                "have gnu parallel in a directory listed in your $PATH"
             )
             self.die(msg)
 

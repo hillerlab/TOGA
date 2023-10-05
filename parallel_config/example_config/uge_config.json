@@ -1,0 +1,30 @@
+{
+    "strat": "uge",
+    "qsub_cmd": "qsub_beta",
+    "parallel_env": "def_slot",
+    "mem_args": ["s_vmem", "mem_req"],
+    "time_args": ["d_rt", "l_rt"],
+    "extra_args": null,
+    "steps": [
+        {
+            "step": "extract_chains",
+            "queue": "short.q",
+            "memGB": 10,
+            "extra_args": ["-l short"]
+        },
+        {
+            "step": "run_cesar",
+            "memGB": 64,
+            "conc": 10,
+            "slots": 4,
+            "inc": 25
+        },
+        {
+            "step": "rerun_cesar",
+            "memGB": 64,
+            "conc": 10,
+            "slots": 4,
+            "inc": 25
+        }
+    ]
+}

@@ -15,6 +15,7 @@ class Constants:
     ISOFORMS_FILE_COLS = 2
     NF_DIR_NAME = "nextflow_logs"
     NEXTFLOW = "nextflow"
+    GNU_PARALLEL = "parallel"
     CESAR_PUSH_INTERVAL = 30  # CESAR jobs push interval
     ITER_DURATION = 60  # CESAR jobs check interval
     MEMLIM_ARG = "--memlim"
@@ -31,8 +32,8 @@ class Constants:
     CESAR_PRECOMPUTED_ORTHO_LOCI_DATA = "cesar_precomputed_orthologous_loci.tsv"
 
     NUM_CESAR_MEM_PRECOMP_JOBS = 500
-    PARA_STRATEGIES = ["nextflow", "para", "custom"]  # TODO: add snakemake
-    CONFIG_STRATEGIES = [] # strategies that need JSON configuration
+    PARA_STRATEGIES = ["nextflow", "para", "uge", "custom"]  # TODO: add snakemake
+    CONFIG_STRATEGIES = ["uge"] # strategies that need JSON configuration
     PARA_SCHEMA_DIR = os.path.abspath(os.path.join(LOCATION, "parallel_config/schema"))
     PARA_TEMPLATES_DIR = os.path.abspath(os.path.join(LOCATION, "parallel_config/templates"))
     TEMP_CHAIN_CLASS = "temp_chain_trans_class"
