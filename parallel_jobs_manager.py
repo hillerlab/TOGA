@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 import subprocess
 import os
 import shutil
+from jinja2 import Template
+from modules.parallel_jobs_manager_helpers import load_template
 from modules.common import to_log
 from version import __version__
 

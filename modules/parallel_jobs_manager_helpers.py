@@ -1,6 +1,8 @@
 """Helper function related to parallelisation."""
 import time
 import os
+from constants import Constants
+from jinja2 import FileSystemLoader, Environment
 from modules.common import to_log
 
 __author__ = "Bogdan M. Kirilenko"
@@ -35,4 +37,7 @@ def monitor_jobs(jobs_managers, die_if_sc_1=False):
         raise AssertionError(err)
 
 
-
+def load_template(filename):
+    templateLoader = FileSystemLoader(Constants.PARA_TEMPLATES_DIR)
+    templateEnv = Environment(loader=templateLoader, autoescape=True, trim_blocks=True)
+    return templateEnv.get_template(filename)

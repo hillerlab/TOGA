@@ -34,6 +34,7 @@ class Constants:
     PARA_STRATEGIES = ["nextflow", "para", "custom"]  # TODO: add snakemake
     CONFIG_STRATEGIES = [] # strategies that need JSON configuration
     PARA_SCHEMA_DIR = os.path.abspath(os.path.join(LOCATION, "parallel_config/schema"))
+    PARA_TEMPLATES_DIR = os.path.abspath(os.path.join(LOCATION, "parallel_config/templates"))
     TEMP_CHAIN_CLASS = "temp_chain_trans_class"
     MODULES_DIR = "modules"
     RUNNING = "RUNNING"
