@@ -16,6 +16,10 @@ from version import __version__
 
 __author__ = "Bogdan M. Kirilenko"
 
+CHAIN_STEP = "extract_chains"
+CESAR_STEP = "run_cesar"
+RERUN_CESAR_STEP = "rerun_cesar"
+
 
 class ParallelizationStrategy(ABC):
     """
@@ -57,8 +61,6 @@ class NextflowStrategy(ParallelizationStrategy):
     """
     CESAR_CONFIG_TEMPLATE_FILENAME = "call_cesar_config_template.nf"
     CHAIN_CONFIG_TEMPLATE_FILENAME = "extract_chain_features_config.nf"
-    CHAIN_JOBS_PREFIX = "chain_feats__"
-    CESAR_JOBS_PREFIX = "cesar_jobs__"
     CESAR_CONFIG_MEM_TEMPLATE = "${_MEMORY_}"
 
     def __init__(self):
@@ -85,7 +87,7 @@ class NextflowStrategy(ParallelizationStrategy):
         self.label = label
         self.memory_limit = int(kwargs.get("memory_limit", "16"))
 
-        self.nf_project_path = manager_data.get("nextflow_dir", None)  # in fact, contains NF logs
+        self.nf_project_path = manager_data.get("para_dir", None)  # in fact, contains NF logs
         self.keep_logs = manager_data.get("keep_nf_logs", False)
         self.use_local_executor = manager_data.get("local_executor", False)
         self.nf_master_script = manager_data["NF_EXECUTE"]  # NF script that calls everything
@@ -115,11 +117,11 @@ class NextflowStrategy(ParallelizationStrategy):
         if self.use_local_executor:
             # for local executor, no config file is needed
             return None
-        if self.label.startswith(self.CHAIN_JOBS_PREFIX):
+        if self.manager_data["step"] == CHAIN_STEP:
             config_path = os.path.abspath(os.path.join(self.nextflow_config_dir,
                                                        self.CHAIN_CONFIG_TEMPLATE_FILENAME))
             return config_path
-        if self.label.startswith(self.CESAR_JOBS_PREFIX):
+        if self.manager_data["step"] in [CESAR_STEP, RERUN_CESAR_STEP]:
             # need to craft CESAR joblist first
             config_template_path = os.path.abspath(os.path.join(self.nextflow_config_dir,
                                                                 self.CESAR_CONFIG_TEMPLATE_FILENAME))
@@ -150,7 +152,7 @@ class NextflowStrategy(ParallelizationStrategy):
         # if not self.keep_logs and self.nf_project_path:
         #     # remove nextflow intermediate files
         #     shutil.rmtree(self.nf_project_path) if os.path.isdir(self.nf_project_path) else None
-        if self.config_path and self.label.startswith(self.CESAR_JOBS_PREFIX):
+        if self.config_path and self.manager_data["step"] in [CESAR_STEP, RERUN_CESAR_STEP]:
             # for cesar TOGA creates individual config files
             os.remove(self.config_path) if os.path.isfile(self.config_path) else None
         return self.return_code

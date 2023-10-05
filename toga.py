@@ -41,7 +41,6 @@ from modules.sanity_check_functions import check_and_write_u12_file
 from modules.sanity_check_functions import check_isoforms_file
 from modules.sanity_check_functions import check_chains_classified
 from modules.parallel_jobs_manager_helpers import monitor_jobs
-from modules.parallel_jobs_manager_helpers import get_nextflow_dir
 from parallel_jobs_manager import ParallelJobsManager
 from parallel_jobs_manager import NextflowStrategy
 from parallel_jobs_manager import ParaStrategy
@@ -76,6 +75,9 @@ class Toga:
             else os.path.join(os.getcwd(), self.project_name)
         )
         os.mkdir(self.wd) if not os.path.isdir(self.wd) else None
+        # create temp dir
+        self.temp_wd = os.path.join(self.wd, Constants.TEMP)
+        os.mkdir(self.temp_wd) if not os.path.isdir(self.temp_wd) else None
 
         # manage logfiles
         _log_filename = self.t0.strftime("%Y_%m_%d_at_%H_%M")
@@ -87,7 +89,6 @@ class Toga:
         # check if all files TOGA needs are here
         self.temp_files = []  # remove at the end, list of temp files
         to_log("#### Initiating TOGA class ####")
-        self.nextflow_config_dir = args.nextflow_config_dir
         self.para_strategy = args.parallelization_strategy
 
         self.__check_args_correctness(args)
@@ -96,12 +97,8 @@ class Toga:
         self.__check_completeness()
         self.toga_exe_path = os.path.dirname(__file__)
         self.version = self.__get_version()
-        self.nextflow_dir = get_nextflow_dir(self.LOCATION, args.nextflow_dir)
-
-        self.temp_wd = os.path.join(self.wd, Constants.TEMP)
         self.project_name = self.project_name.replace("/", "")
-        os.mkdir(self.temp_wd) if not os.path.isdir(self.temp_wd) else None
-        self.__check_nf_config()
+        self.__check_para_config(args)
 
         # to avoid crash on filesystem without locks:
         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
@@ -196,7 +193,6 @@ class Toga:
         self.no_fpi = args.no_fpi
         self.o2o_only = args.o2o_only
         self.annotate_paralogs = args.annotate_paralogs
-        self.keep_nf_logs = args.do_not_del_nf_logs
         self.exec_cesar_parts_sequentially = args.cesar_exec_seq
         self.ld_model_arg = args.ld_model
         self.mask_all_first_10p = args.mask_all_first_10p
@@ -288,11 +284,6 @@ class Toga:
 
     def __get_paralellizer(self, selected_strategy):
         """Initiate parallelization strategy selected by user."""
-        to_log(f"Selected parallelization strategy: {selected_strategy}")
-        if selected_strategy not in Constants.PARA_STRATEGIES:
-            msg = (f"ERROR! Strategy {selected_strategy} is not found, "
-                   f"allowed strategies are: {Constants.PARA_STRATEGIES}")
-            self.die(msg, rc=1)
         if selected_strategy == "nextflow":
             selected_strategy = NextflowStrategy()
         elif selected_strategy == "para":
@@ -458,7 +449,7 @@ class Toga:
         not_nf = shutil.which(Constants.NEXTFLOW) is None
         if self.para_strategy == "nextflow" and not_nf:
             msg = (
-                "Error! Cannot fild nextflow executable. Please make sure you "
+                "Error! Cannot find nextflow executable. Please make sure you "
                 "have a nextflow binary in a directory listed in your $PATH"
             )
             self.die(msg)
@@ -487,8 +478,42 @@ class Toga:
                 continue
             self.die(f"Error! File {_file} not found!")
 
-    def __check_nf_config(self):
-        """Check that nextflow configure files are here."""
+    def __check_para_config(self, args):
+        """Checks parallel configurations and sets a bunch of related variables"""
+        # Check if strategy allowed
+        to_log(f"Selected parallelization strategy: {self.para_strategy}")
+        if self.para_strategy not in Constants.PARA_STRATEGIES:
+            msg = (f"ERROR! Strategy {self.para_strategy} is not found, "
+                   f"allowed strategies are: {Constants.PARA_STRATEGIES}")
+            self.die(msg, rc=1)
+        
+        # Make para_dir, which will hold parallel logs
+        if args.para_dir is None:
+            self.para_dir = os.path.join(self.wd, f"{self.para_strategy}_logs")
+        else:
+            self.para_dir = args.para_dir
+        os.mkdir(self.para_dir) if not os.path.isdir(self.para_dir) else None
+
+        # Get other parallel args
+        self.nextflow_config_dir = args.nextflow_config_dir
+        self.para_config_file = args.parallel_config_file
+        self.keep_para_logs = args.do_not_del_para_logs
+
+        # Check any config_files
+        self.__check_nf_config_files()
+        # Finally set manager_data, which will be given to the parallelization strategy
+        self.manager_data = {
+            "para_dir": self.para_dir,
+            "NF_EXECUTE": self.NF_EXECUTE,
+            "local_executor": self.local_executor,
+            "keep_para_logs": self.keep_para_logs,
+            "nextflow_config_dir": self.nextflow_config_dir,
+            "temp_wd": self.temp_wd
+            }
+
+
+    def __check_nf_config_files(self):
+        """Check that nextflow configure files are here and set self.local_executor"""
         if self.nextflow_config_dir is None:
             # no nextflow config provided -> using local executor
             self.local_executor = True
@@ -725,28 +750,22 @@ class Toga:
         """Execute extract chain features jobs."""
         timestamp = str(time.time()).split(".")[0]
         project_name = f"chain_feats__{self.project_name}_at_{timestamp}"
-        project_path = os.path.join(self.nextflow_dir, project_name)
+        project_path = os.path.join(self.para_dir, project_name)
 
         to_log(f"Extracting chain features, project name: {project_name}")
-        to_log(f"Project path: {project_path}")
+        to_log(f"Project path: {self.para_dir}")
 
         # Prepare common data for the strategy to use
-        manager_data = {
-            "project_name": project_name,
-            "project_path": project_path,
-            "logs_dir": project_path,
-            "nextflow_dir": self.nextflow_dir,
-            "NF_EXECUTE": self.NF_EXECUTE,
-            "local_executor": self.local_executor,
-            "keep_nf_logs": self.keep_nf_logs,
-            "nextflow_config_dir": self.nextflow_config_dir,
-            "temp_wd": self.temp_wd
-        }
+        chain_manager_data = self.manager_data
+        chain_manager_data["project_name"] = project_name
+        chain_manager_data["logs_dir"] = project_path
+        chain_manager_data["step"] = "extract_chains"
+
 
         # Execute jobs via the Strategy pattern
         jobs_manager = self.__get_paralellizer(self.para_strategy)
         try:
-            jobs_manager.execute_jobs(self.chain_cl_jobs_combined, manager_data, project_name, wait=True)
+            jobs_manager.execute_jobs(self.chain_cl_jobs_combined, chain_manager_data, project_name, wait=True)
         except KeyboardInterrupt:
             self.__terminate_parallel_processes([jobs_manager, ])
 
@@ -973,24 +992,17 @@ class Toga:
                 project_names.append(project_name)
                 joblist_abspath = self.__locate_joblist_abspath(bucket)
 
-                project_path = os.path.join(self.nextflow_dir, project_name)
+                project_path = os.path.join(self.para_dir, project_name)
                 project_paths.append(project_path)
 
-                manager_data = {
-                    "project_name": project_name,
-                    "project_path": project_path,
-                    "logs_dir": project_path,
-                    "nextflow_dir": self.nextflow_dir,
-                    "NF_EXECUTE": self.NF_EXECUTE,
-                    "local_executor": self.local_executor,
-                    "keep_nf_logs": self.keep_nf_logs,
-                    "nextflow_config_dir": self.nextflow_config_dir,
-                    "temp_wd": self.temp_wd
-                }
+                cesar_manager_data = self.manager_data
+                cesar_manager_data["project_name"] = project_name
+                cesar_manager_data["logs_dir"] = project_path
+                cesar_manager_data["step"] = "run_cesar"
 
                 jobs_manager = self.__get_paralellizer(self.para_strategy)
                 jobs_manager.execute_jobs(joblist_abspath,
-                                          manager_data,
+                                          cesar_manager_data,
                                           project_name,
                                           memory_limit=mem_lim,
                                           wait=self.exec_cesar_parts_sequentially)
@@ -1112,24 +1124,18 @@ class Toga:
                 f.write("\n")
                 f.close()
 
-                project_name = f"cesar_jobs__RERUN_{self.project_name}_at_{timestamp}_q_{bucket}"
-                project_path = os.path.join(self.nextflow_dir, project_name)
+                project_name = f"rerun_cesar_jobs__{self.project_name}_at_{timestamp}_q_{bucket}"
+                project_path = os.path.join(self.para_dir, project_name)
                 project_paths.append(project_path)
 
-                manager_data = {
-                    "project_name": project_name,
-                    "project_path": project_path,
-                    "logs_dir": project_path,
-                    "nextflow_dir": self.nextflow_dir,
-                    "NF_EXECUTE": self.NF_EXECUTE,
-                    "local_executor": self.local_executor,
-                    "keep_nf_logs": self.keep_nf_logs,
-                    "nextflow_config_dir": self.nextflow_config_dir,
-                    "temp_wd": self.temp_wd
-                }
+                cesar_manager_data = self.manager_data
+                cesar_manager_data["project_name"] = project_name
+                cesar_manager_data["logs_dir"] = project_path
+                cesar_manager_data["step"] = "rerun_cesar"
+
                 jobs_manager = self.__get_paralellizer(self.para_strategy)
                 jobs_manager.execute_jobs(bucket_batch_file,
-                                          manager_data,
+                                          cesar_manager_data,
                                           project_name,
                                           memory_limit=mem_lim,
                                           wait=self.exec_cesar_parts_sequentially)
@@ -1396,9 +1402,9 @@ class Toga:
             job_manager.terminate_process()
 
     def __cleanup_parallelizer_files(self):
-        if not self.keep_nf_logs and self.nextflow_dir:
-            # remove nextflow intermediate files
-            shutil.rmtree(self.nextflow_dir) if os.path.isdir(self.nextflow_dir) else None
+        if not self.keep_para_logs and self.para_dir:
+            # remove parallel intermediate files
+            shutil.rmtree(self.para_dir) if os.path.isdir(self.para_dir) else None
         pass
 
 
@@ -1472,13 +1478,22 @@ def parse_args():
         help="Find orthologs " "for a single reference chromosome only",
     )
     app.add_argument(
-        "--nextflow_dir",
-        "--nd",
-        default=None,
+        "--parallelization_strategy",
+        "--ps",
+        choices=Constants.PARA_STRATEGIES,  # TODO: add snakemake
+        default="nextflow",
         help=(
-            "Nextflow working directory: from this directory nextflow is "
-            "executed, also there all nextflow log files are kept"
+            "The parallelization strategy to use. If custom -> please provide "
+            "a custom strategy implementation in the parallel_jobs_manager.py "
+            "(to be enabled in future)"
         )
+    )
+    app.add_argument(
+        "--para_dir",
+        "--pad",
+        default=None,
+        help="Parallel working directory: Parallel strategies are executed here, and"
+        "log files are stored here",
     )
     app.add_argument(
         "--nextflow_config_dir",
@@ -1491,17 +1506,7 @@ def parse_args():
         )
     )
     app.add_argument(
-        "--do_not_del_nf_logs", "--nfnd", action="store_true", dest="do_not_del_nf_logs"
-    )
-    app.add_argument(
-        "--parallelization_strategy",
-        "--ps",
-        choices=Constants.PARA_STRATEGIES,  # TODO: add snakemake
-        default="nextflow",
-        help=(
-            "The parallelization strategy to use. If custom -> please provide "
-            "a custom strategy implementation in the parallel_jobs_manager.py "
-        )
+        "--do_not_del_para_logs", "--pnd", action="store_true", dest="do_not_del_para_logs"
     )
     # chain features related
     app.add_argument(
