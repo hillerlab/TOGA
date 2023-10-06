@@ -1,0 +1,111 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "UGE config",
+    "description": "Configuration for running TOGA on UGE",
+    "type": "object",
+    "properties": {
+        "strat": {
+            "description": "Must be uge",
+            "type": "string",
+            "const": "uge"
+        },
+        "qsub_cmd": {
+            "description": "qsub command to use",
+            "type": "string",
+            "enum": ["qsub", "qsub_beta"],
+            "examples": ["qsub", "qsub_beta"]
+        },
+        "parallel_env": {
+            "description": "Parallel environment to use",
+            "examples": ["def_slot"]
+        },
+        "mem_args": {
+            "description": "List of arguments used to specify memory",
+            "type": ["array", "null"],
+            "examples": ["s_vmem", "mem_req"]
+        },
+        "time_args": {
+            "description": "List of arguments used to specify runtime",
+            "type": ["array", "null"],
+            "examples": ["d_rt", "s_rt"]
+        },
+        "extra_args" : {
+            "description": "Extra arguments to use for all commands",
+            "type": ["array", "null"],
+            "examples": ["-l foo"]
+        },
+        "steps": {
+            "description": "separate properties for each step of TOGA",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "uniqueItems": true,
+                "minItems": 3,
+                "properties": {
+                    "step": {
+                        "description": "Name of step",
+                        "enum": ["extract_chains", "run_cesar", "rerun_cesar"]
+                    },
+                    "queue" : {
+                        "description": "What queue to use, if any",
+                        "type": ["string"]
+                    },
+                    "memGB" : {
+                        "description": "Memory to use for step in GB",
+                        "type": ["integer"]
+                    },
+                    "extra_args" : {
+                        "description": "Extra arguments for chain step",
+                        "type": ["array"],
+                        "examples": ["-l foo"]
+                    },
+                    "runtime": {
+                        "description": "Max time for job to run",
+                        "type": ["string"],
+                        "examples": ["00:10:00"]
+                    },
+                    "conc": {
+                        "description": "Max number of jobs to run at a time",
+                        "type": ["integer"]
+                    },
+                    "slots": {
+                        "description": "Number of slots to use in parallel jobs",
+                        "type": ["integer"],
+                        "exclusiveMinimum": 1
+                    },
+                    "inc": {
+                        "description": "Number of jobs each submission should run",
+                        "type": ["integer"],
+                        "exclusiveMinimum": 1
+                    }
+                },
+                "required": ["step"],
+                "dependentRequired": {
+                    "inc": ["slots"],
+                    "slots": ["inc"]
+                }
+            }
+        }
+    },
+    "required": ["strat", "mem_args", "time_args"],
+    "if": {
+        "properties": {
+            "step_conf": {
+                "contains": {
+                    "type": "object",
+                    "properties" : {
+                        "slots": {
+                            "type": "integer",
+                            "exclusiveMinimum": 1
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "then": {
+        "required": [
+            "parallel_env"
+        ]
+    }
+}
