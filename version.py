@@ -3,6 +3,7 @@
 
 __author__ = "Bogdan M. Kirilenko"
 
+
 class Version:
     def __init__(self, major, minor, patch, metadata=None):
         self.major = major
@@ -11,7 +12,7 @@ class Version:
         self.metadata = metadata
         self.version_repr = f"{major}.{minor}.{patch}"
         if self.metadata:
-            self.version_repr += f" (self.metadata)"
+            self.version_repr += f"/{self.metadata}"
 
     def update_readme(self, filename="README.md"):
         with open(filename, "r") as f:
@@ -37,7 +38,7 @@ class Version:
         return self.version_repr
 
 
-__version__ = Version(1, 1, 6)
+__version__ = Version(1, 1, 7, metadata="prerelease")
 
 if __name__ == "__main__":
     print(f"TOGA version: {__version__}")
