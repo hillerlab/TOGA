@@ -2,8 +2,3 @@
 	path = CESAR2.0
 	url = https://github.com/kirilenkobm/CESAR2.0
     ignore = all
-[submodule "postoga"]
-	path = postoga
-	url = https://github.com/alejandrogzi/postoga
-	ignore = all
-	branch = master
