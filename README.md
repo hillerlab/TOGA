@@ -293,7 +293,7 @@ It accepts the following arguments:
 Show help message and exit.
 Calling ./toga.py without arguments does the same.
 
-##### --project_folder PROJECT_FOLDER
+##### --project_dir PROJECT_DIR
 
 Project directory.
 TOGA will save all intermediate and output files exactly in this directory.
