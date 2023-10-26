@@ -12,7 +12,6 @@ import time
 from datetime import datetime as dt
 import json
 import shutil
-from math import ceil
 from collections import defaultdict
 from constants import Constants
 from modules.filter_bed import prepare_bed_file
@@ -24,12 +23,10 @@ from modules.merge_cesar_output import merge_cesar_output
 from modules.gene_losses_summary import gene_losses_summary
 from modules.orthology_type_map import orthology_type_map
 from modules.classify_chains import classify_chains
-from modules.get_transcripts_quality import classify_transcripts
 from modules.make_query_isoforms import get_query_isoforms_data
 from modules.collect_prefefined_glp_classes import collect_predefined_glp_cases
 from modules.collect_prefefined_glp_classes import add_transcripts_to_missing
 from modules.stitch_fragments import stitch_scaffolds
-from modules.common import parts
 from modules.common import to_log
 from modules.common import setup_logger
 from modules.common import make_symlink

@@ -33,6 +33,7 @@ BED_COLORS_TO_KEEP = {BLUE, LIGHT_BLUE, SALMON}
 MODULE_NAME_FOR_LOG = "make_query_isoforms"
 TOGA_GENE_PREFIX = "TOGA"
 
+
 def parse_args():
     """Read CMD args."""
     app = argparse.ArgumentParser()
