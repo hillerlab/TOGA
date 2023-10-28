@@ -91,3 +91,4 @@ Documentation improvements.
 * (planned) Using CESAR in the single exon mode for most of the exons to solve the RAM bottleneck (maybe TOGA 1.2.x?)
 * Added logging for filtered out reference transcripts
 * Updated library versions - now compatible with python3.11
+* Updated configure.sh -> fixed inability to install CESAR if TOGA is installed from a zip archive + cleanup scenario
