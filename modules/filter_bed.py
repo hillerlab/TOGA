@@ -159,7 +159,7 @@ def prepare_bed_file(bed_file, output, ouf=False, save_rejected=None, only_chrom
             # ideally CDS length should be divisible by 3
             # not ouf means that we like to keep such transcripts for some reason
             rejected.append((name, "Out-of-frame gene"))
-            warn_msg = f"{MODULE_NAME_FOR_LOG}: transcript {name} skipped: out-of-frame gene"
+            warn_msg = f"{MODULE_NAME_FOR_LOG}: transcript {name} skipped: out-of-frame transcript"
             to_log(warn_msg)
             continue
 

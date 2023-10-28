@@ -162,6 +162,7 @@ class Toga:
         prepare_bed_file(
             args.bed_input,
             self.ref_bed,
+            ouf=False,  # TODO: check whether we like to include this parameter
             save_rejected=bed_filt_rejected,
             only_chrom=args.limit_to_ref_chrom,
         )
