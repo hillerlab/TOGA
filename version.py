@@ -11,7 +11,7 @@ class Version:
         self.metadata = metadata
         self.version_repr = f"{major}.{minor}.{patch}"
         if self.metadata:
-            self.version_repr += f" (self.metadata)"
+            self.version_repr += f".{self.metadata}"
 
     def update_readme(self, filename="README.md"):
         with open(filename, "r") as f:
