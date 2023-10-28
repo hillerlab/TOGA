@@ -12,6 +12,7 @@ import time
 from datetime import datetime as dt
 import json
 import shutil
+import importlib.metadata as metadata
 from collections import defaultdict
 from constants import Constants
 from modules.filter_bed import prepare_bed_file
@@ -87,12 +88,13 @@ class Toga:
         self.nextflow_config_dir = args.nextflow_config_dir
         self.para_strategy = args.parallelization_strategy
 
+        self.toga_exe_path = os.path.dirname(__file__)
+        self.__log_python_version()
+        self.version = self.__get_version()
         self.__check_args_correctness(args)
         self.__modules_addr()
         self.__check_dependencies()
         self.__check_completeness()
-        self.toga_exe_path = os.path.dirname(__file__)
-        self.version = self.__get_version()
         self.nextflow_dir = get_nextflow_dir(self.LOCATION, args.nextflow_dir)
 
         self.temp_wd = os.path.join(self.wd, Constants.TEMP)
@@ -283,6 +285,11 @@ class Toga:
         project_name = f"TOGA_project_on_{today_and_now}"
         return project_name
 
+    @staticmethod
+    def __log_python_version():
+        to_log(f"# python interpreter path: {sys.executable}")
+        to_log(f"# python interpreter version: {sys.version}")
+
     def __get_paralellizer(self, selected_strategy):
         """Initiate parallelization strategy selected by user."""
         to_log(f"Selected parallelization strategy: {selected_strategy}")
@@ -428,6 +435,15 @@ class Toga:
 
     def __check_dependencies(self):
         """Check all dependencies."""
+        # TODO: refactor this part - different checks depending on the selected strategy
+        not_nf = shutil.which(Constants.NEXTFLOW) is None
+        if self.para_strategy == "nextflow" and not_nf:
+            msg = (
+                "Error! Cannot fild nextflow executable. Please make sure you "
+                "have a nextflow binary in a directory listed in your $PATH"
+            )
+            self.die(msg)
+
         c_not_compiled = any(
             os.path.isfile(f) is False
             for f in [
@@ -440,25 +456,27 @@ class Toga:
         )
         if c_not_compiled:
             to_log("Warning! C code is not compiled, trying to compile...")
-        imports_not_found = False
-        try:
-            import twobitreader
-            import networkx
-            import pandas
-            import xgboost
-            import joblib
-            import h5py
-        except ImportError:
-            to_log("Warning! Some of the required packages are not installed.")
-            imports_not_found = True
 
-        not_nf = shutil.which(Constants.NEXTFLOW) is None
-        if self.para_strategy == "nextflow" and not_nf:
-            msg = (
-                "Error! Cannot fild nextflow executable. Please make sure you "
-                "have a nextflow binary in a directory listed in your $PATH"
-            )
-            self.die(msg)
+        imports_not_found = False
+        required_libraries = [
+            'twobitreader',
+            'networkx',
+            'pandas',
+            'numpy',
+            'xgboost',
+            'scikit-learn',
+            'joblib',
+            'h5py'
+        ]
+
+        to_log("# Python package versions")
+        for lib in required_libraries:
+            try:
+                lib_version = metadata.version(lib)
+                to_log(f"* {lib}: {lib_version}")
+            except metadata.PackageNotFoundError:
+                imports_not_found = True
+                to_log(f"! {lib}: Not installed - will try to install")
 
         not_all_found = any([c_not_compiled, imports_not_found])
         self.__call_proc(

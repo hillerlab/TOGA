@@ -37,7 +37,7 @@ class Version:
         return self.version_repr
 
 
-__version__ = Version(1, 1, 6)
+__version__ = Version(1, 1, 7, metadata="dev")
 
 if __name__ == "__main__":
     print(f"TOGA version: {__version__}")

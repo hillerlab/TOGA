@@ -3,7 +3,7 @@
 <img src="https://github.com/hillerlab/TOGA/blob/master/supply/logo.png" width="500">
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-![version](https://img.shields.io/badge/version-1.1.6-blue)
+![version](https://img.shields.io/badge/version-1.1.7 (self.metadata)-blue)
 [![DOI](https://zenodo.org/badge/277817661.svg)](https://zenodo.org/badge/latestdoi/277817661)
 [![License](https://img.shields.io/github/license/hillerlab/TOGA.svg)](https://github.com/hillerlab/TOGA/blob/master/LICENSE)
 [![made-with-Nextflow](https://img.shields.io/badge/Made%20with-Nextflow-23aa62.svg)](https://www.nextflow.io/)
@@ -36,7 +36,7 @@ This document provides version-specific updates, including new features, bug fix
 ## Installation
 
 TOGA is compatible with Linux and MacOS, including M1-based systems.
-It has been tested and verified to work with Python versions 3.9 and higher.
+It is recommended to use Python version 3.11.
 
 It is highly recommended to have access to computational cluster, but
 for small or partial genomes with short genes a desktop PC will be enough.
