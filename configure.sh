@@ -48,11 +48,11 @@ else
     CFLAGS="-Wall -Wextra -O2 -g -std=c99" # original flags for x86
 fi
 
-gcc "$CFLAGS" -o "${my_dir}"/modules/chain_score_filter "${my_dir}"/modules/chain_score_filter.c
-gcc "$CFLAGS" -o "${my_dir}"/modules/chain_filter_by_id "${my_dir}"/modules/chain_filter_by_id.c
-gcc "$CFLAGS" -fPIC -shared -o "${my_dir}"/modules/chain_coords_converter_slib.so "${my_dir}"/modules/chain_coords_converter_slib.c
-gcc "$CFLAGS" -fPIC -shared -o "${my_dir}"/modules/extract_subchain_slib.so "${my_dir}"/modules/extract_subchain_slib.c
-gcc "$CFLAGS" -fPIC -shared -o "${my_dir}"/modules/chain_bst_lib.so "${my_dir}"/modules/chain_bst_lib.c
+gcc $CFLAGS -o "${my_dir}"/modules/chain_score_filter "${my_dir}"/modules/chain_score_filter.c
+gcc $CFLAGS -o "${my_dir}"/modules/chain_filter_by_id "${my_dir}"/modules/chain_filter_by_id.c
+gcc $CFLAGS -fPIC -shared -o "${my_dir}"/modules/chain_coords_converter_slib.so "${my_dir}"/modules/chain_coords_converter_slib.c
+gcc $CFLAGS -fPIC -shared -o "${my_dir}"/modules/extract_subchain_slib.so "${my_dir}"/modules/extract_subchain_slib.c
+gcc $CFLAGS -fPIC -shared -o "${my_dir}"/modules/chain_bst_lib.so "${my_dir}"/modules/chain_bst_lib.c
 
 
 ### XGBoost models ###
