@@ -216,7 +216,7 @@ The simplest way to obtain isoforms file is:
 
 ##### U12 introns data
 
-You also can provide data of U12 exons in the reference genome,
+You also can provide data of U12 introns in the reference genome,
 it would facilitate gene loss detection process.
 However, this is not mandatory.
 
@@ -228,7 +228,7 @@ There are examples for U12 data files:
 There are tab-separated files containing 3 columns:
 
 1) First column contains transcript identifier
-2) Second one: exon number
+2) Second one: intron number
 3) Third column contains A/D letter, which means "acceptor" or "donor".
 
 If gene loss pipeline detects mutations of the splice sites listed in this file,
