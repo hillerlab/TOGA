@@ -162,7 +162,7 @@ class Toga:
         prepare_bed_file(
             args.bed_input,
             self.ref_bed,
-            ouf=False,  # TODO: check whether we like to include this parameter
+            ouf=args.out_of_frame,
             save_rejected=bed_filt_rejected,
             only_chrom=args.limit_to_ref_chrom,
         )
@@ -1662,6 +1662,12 @@ def parse_args():
             "the reading frame, ignoring ATG codons distribution. "
             "(Default mode in V1.0, not recommended to use in later versions)"
         )
+    )
+    app.add_argument(
+        "--out_of_frame",
+        action="store_true",
+        dest="out_of_frame",
+        help="Do not skip out-of-frame genes.",
     )
     # print help if there are no args
     if len(sys.argv) < 2:

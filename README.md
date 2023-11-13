@@ -168,7 +168,7 @@ This repository contains examples of bed12 file for human and mouse:
 Some advice about your reference annotation:
 
 - Please make sure that the length of the CDS of your annotations is divisible by 3.
-TOGA will skip transcripts that do not satisfy this criteria.
+By default, TOGA will skip transcripts that do not satisfy this criteria (to override, see the --out_of_frame argument described below).
 - This is highly recommended that CDS of your transcripts start with ATG and end with a canonical stop codon.
 - Your transcripts are coding, meaning that thickStart and thickEnd are not equal.
 TOGA would skip non-coding transcripts.
@@ -448,6 +448,11 @@ files are kept
 Directory containing nextflow configuration files for
 cluster, pls see nextflow_config_files/readme.txt for
 details.
+
+##### --out_of_frame
+
+The default behavior is to ignore transcripts which do not have a CDS length which is a multiple of three.
+Use this optional argument to include those transcripts. 
 
 ## Output reading
 
