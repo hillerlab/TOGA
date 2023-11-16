@@ -989,29 +989,31 @@ class Toga:
                 project_names.append(project_name)
                 joblist_abspath = self.__locate_joblist_abspath(bucket)
 
-                project_path = os.path.join(self.nextflow_dir, project_name)
-                project_paths.append(project_path)
-
-                manager_data = {
-                    "project_name": project_name,
-                    "project_path": project_path,
-                    "logs_dir": project_path,
-                    "nextflow_dir": self.nextflow_dir,
-                    "NF_EXECUTE": self.NF_EXECUTE,
-                    "local_executor": self.local_executor,
-                    "keep_nf_logs": self.keep_nf_logs,
-                    "nextflow_config_dir": self.nextflow_config_dir,
-                    "temp_wd": self.temp_wd
-                }
-
-                jobs_manager = self.__get_paralellizer(self.para_strategy)
-                jobs_manager.execute_jobs(joblist_abspath,
-                                          manager_data,
-                                          project_name,
-                                          memory_limit=mem_lim,
-                                          wait=self.exec_cesar_parts_sequentially)
-                jobs_managers.append(jobs_manager)
-                time.sleep(Constants.CESAR_PUSH_INTERVAL)
+                # Only run if bucket has jobs
+                if joblist_abspath:
+                    project_path = os.path.join(self.nextflow_dir, project_name)
+                    project_paths.append(project_path)
+    
+                    manager_data = {
+                        "project_name": project_name,
+                        "project_path": project_path,
+                        "logs_dir": project_path,
+                        "nextflow_dir": self.nextflow_dir,
+                        "NF_EXECUTE": self.NF_EXECUTE,
+                        "local_executor": self.local_executor,
+                        "keep_nf_logs": self.keep_nf_logs,
+                        "nextflow_config_dir": self.nextflow_config_dir,
+                        "temp_wd": self.temp_wd
+                    }
+    
+                    jobs_manager = self.__get_paralellizer(self.para_strategy)
+                    jobs_manager.execute_jobs(joblist_abspath,
+                                              manager_data,
+                                              project_name,
+                                              memory_limit=mem_lim,
+                                              wait=self.exec_cesar_parts_sequentially)
+                    jobs_managers.append(jobs_manager)
+                    time.sleep(Constants.CESAR_PUSH_INTERVAL)
 
             if self.exec_cesar_parts_sequentially is False:
                 monitor_jobs(jobs_managers)
