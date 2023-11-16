@@ -3,24 +3,15 @@
 import argparse
 import sys
 from copy import deepcopy
-# from version import __version__
+from version import __version__
 
-# try:  # for robustness
-#     from modules.common import eprint
-#     from modules.common import die
-# except ImportError:
-#     from common import eprint
-#     from common import die
-#
+try:  # for robustness
+    from modules.common import eprint
+    from modules.common import die
+except ImportError:
+    from common import eprint
+    from common import die
 
-def die(msg, rc=1):
-    """Show msg in stderr, exit with the rc given."""
-    sys.stderr.write(msg + "\n")
-    sys.exit(rc)
-
-def eprint(msg, end="\n"):
-    """Like print but for stderr."""
-    sys.stderr.write(str(msg) + end)
 
 # constants
 STOPS = {"TAG", "TGA", "TAA"}

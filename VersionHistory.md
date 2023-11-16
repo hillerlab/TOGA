@@ -92,3 +92,4 @@ Documentation improvements.
 * Added logging for filtered out reference transcripts
 * Updated library versions - now compatible with python3.11
 * Updated configure.sh -> fixed inability to install CESAR if TOGA is installed from a zip archive + cleanup scenario
+* Fixed bug with parsing intron retention in the CESAR output -> in the prev versions, query chars located vs > were skipped
