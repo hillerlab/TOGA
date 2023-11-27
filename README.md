@@ -519,9 +519,9 @@ TOGA identifies the following classes:
 2) PG - no orthologous chains identified, TOGA projected transcripts via paralogous
 chains and cannot make any conclusion.
 3) PM - partial & missing. Most of the projection lies outside scaffold borders.
-4) L - clearly lost.
-5) M - missing, assembly gaps mask >50% of the prediction CDS.
-6) G - "grey", there are inactivating mutations but not enough evidence
+4) M - missing, assembly gaps mask >50% of the prediction CDS.
+5) L - clearly lost.
+6) UL - "uncertain loss", there are inactivating mutations but not enough evidence
 for "clearly lost" class. In other words: neither lost nor intact.
 7) PI - partially intact: some fraction of CDS is missing, but most likely
 this is intact.
