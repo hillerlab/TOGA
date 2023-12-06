@@ -103,7 +103,7 @@ These jobs are expected to be short and not memory consuming, so 1 hour of runti
 and 10Gb of memory would be enough.
 4) Create "call_cesar_config_template.nf" file.
 This configuration file is for CESAR jobs.
-These jobs usually take much longer that chain feature extraction, it's recommended to request 24 hors for them.
+These jobs usually take much longer that chain feature extraction, it's recommended to request 24 hours for them.
 You don't have to provide an exact amount of memory for these jobs, TOGA will compute this itself.
 Please write a placeholder instead, as follows: process.memory = "${\_MEMORY\_}G".
 
@@ -494,7 +494,7 @@ Isoforms file for the query.
 TOGA produces 3 fasta files: prot.fasta, codon.fasta nucleotide.fasta.
 It saves both the reference and predicted query sequences.
 - prot.fasta contains protein sequences of reference genes and predicted transcripts.
-- codon.fasta contains codon alignments, corrected for frameshiring insertions and deletions
+- codon.fasta contains codon alignments, corrected for frameshifting insertions and deletions
 - nucleotide.fasta contains exon nucleotide alignments
 
 ### orthology_classification.tsv
@@ -649,7 +649,7 @@ you can set the parameter -pre/--precedence like so:
 ./TOGA_assemblyStats.py ${TOGA_DIRS_FILE} -m merge -pre M#PM#PG#abs#I#PI#UL#L
 ```
 
-Note that the ouputs, with the suffix \_merge.tsv, can be renamed loss_summ_data.tsv and put in a directory, to act as the output of a fictional TOGA run.
+Note that the outputs, with the suffix \_merge.tsv, can be renamed loss_summ_data.tsv and put in a directory, to act as the output of a fictional TOGA run.
 This can be useful when using the same script as outlined in the previous section to get summary statistics.
 
 ## Citation
