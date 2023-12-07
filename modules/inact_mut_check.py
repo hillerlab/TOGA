@@ -903,7 +903,7 @@ def classify_exons(
         # classify whether it's deleted or not:
         # print(f"Exon {exon_num} classification with the following params: ") if v else None
         # print(ex_class, exon_excl, ex_pid, ex_blosum) if v else None
-        ex_non_del, q = classify_exon(ex_class, exon_excl, ex_pid, ex_blosum, v=v)
+        ex_non_del, q = classify_exon(ex_class, exon_excl, ex_pid, ex_blosum)
         # print(f"Results are: {del_} {q}") if v else None
 
         if ex_class == "M" or ex_gap:
