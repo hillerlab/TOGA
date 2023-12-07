@@ -204,7 +204,59 @@ def split_ex_reg_in_chrom(exon_regions):
 
 
 def parse_cesar_out_file(arg_input, exclude_arg=None):
-    """Parse CESAR bdb file core function."""
+    r"""Parse CESAR bdb file core function.
+
+    An example of what a "CESAR bdb file" looks like, and how it is parsed:
+
+    >>> from pprint import pprint
+    >>> with open("test-file-400157d.txt", "w") as txtfile:
+    ...     contents = "\n".join([
+    ...         "#ENST00000262455",
+    ...         ">ENST00000262455.1169 | PROT | REFERENCE",
+    ...         "MRVDCDQHSDIAQRYRISK",
+    ...         ">ENST00000262455.1169 | PROT | QUERY",
+    ...         "---------DIAQRYRISK",
+    ...         ">ENST00000262455.1169 | CODON | REFERENCE",
+    ...         "ATG AGA GTT GAT TGT GAT CAG CAC TCT GAC ATA GCC CAG AGA TAC AGG ATA AGC AAA",
+    ...         ">ENST00000262455.1169 | CODON | QUERY",
+    ...         "--- --- --- --- --- --- --- --- --- GAT ATA GCC CAG AGA TAT AGG ATA AGC AAA",
+    ...         ">ENST00000262455 | 0 | 1169 | reference_exon",
+    ...         "ATGAGAGTTGATTGTGATCAGCACT",
+    ...         ">ENST00000262455 | 0 | 1169 | JH567521:510952-510836 | 0.00 | 0.00 | N/A | N/A | exp:N/A-N/A | N/A | False | query_exon",
+    ...         "NNNNNNNNNNNNNNNNNNNNNNNNN",
+    ...         ">ENST00000262455 | 1 | 1169 | reference_exon",
+    ...         "CTGACATAGCCCAGAGATACAGGATAAGCAAA",
+    ...         ">ENST00000262455 | 1 | 1169 | JH567521:506100-505915 | 94.59 | 97.39 | OK | A+ | exp:505909-506110 | INC | False | query_exon",
+    ...         "CTGATATAGCCCAGAGATATAGGATAAGCAAA\n\n",])
+    ...     txtfile.write(contents)
+    822
+    >>> pprint(parse_cesar_out_file("test-file-400157d.txt"))
+    (['JH567521\t505915\t506100\tENST00000262455.1169\t1000\t-\t505915\t506100\t'
+      '0,0,0\t1\t185,\t0,'],
+     ['JH567521\t510952\t510836\tENST00000262455.0.1169\t0\t+\n'],
+     '>ref_ENST00000262455.1169\n'
+     'ATGAGAGTTGATTGTGATCAGCACTCTGACATAGCCCAGAGATACAGGATAAGCAAA\n'
+     '>ENST00000262455.1169\n'
+     '-------------------------CTGATATAGCCCAGAGATATAGGATAAGCAAA\n',
+     'gene\texon_num\tchain_id\tact_region\texp_region\tin_exp\tpid\tblosum\tgap\t'
+     'class\tparalog\tq_mark\n'
+     'ENST00000262455\t0\t1169\tJH567521:510952-510836\texp:N/A-N/A\tN/A\t0.00\t'
+     '0.00\tN/A\tN/A\tFalse\tNA\n'
+     'ENST00000262455\t1\t1169\tJH567521:506100-505915\texp:505909-506110\tINC\t'
+     '94.59\t97.39\tOK\tA+\tFalse\tHQ\n',
+     '>ENST00000262455.1169 | PROT | REFERENCE\n'
+     'MRVDCDQHSDIAQRYRISK\n'
+     '>ENST00000262455.1169 | PROT | QUERY\n'
+     '---------DIAQRYRISK\n',
+     '>ENST00000262455.1169 | CODON | REFERENCE\n'
+     'ATG AGA GTT GAT TGT GAT CAG CAC TCT GAC ATA GCC CAG AGA TAC AGG ATA AGC AAA\n'
+     '>ENST00000262455.1169 | CODON | QUERY\n'
+     '--- --- --- --- --- --- --- --- --- GAT ATA GCC CAG AGA TAT AGG ATA AGC '
+     'AAA\n',
+     '\n',
+     '\n')
+    >>> os.remove("test-file-400157d.txt")"""
+
     # The CESAR output ("bdb") file is divided into sections, one for each
     # reference transcript. Each section start with "#" and "#" is used nowhere
     # else. So, each element of content represents one reference transcript and

@@ -655,10 +655,19 @@ This can be useful when using the same script as outlined in the previous sectio
 ## Contributing
 
 TOGA uses the python built-in [doctest](https://docs.python.org/3/library/doctest.html) framework.
-To run the tests,
+In this framework, tests are embedded within each function's docstring.
+To run all the tests in a file, you could run:
 
-``` shell
-$ python3 -c "import doctest, toga; print(doctest.testmod(toga))"
+```shell
+python3 -m doctest toga.py
+# Or, for verbose output: python3 -m doctest -v toga.py
+```
+
+To run all the tests in all the python files in this project, try:
+
+```shell
+python3 -m doctest $(find . -name "*py")
+# Or, for verbose output: python3 -m doctest -v $(find . -name "*py") 
 ```
 
 ## Citation
