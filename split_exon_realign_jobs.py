@@ -223,6 +223,12 @@ def parse_args():
         default=None,
         help="Log file"
     )
+    app.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Don't print to console"
+    )
     # print help if there are no args
     if len(sys.argv) < 2:
         app.print_help()
@@ -813,7 +819,7 @@ def main():
     """Entry point."""
     t0 = dt.now()
     args = parse_args()
-    setup_logger(args.log_file)
+    setup_logger(args.log_file, write_to_console=not args.quiet)
     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
     args_dict = vars(args)
     to_log(f"{MODULE_NAME_FOR_LOG}: the arguments list is:")
