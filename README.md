@@ -652,6 +652,15 @@ you can set the parameter -pre/--precedence like so:
 Note that the ouputs, with the suffix \_merge.tsv, can be renamed loss_summ_data.tsv and put in a directory, to act as the output of a fictional TOGA run.
 This can be useful when using the same script as outlined in the previous section to get summary statistics.
 
+## Contributing
+
+TOGA uses the python built-in [doctest](https://docs.python.org/3/library/doctest.html) framework.
+To run the tests,
+
+``` shell
+$ python3 -c "import doctest, toga; print(doctest.testmod(toga))"
+```
+
 ## Citation
 
 Kirilenko BM, Munegowda C, Osipova E, Jebb D, Sharma V, Blumer M, Morales AE, Ahmed AW, Kontopoulos DG, Hilgers L, Lindblad-Toh K, Karlsson EK, Zoonomia Consortium, Hiller M. [Integrating gene annotation with orthology inference at scale.](https://www.science.org/stoken/author-tokens/ST-1161/full) Science, 380(6643), eabn3107, 2023
