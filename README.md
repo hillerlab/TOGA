@@ -443,11 +443,16 @@ Nextflow working directory: from this directory
 nextflow is executed, also there all nextflow log
 files are kept
 
-##### nextflow_config_dir NEXTFLOW_CONFIG_DIR, --nc NEXTFLOW_CONFIG_DIR
+##### --nextflow_config_dir NEXTFLOW_CONFIG_DIR, --nc NEXTFLOW_CONFIG_DIR
 
 Directory containing nextflow configuration files for
 cluster, pls see nextflow_config_files/readme.txt for
 details.
+
+##### --quiet, -q
+
+Run without printing messages to console. 
+This does not affect the writing of log _files_: they will be written as usual. 
 
 ## Output reading
 

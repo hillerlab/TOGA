@@ -77,10 +77,11 @@ class Toga:
 
         # manage logfiles
         _log_filename = self.t0.strftime("%Y_%m_%d_at_%H_%M")
+        self.quiet = args.quiet
         self.log_file = os.path.join(self.wd, f"toga_{_log_filename}.log")
         self.log_dir = os.path.join(self.wd, "temp_logs")  # temp file to collect logs from processes
         os.mkdir(self.log_dir) if not os.path.isdir(self.log_dir) else None
-        setup_logger(self.log_file)
+        setup_logger(self.log_file, write_to_console=not self.quiet)
 
         # check if all files TOGA needs are here
         self.temp_files = []  # remove at the end, list of temp files
@@ -730,7 +731,8 @@ class Toga:
             f"--jobs {self.ch_cl_jobs} "
             f"--jobs_file {self.chain_cl_jobs_combined} "
             f"--results_dir {self.chain_class_results} "
-            f"--rejected {rejected_path}"
+            f"--rejected {rejected_path} "
+            f"{'--quiet' if self.quiet else ''}"
         )
 
         self.__call_proc(split_jobs_cmd, "Could not split chain jobs!")
@@ -879,7 +881,8 @@ class Toga:
             f"--predefined_glp_class_path {self.predefined_glp_cesar_split} "
             f"--unprocessed_log {self.technical_cesar_err} "
             f"--log_file {self.log_file} "
-            f"--cesar_logs_dir {self.log_dir}"
+            f"--cesar_logs_dir {self.log_dir} "
+            f"{'--quiet' if self.quiet else ''}"
         )
 
         if self.annotate_paralogs:  # very rare occasion
@@ -1483,6 +1486,12 @@ def parse_args():
         action="store_true",
         dest="keep_temp",
         help="Do not remove temp files.",
+    )
+    app.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Don't print to console"
     )
     app.add_argument(
         "--limit_to_ref_chrom",

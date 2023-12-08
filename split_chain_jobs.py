@@ -37,6 +37,12 @@ def parse_args():
     app.add_argument("bed_file", type=str, help="Bed file, gene annotations.")
     app.add_argument("bed_index", type=str, help="Indexed bed")
     app.add_argument("--log_file", type=str, help="Path to logfile")
+    app.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Don't print to console"
+    )
     app.add_argument("--parallel_logs_dir", type=str, help="Path to dir storing logs from each cluster job")
     app.add_argument(
         "--jobs_num",
@@ -293,7 +299,7 @@ def save(template, batch, logs_dir=None):
 def main():
     """Entry point."""
     args = parse_args()
-    setup_logger(args.log_file)
+    setup_logger(args.log_file, write_to_console=not args.quiet)
     check_args(args)  # check if all the files, dependencies etc are correct
     intersections, skipped = get_intersections()  # intersect chains and beds
     # # extract genes that are not intersected by any chain
