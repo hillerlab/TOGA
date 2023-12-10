@@ -3,10 +3,9 @@
 import argparse
 import sys
 from collections import defaultdict
-from version import __version__
 
-__author__ = "Bogdan Kirilenko, 2020."
-__email__ = "bogdan.kirilenko@senckenberg.de"
+__author__ = "Bogdan M. Kirilenko, 2023"
+__email__ = "kirilenkobm [at] google mail"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 
