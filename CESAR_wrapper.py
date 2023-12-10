@@ -173,11 +173,11 @@ def parse_args():
         "--codon_out", "--cdo", default="stdout", help="Save codon alignment"
     )
     app.add_argument("--verbose", "-v", action="store_true", dest="verbose")
-    app.add_argument(
+    app.add_argument(  # TODO: remove everything related to this parameter
         "--exon_flank",
         default=2,
         type=int,
-        help="When intersecting exons and intersected blocks"
+        help="OBSOLETE When intersecting exons and intersected blocks"
         "add flanks to extend exons range.",
     )
     app.add_argument(
@@ -896,25 +896,17 @@ def intersect_exons_blocks_gaps(
             if intersect <= 0:
                 continue
             block_gaps[block_num] = gap_num
-            verbose(
-                "Block num {} in coords t:{}-{} q:{}-{} intersects gap {}-{}".format(
-                    block_num,
-                    block_coords[0],
-                    block_coords[1],
-                    block_coords[2],
-                    block_coords[3],
-                    gap[0],
-                    gap[1],
-                )
+            verbose_msg = (
+                f"Block num {block_num} in coords t:{block_coords[0]}-{block_coords[1]} "
+                f"q:{block_coords[2]}-{block_coords[3]} intersects gap {gap[0]}-{gap[1]}"
             )
+            verbose(verbose_msg)
     # get missed exons to exclude
     missing_exons = [e for e in exon_coordinates.keys() if not exon_num_blocks.get(e)]
-    verbose(
-        "Exons:\n{}\nare not covered by chain".format(
-            ", ".join([str(e) for e in missing_exons])
-        )
-    ) if len(missing_exons) > 0 else None
+    not_covered_str = ", ".join([str(e) for e in missing_exons])
+    verbose(f"Exons:\n{not_covered_str}\nare not covered by chain") if len(missing_exons) > 0 else None
     verbose(f"Flank size is: {flank}")
+
     for exon_num in sorted(exon_num_blocks.keys()):
         verbose(f"Exon {exon_num} intersects blocks {exon_num_blocks.get(exon_num)}")
         verbose(

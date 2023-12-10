@@ -1027,7 +1027,7 @@ def compute_intact_perc(
     """Compute intact %ID-related features."""
     # compute per query
     query_muts = [m for m in mutations if m.chain == q_name]
-    gene_len = len(codon_table)
+    gene_len = len(codon_table)  # num of codons in reference
     # initiate codon_status, mark deleted codons with D, the rest with I
     codon_status = ["I" if c["que_codon"] != "---" else "D" for c in codon_table]
     # get numbers of deleted/missing exons
@@ -1079,15 +1079,6 @@ def compute_intact_perc(
         comp_ids = list(range(_comp_start, _comp_end + 1))
         comp_fs_strings = [f"FS_{i}" for i in comp_ids]
         comp_fs.append(comp_fs_strings)
-
-    # comp_nums = ",".join([c.split("_")[1] for c in compensations]).split(",")
-    # comp_ids_range_str = comp_field.split("_")[1].split("-")
-    # # fmt: FS_{start}-{end}
-    # _comp_start = int(comp_ids_range_str[0])
-    # _comp_end = int(comp_ids_range_str[1])
-    # comp_ids = list(range(_comp_start, _comp_end + 1))
-    # comp_pairs = get_comp_pairs(comp_ids)
-    # comp_fs = {f"FS_{c}" for c in comp_nums}
 
     # put inactivating mutations coordinates in codon status table
     for m in query_muts:
@@ -1206,7 +1197,6 @@ def compute_intact_perc(
         p_intact_intact_m,
         num_of_I_codons,
         middle_is_intact,
-        # first_90_intact,
         middle_is_present,
     )
 
@@ -1466,6 +1456,7 @@ def detect_split_stops(
         split_codon_seq = f_ex_seq + s_ex_seq
         split_triplets = parts(split_codon_seq, 3)
         stops_in = [x for x in split_triplets if x in Constants.STOP_CODONS]
+        # Maybe add ATGs too?
         if len(stops_in) == 0:
             # no stops on split
             continue
@@ -1586,9 +1577,6 @@ def inact_mut_check(
             missing_exons = ex_prop[4].get(q_name_d_key, set())
             ex_inc = ex_prop[5].get(q_name_d_key, {})
             ex_lens = ex_prop[6]
-            # if not exon_class:
-            #     err_msg = f"Cannot find CESAR wrapper features for query {q_name}"
-            #     raise ValueError(err_msg)
 
         #  create codon table to extract mutations
         # codon table: list of objects, describing a codon

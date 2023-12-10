@@ -167,10 +167,10 @@ def check_args(args):
 
     if os.path.isfile(index_file):  # check if bb file is here
         WORK_DATA["index_file"] = index_file
-    elif args.make_index:  # create index if not exists
-        idbb_cmd = f"/modules/chain_bdb_index.py {args.chain_file} {index_file}"
-        call_proc(idbb_cmd)
-        WORK_DATA["index_file"] = index_file
+    # elif args.make_index:  # create index if not exists
+    #     idbb_cmd = f"/modules/chain_bdb_index.py {args.chain_file} {index_file}"
+    #     call_proc(idbb_cmd)
+    #     WORK_DATA["index_file"] = index_file
     else:  # die
         die(
             f"Error! Cannot find index file at {index_file}\n"

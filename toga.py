@@ -69,7 +69,7 @@ class Toga:
         else:
             self.project_name = self.__gen_project_name()
         # create project dir
-        self.wd = (
+        self.wd: str = (  # had to add annotation to supress typing warnings in PyCharm 2023.3
             os.path.abspath(args.project_dir)
             if args.project_dir
             else os.path.join(os.getcwd(), self.project_name)
