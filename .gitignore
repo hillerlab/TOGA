@@ -58,6 +58,7 @@ for_paper/*
 vs_Ensembl/
 vs_Gloss_pipeline/
 sandbox/
+test-*/
 
 2bits/
 ANALYSIS/ENST00000320188.txt.ce

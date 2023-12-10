@@ -83,8 +83,16 @@ def parse_args():
     return args
 
 
-def read_fasta(fasta_line, v=False):
-    """Read fasta, return dict and type."""
+def read_fasta(fasta_line: str):
+    r"""Parse a FASTA string.
+
+    The return value is a list of two elements: a dictionary, and list. The keys
+    of the dictionary are the header strings, and the values are the sequences
+    (as strings) of each of those headers. The inner list is a list of strings,
+    where each string is the header string. For example,
+
+    >>> read_fasta("\n".join([">A", "ATC", ">B", "TGG"]))
+    ({'A': 'ATC', 'B': 'TGG'}, ['A', 'B'])"""
     fasta_data = fasta_line.split(">")
     if fasta_data[0] != "":
         # this is a bug
@@ -110,8 +118,11 @@ def read_fasta(fasta_line, v=False):
     return sequences, order
 
 
-def read_region(region):
-    """Return convenient region representation."""
+def read_region(region: str) -> dict:
+    """Return convenient region representation.
+
+    >>> read_region("JH567521:516364-516340")
+    {'chrom': 'JH567521', 'start': 516364, 'end': 516340}"""
     try:
         chrom, grange = region.split(":")
         start = int(grange.split("-")[0])
@@ -192,12 +203,70 @@ def split_ex_reg_in_chrom(exon_regions):
     return chrom_n_to_pieces
 
 
-def parse_cesar_out_file(arg_input, v=False, exclude_arg=None):
-    """Parse CESAR bdb file core function."""
-    in_ = open(arg_input, "r")  # read cesar bdb file
-    # two \n\n divide each unit of information
+def parse_cesar_out_file(arg_input, exclude_arg=None):
+    r"""Parse CESAR bdb file core function.
+
+    An example of what a "CESAR bdb file" looks like, and how it is parsed:
+
+    >>> from pprint import pprint
+    >>> with open("test-file-400157d.txt", "w") as txtfile:
+    ...     contents = "\n".join([
+    ...         "#ENST00000262455",
+    ...         ">ENST00000262455.1169 | PROT | REFERENCE",
+    ...         "MRVDCDQHSDIAQRYRISK",
+    ...         ">ENST00000262455.1169 | PROT | QUERY",
+    ...         "---------DIAQRYRISK",
+    ...         ">ENST00000262455.1169 | CODON | REFERENCE",
+    ...         "ATG AGA GTT GAT TGT GAT CAG CAC TCT GAC ATA GCC CAG AGA TAC AGG ATA AGC AAA",
+    ...         ">ENST00000262455.1169 | CODON | QUERY",
+    ...         "--- --- --- --- --- --- --- --- --- GAT ATA GCC CAG AGA TAT AGG ATA AGC AAA",
+    ...         ">ENST00000262455 | 0 | 1169 | reference_exon",
+    ...         "ATGAGAGTTGATTGTGATCAGCACT",
+    ...         ">ENST00000262455 | 0 | 1169 | JH567521:510952-510836 | 0.00 | 0.00 | N/A | N/A | exp:N/A-N/A | N/A | False | query_exon",
+    ...         "NNNNNNNNNNNNNNNNNNNNNNNNN",
+    ...         ">ENST00000262455 | 1 | 1169 | reference_exon",
+    ...         "CTGACATAGCCCAGAGATACAGGATAAGCAAA",
+    ...         ">ENST00000262455 | 1 | 1169 | JH567521:506100-505915 | 94.59 | 97.39 | OK | A+ | exp:505909-506110 | INC | False | query_exon",
+    ...         "CTGATATAGCCCAGAGATATAGGATAAGCAAA\n\n",])
+    ...     txtfile.write(contents)
+    822
+    >>> pprint(parse_cesar_out_file("test-file-400157d.txt"))
+    (['JH567521\t505915\t506100\tENST00000262455.1169\t1000\t-\t505915\t506100\t'
+      '0,0,0\t1\t185,\t0,'],
+     ['JH567521\t510952\t510836\tENST00000262455.0.1169\t0\t+\n'],
+     '>ref_ENST00000262455.1169\n'
+     'ATGAGAGTTGATTGTGATCAGCACTCTGACATAGCCCAGAGATACAGGATAAGCAAA\n'
+     '>ENST00000262455.1169\n'
+     '-------------------------CTGATATAGCCCAGAGATATAGGATAAGCAAA\n',
+     'gene\texon_num\tchain_id\tact_region\texp_region\tin_exp\tpid\tblosum\tgap\t'
+     'class\tparalog\tq_mark\n'
+     'ENST00000262455\t0\t1169\tJH567521:510952-510836\texp:N/A-N/A\tN/A\t0.00\t'
+     '0.00\tN/A\tN/A\tFalse\tNA\n'
+     'ENST00000262455\t1\t1169\tJH567521:506100-505915\texp:505909-506110\tINC\t'
+     '94.59\t97.39\tOK\tA+\tFalse\tHQ\n',
+     '>ENST00000262455.1169 | PROT | REFERENCE\n'
+     'MRVDCDQHSDIAQRYRISK\n'
+     '>ENST00000262455.1169 | PROT | QUERY\n'
+     '---------DIAQRYRISK\n',
+     '>ENST00000262455.1169 | CODON | REFERENCE\n'
+     'ATG AGA GTT GAT TGT GAT CAG CAC TCT GAC ATA GCC CAG AGA TAC AGG ATA AGC AAA\n'
+     '>ENST00000262455.1169 | CODON | QUERY\n'
+     '--- --- --- --- --- --- --- --- --- GAT ATA GCC CAG AGA TAT AGG ATA AGC '
+     'AAA\n',
+     '\n',
+     '\n')
+    >>> os.remove("test-file-400157d.txt")"""
+
+    # The CESAR output ("bdb") file is divided into sections, one for each
+    # reference transcript. Each section start with "#" and "#" is used nowhere
+    # else. So, each element of content represents one reference transcript and
+    # all its orthologous query transcripts/codons/proteins, encoded as a single
+    # big string; the string is appended with two newlines (\n\n).
+    in_ = open(arg_input, "r")
     content = [x for x in in_.read().split("#") if x]
-    to_log(f"{MODULE_NAME_FOR_LOG}: parsing file {arg_input} with {len(content)} lines")
+    to_log(
+        f"{MODULE_NAME_FOR_LOG}: parsing file {arg_input} with "
+        f"{len(content)} reference transcript(s)")
     in_.close()
     # GLP-related data is already filtered out by cesar_runner
 
@@ -217,9 +286,11 @@ def parse_cesar_out_file(arg_input, v=False, exclude_arg=None):
 
     for elem in content:
         # one elem - one CESAR call (one ref transcript and >=1 chains)
+        # elem_lines[0] is the reference transcript name; elem_lines[1:] are
+        # alternating FASTA headers and sequences
         elem_lines = [x for x in elem.split("\n") if x != ""]
         # now loop gene-by-gene
-        gene = elem_lines[0].replace("#", "")
+        gene = elem_lines[0]
         if gene in exclude:
             skipped.append(f"{gene}\tfound in the exclude list")
             continue
@@ -228,10 +299,11 @@ def parse_cesar_out_file(arg_input, v=False, exclude_arg=None):
 
         # basically this is a fasta file with headers
         # saturated with different information
-        sequences, order = read_fasta(cesar_out, v=v)
+        sequences, order = read_fasta(cesar_out)
         # initiate dicts to fill later
         ranges_chain, chain_dir = defaultdict(dict), {}
         pred_seq_chain[gene] = defaultdict(dict)
+        t_exon_seqs[gene] = defaultdict(dict)
 
         # split fasta headers in different classes
         # query, ref and prot sequence headers are explicitly marked
@@ -242,15 +314,15 @@ def parse_cesar_out_file(arg_input, v=False, exclude_arg=None):
 
         # parse reference exons, quite simple
         for header in ref_headers:
-            # one header for one exon
-            # fields look like this:
-            # FIELD_1 | FIELD_2 | FIELD_3\n
-            header_fields = [s.replace(" ", "") for s in header.split("|")]
+            # Reference exons headers are pipe-delimited with four fields:
+            # (1) reference transcript name, (2) zero-based exon number,
+            # (3) query chain ID, (4) string constant "reference_exon".
+            header_fields = header.split(" | ")
             exon_num = int(header_fields[1])  # 0-based!
-            exon_seq = sequences[header].replace(
-                "-", ""
-            )  # header is also a key for seq dict
-            t_exon_seqs[gene][exon_num] = exon_seq
+            chain_id = int(header_fields[2])
+            exon_seq = sequences[header]
+            # header is also a key for seq dict
+            t_exon_seqs[gene][chain_id][exon_num] = exon_seq
 
         # save protein data
         for prot_id in prot_ids:
@@ -271,7 +343,7 @@ def parse_cesar_out_file(arg_input, v=False, exclude_arg=None):
         for header in query_headers:
             # the most complicated part: here we extract not only the
             # nucleotide sequence but also coordinates and other features
-            header_fields = [s.replace(" ", "") for s in header.split("|")]
+            header_fields = header.split(" | ")
             if len(header_fields) != Q_HEADER_FIELDS_NUM:
                 continue  # ref exon?
 
@@ -323,12 +395,12 @@ def parse_cesar_out_file(arg_input, v=False, exclude_arg=None):
             )
             all_meta_data.append(meta_data)
 
-        # check if there are any exons
+        # check if there are any undeleted exons
         for name, stat in gene_chain_exon_status.items():
             any_exons_left = any(stat.values())
             if any_exons_left:
                 continue
-            # projection has no exons: log it
+            # projection has no undeleted exons: log it
             name_ = f"{name[0]}.{name[1]}"
             to_log(f"{MODULE_NAME_FOR_LOG}: Warning: {name_} skipped: all exons are deleted")
             skipped.append(f"{name_}\tall exons are deleted.")
@@ -496,30 +568,39 @@ def parse_cesar_out_file(arg_input, v=False, exclude_arg=None):
     # arrange fasta content
     fasta_lines_lst = []
     to_log(f"{MODULE_NAME_FOR_LOG}: arranging fasta file")
-    for gene, chain_exon_seq in pred_seq_chain.items():
-        # write target gene info
-        t_gene_seq_dct = t_exon_seqs.get(gene)
-        if t_gene_seq_dct is None:
-            # no sequence data for this transcript?
-            to_log(f"{MODULE_NAME_FOR_LOG}: STRONG WARNING! Missing data for {gene} after CESAR")
-            skipped.append(f"{gene}\tmissing data after cesar stage")
-            continue
-        # We have sequence fragments split between different exons
-        t_exon_nums = sorted(t_gene_seq_dct.keys())
-        t_header = ">ref_{0}\n".format(gene)
-        t_seq = "".join([t_gene_seq_dct[num] for num in t_exon_nums]) + "\n"
-        # append data to fasta strings
-        fasta_lines_lst.append(t_header)
-        fasta_lines_lst.append(t_seq)
-
-        # and query info
-        for chain_id, exon_seq in chain_exon_seq.items():
-            track_header = ">{0}.{1}\n".format(gene, chain_id)
-            exon_nums = sorted(exon_seq.keys())
-            # also need to assemble different exon sequences
-            seq = "".join([exon_seq[num] for num in exon_nums]) + "\n"
-            fasta_lines_lst.append(track_header)
-            fasta_lines_lst.append(seq)
+    # Every transcript in CESAR output maps to one /or more/ chains
+    for transcript, qry_chains in pred_seq_chain.items():
+        # chain_id identifies which nucleotide FASTA to get from reference
+        # transcript (via t_exon_seqs). The equivalent for query transcript
+        # is qry_exons (assigned in the for loop). qry_exons only contains
+        # non-deleted exons.
+        for chain_id, qry_exons in qry_chains.items():
+            ref_exons = t_exon_seqs.get(transcript).get(chain_id)
+            if ref_exons is None:
+                to_log(
+                    f"{MODULE_NAME_FOR_LOG}: STRONG WARNING! "
+                    f"Missing data for {transcript} after CESAR")
+                skipped.append(f"{transcript}\tmissing data after cesar stage")
+                continue
+            ref_header = f">ref_{transcript}.{chain_id}\n"
+            # We have sequence fragments split between different exons
+            ref_exon_nums = sorted(ref_exons.keys())
+            exon_deleted_nums = list(set(
+                ref_exons.keys()).difference(qry_exons.keys()))
+            # If the query exon is deleted, it is represented by a gapped
+            # alignment. In this gapped alignment, as is convention, the
+            # reference transcript is ungapped (so, remove dashes), while the
+            # query transcript is all gaps (so, all dashes; as below).
+            ref_seq = "".join([
+                ref_exons[num].replace("-", "") \
+                    if num in exon_deleted_nums else ref_exons[num]
+                    for num in ref_exon_nums]) + "\n"
+            qry_header = f">{transcript}.{chain_id}\n"
+            qry_seq = "".join([
+                "-"*len(ref_exons[num].replace("-", "")) \
+                    if num in exon_deleted_nums else qry_exons[num]
+                    for num in ref_exon_nums]) + "\n"
+            fasta_lines_lst.extend([ref_header, ref_seq, qry_header, qry_seq])
 
     # save corrupted exons as bed-6 track
     # to make it possible to save them and visualize in the browser

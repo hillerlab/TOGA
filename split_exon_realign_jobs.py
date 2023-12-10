@@ -982,7 +982,7 @@ def main():
     )
     to_log(f"{MODULE_NAME_FOR_LOG}: based on memory, the estimated runtime proportions are:")
     for b, prop in buckets_prop.items():
-        to_log(f"* bucke {b}Gb: {prop}")
+        to_log(f"* bucket {b}Gb: {prop}")
     # get number of jobs for each bucket
     bucket_jobs_num = {k: math.ceil(args.jobs_num * v) for k, v in buckets_prop.items()}
     to_log(f"Final numbers of cluster jobs per bucket are:")

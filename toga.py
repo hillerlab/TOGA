@@ -5,45 +5,46 @@ Perform all operations from the beginning to the end.
 If you need to call TOGA: most likely this is what you need.
 """
 import argparse
-import sys
-import os
-import subprocess
-import time
-from datetime import datetime as dt
-import json
-import shutil
 import importlib.metadata as metadata
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
 from collections import defaultdict
 from constants import Constants
-from modules.filter_bed import prepare_bed_file
+from datetime import datetime as dt
 from modules.bed_hdf5_index import bed_hdf5_index
 from modules.chain_bst_index import chain_bst_index
-from modules.merge_chains_output import merge_chains_output
-from modules.make_pr_pseudogenes_anno import create_ppgene_track
-from modules.merge_cesar_output import merge_cesar_output
-from modules.gene_losses_summary import gene_losses_summary
-from modules.orthology_type_map import orthology_type_map
 from modules.classify_chains import classify_chains
-from modules.make_query_isoforms import get_query_isoforms_data
-from modules.collect_prefefined_glp_classes import collect_predefined_glp_cases
 from modules.collect_prefefined_glp_classes import add_transcripts_to_missing
-from modules.stitch_fragments import stitch_scaffolds
-from modules.common import to_log
-from modules.common import setup_logger
-from modules.common import make_symlink
-from modules.common import get_fst_col
+from modules.collect_prefefined_glp_classes import collect_predefined_glp_cases
 from modules.common import get_bucket_value
+from modules.common import get_fst_col
+from modules.common import make_symlink
 from modules.common import read_chain_arg
+from modules.common import setup_logger
+from modules.common import to_log
+from modules.filter_bed import prepare_bed_file
+from modules.gene_losses_summary import gene_losses_summary
+from modules.make_pr_pseudogenes_anno import create_ppgene_track
+from modules.make_query_isoforms import get_query_isoforms_data
+from modules.merge_cesar_output import merge_cesar_output
+from modules.merge_chains_output import merge_chains_output
+from modules.orthology_type_map import orthology_type_map
+from modules.parallel_jobs_manager_helpers import get_nextflow_dir
+from modules.parallel_jobs_manager_helpers import monitor_jobs
 from modules.sanity_check_functions import check_2bit_file_completeness
 from modules.sanity_check_functions import check_and_write_u12_file
-from modules.sanity_check_functions import check_isoforms_file
 from modules.sanity_check_functions import check_chains_classified
-from modules.parallel_jobs_manager_helpers import monitor_jobs
-from modules.parallel_jobs_manager_helpers import get_nextflow_dir
-from parallel_jobs_manager import ParallelJobsManager
+from modules.sanity_check_functions import check_isoforms_file
+from modules.stitch_fragments import stitch_scaffolds
+from parallel_jobs_manager import CustomStrategy
 from parallel_jobs_manager import NextflowStrategy
 from parallel_jobs_manager import ParaStrategy
-from parallel_jobs_manager import CustomStrategy
+from parallel_jobs_manager import ParallelJobsManager
+from typing import Optional
 from version import __version__
 
 
@@ -558,8 +559,31 @@ class Toga:
             return os.path.abspath(os.readlink(with_alias))
         self.die(f"Two bit file {db} not found! Abort")
 
-    def run(self):
-        """Run toga. Method to be called."""
+    def run(self, up_to_and_incl: Optional[int]=None) -> None:
+        """Run TOGA from start to finish, or from start to a certain step.
+
+        When run as a script, Toga.run executes the TOGA pipeline from start to
+        finish. Alternatively, you may choose to run Toga.run interactively and
+        specifying which step to stop the execution at, with the up_to_and_incl
+        parameter. This is useful for debugging and development. For example,
+
+        >>> shutil.rmtree("test-HgbCgC2lD3", ignore_errors=True)
+        >>> args = parse_args([
+        ...     "test_input/align_micro_sample.chain",
+        ...     "test_input/annot_micro_sample.bed",
+        ...     "test_input/hg38.micro_sample.2bit",
+        ...     "test_input/q2bit_micro_sample.2bit", "--pn", "test-HgbCgC2lD3",
+        ...     "--kt", "--cjn", "1", "--chn", "1", "--ms"])
+        >>> toga_manager = Toga(args)
+        >>> toga_manager.run(0)
+        >>> os.path.isfile("test-HgbCgC2lD3/temp/genome_alignment.bst")
+        True
+        >>> os.path.isfile("test-HgbCgC2lD3/temp/chain_class_jobs_combined")
+        False"""
+        if up_to_and_incl is not None:
+            assert up_to_and_incl >= 0, \
+                f"up_to_and_incl is {up_to_and_incl} but must be >= 0"
+
         # 0) preparation:
         # define the project name and mkdir for it
         # move chain file filtered
@@ -570,11 +594,13 @@ class Toga:
         self.__make_indexed_chain()
         self.__make_indexed_bed()
         self.__time_mark("Made indexes")
+        if up_to_and_incl is not None and up_to_and_incl == 0: return None
 
         # 1) make joblist for chain features extraction
         to_log("\n\n#### STEP 1: Generate extract chain features jobs\n")
         self.__split_chain_jobs()
         self.__time_mark("Split chain jobs")
+        if up_to_and_incl is not None and up_to_and_incl == 1: return None
 
         # 2) extract chain features: parallel process
         to_log("\n\n#### STEP 2: Extract chain features: parallel step\n")
@@ -582,26 +608,31 @@ class Toga:
         self.__time_mark("Chain jobs done")
         to_log(f"Logs from individual chain runner jobs are show below")
         self.__collapse_logs("chain_runner_")
+        if up_to_and_incl is not None and up_to_and_incl == 2: return None
 
         # 3) create chain features dataset
         to_log("\n\n#### STEP 3: Merge step 2 output\n")
         self.__merge_chains_output()
         self.__time_mark("Chains output merged")
+        if up_to_and_incl is not None and up_to_and_incl == 3: return None
 
         # 4) classify chains as orthologous, paralogous, etc. using xgboost
         to_log("\n\n#### STEP 4: Classify chains using gradient boosting model\n")
         self.__classify_chains()
         self.__time_mark("Chains classified")
+        if up_to_and_incl is not None and up_to_and_incl == 4: return None
 
         # 5) create cluster jobs for CESAR2.0
         to_log("\n\n#### STEP 5: Generate CESAR jobs")
         # experimental feature, not publically available:
         self.__split_cesar_jobs()
         self.__time_mark("Split cesar jobs done")
+        if up_to_and_incl is not None and up_to_and_incl == 5: return None
 
         # 6) Create bed track for processed pseudogenes
         to_log("\n\n#### STEP 6: Create processed pseudogenes track\n")
         self.__get_proc_pseudogenes_track()
+        if up_to_and_incl is not None and up_to_and_incl == 6: return None
 
         # 7) call CESAR jobs: parallel step
         to_log("\n\n### STEP 7: Execute CESAR jobs: parallel step\n")
@@ -610,11 +641,13 @@ class Toga:
         self.__check_cesar_completeness()
         to_log(f"Logs from individual CESAR jobs are show below")
         self.__collapse_logs("cesar_")
+        if up_to_and_incl is not None and up_to_and_incl == 7: return None
 
         # 8) parse CESAR output, create bed / fasta files
         to_log("\n\n#### STEP 8: Merge STEP 7 output\n")
         self.__merge_cesar_output()
         self.__time_mark("Merged cesar output")
+        if up_to_and_incl is not None and up_to_and_incl == 8: return None
 
         # 9) classify projections/genes as lost/intact
         # also measure projections confidence levels
@@ -622,10 +655,12 @@ class Toga:
         # self.__transcript_quality()  # maybe remove -> not used anywhere
         self.__gene_loss_summary()
         self.__time_mark("Got gene loss summary")
+        if up_to_and_incl is not None and up_to_and_incl == 9: return None
 
         # 10) classify genes as one2one, one2many, etc orthologs
         to_log("\n\n#### STEP 10: Create orthology relationships table\n")
         self.__orthology_type_map()
+        if up_to_and_incl is not None and up_to_and_incl == 10: return None
 
         # 11) merge logs containing information about skipped genes,transcripts, etc.
         to_log("\n\n#### STEP 11: Cleanup: merge parallel steps output files")
@@ -1423,8 +1458,23 @@ class Toga:
         pass
 
 
-def parse_args():
-    """Read args, check."""
+def parse_args(arg_strs: list[str]=None):
+    """Parse arguments from the command line, or from a list of strings.
+
+    In this script, parse_args is called with the default arg_strs=None, which
+    leads it to read its argument list from the command line.
+
+    Alternatively, you can also called parse_args interactively by supplying
+    arguments as a list of strings in arg_strs. This is useful for debugging and
+    development. For example:
+
+    >>> args = parse_args([
+    ...     "test_input/align_micro_sample.chain",
+    ...     "test_input/annot_micro_sample.bed",
+    ...     "test_input/hg38.micro_sample.2bit",
+    ...     "test_input/q2bit_micro_sample.2bit", "--pn", "test-HgbCgC2lD3",
+    ...     "--kt", "--cjn", "1", "--chn", "1", "--ms"])
+    >>> toga_manager = Toga(args)"""
     app = argparse.ArgumentParser()
     app.add_argument(
         "chain_input",
@@ -1673,11 +1723,11 @@ def parse_args():
         )
     )
     # print help if there are no args
-    if len(sys.argv) < 2:
+    if not arg_strs and len(sys.argv) < 2:
         app.print_help()
         sys.exit(0)
 
-    args = app.parse_args()
+    args = app.parse_args(arg_strs)
     return args
 
 
