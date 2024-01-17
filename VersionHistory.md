@@ -99,5 +99,6 @@ Documentation improvements.
 
 # TOGA 1.1.8 (planned)
 
+* Continue moving static functions of the Toga class to dedicated utility class.
 * (planned) Step management - now user can rerun TOGA from any desired step.
 * (planned) Using CESAR in the single exon mode for most of the exons to solve the RAM bottleneck (maybe TOGA 1.2.x?)

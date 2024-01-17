@@ -36,6 +36,7 @@ from modules.parallel_jobs_manager_helpers import get_nextflow_dir
 from modules.parallel_jobs_manager_helpers import monitor_jobs
 from modules.stitch_fragments import stitch_scaffolds
 from modules.toga_sanity_checks import TogaSanityChecker
+from modules.toga_util import TogaUtil
 from parallel_jobs_manager import CustomStrategy
 from parallel_jobs_manager import NextflowStrategy
 from parallel_jobs_manager import ParaStrategy
@@ -63,7 +64,7 @@ class Toga:
             _dirname = os.path.dirname(args.project_dir)
             self.project_name = os.path.basename(_dirname)
         else:
-            self.project_name = self.__gen_project_name()
+            self.project_name = TogaUtil.generate_project_name()
         # create project dir
         self.wd: str = (  # had to add annotation to supress typing warnings in PyCharm 2023.3
             os.path.abspath(args.project_dir)
@@ -88,7 +89,7 @@ class Toga:
         self.cluster_queue_name = args.cluster_queue_name
 
         self.toga_exe_path = os.path.dirname(__file__)
-        self.__log_python_version()
+        TogaUtil.log_python_version()
         self.version = self.__get_version()
         TogaSanityChecker.check_args_correctness(self, args)
         self.__modules_addr()
@@ -101,7 +102,7 @@ class Toga:
         os.mkdir(self.temp_wd) if not os.path.isdir(self.temp_wd) else None
         self.__check_nf_config()
 
-        # check whether nothing necessary is deleted afterwards
+        # check whether nothing necessary is deleted afterward
         TogaSanityChecker.check_dir_args_safety(self, LOCATION)
 
         # to avoid crash on filesystem without locks:
@@ -281,18 +282,6 @@ class Toga:
         to_log(f"Saving output to {self.wd}")
         to_log(f"Arguments stored in {self.toga_args_file}")
 
-    @staticmethod
-    def __gen_project_name():
-        """Generate project name automatically."""
-        today_and_now = dt.now().strftime("%Y.%m.%d_at_%H:%M:%S")
-        project_name = f"TOGA_project_on_{today_and_now}"
-        return project_name
-
-    @staticmethod
-    def __log_python_version():
-        to_log(f"# python interpreter path: {sys.executable}")
-        to_log(f"# python interpreter version: {sys.version}")
-
     def __get_paralellizer(self, selected_strategy):
         """Initiate parallelization strategy selected by user."""
         to_log(f"Selected parallelization strategy: {selected_strategy}")
@@ -462,8 +451,8 @@ class Toga:
     def run(self, up_to_and_incl: Optional[int] = None) -> None:
         """Run TOGA from start to finish, or from start to a certain step.
 
-        When run as a script, Toga.run executes the TOGA pipeline from start to
-        finish. Alternatively, you may choose to run Toga.run interactively and
+        When run as a script, 'Toga.run' executes the TOGA pipeline from start to
+        finish. Alternatively, you may choose to run 'Toga.run' interactively and
         specifying which step to stop the execution at, with the up_to_and_incl
         parameter. This is useful for debugging and development. For example,
 
@@ -702,7 +691,7 @@ class Toga:
         try:
             jobs_manager.execute_jobs(self.chain_cl_jobs_combined, manager_data, project_name, wait=True)
         except KeyboardInterrupt:
-            self.__terminate_parallel_processes([jobs_manager, ])
+            TogaUtil.terminate_parallel_processes([jobs_manager, ])
 
     def __merge_chains_output(self):
         """Call parse results."""
@@ -960,7 +949,7 @@ class Toga:
             self.__save_para_time_output_if_applicable(project_names)
         except KeyboardInterrupt:
             # to kill detached cluster jobs, just in case
-            self.__terminate_parallel_processes(jobs_managers)
+            TogaUtil.terminate_parallel_processes(jobs_managers)
 
     def __rebuild_crashed_jobs(self, crashed_jobs):
         """If TOGA has to re-run CESAR jobs we still need some buckets."""
@@ -1098,7 +1087,7 @@ class Toga:
             to_log(f"Monitoring CESAR jobs rerun")
             monitor_jobs(jobs_managers, die_if_sc_1=True)
         except KeyboardInterrupt:
-            self.__terminate_parallel_processes(jobs_managers)
+            TogaUtil.terminate_parallel_processes(jobs_managers)
 
         # need to check whether anything crashed again
         to_log("!!Checking whether any CESAR jobs crashed twice")
@@ -1121,20 +1110,6 @@ class Toga:
         to_log(err_msg)
         self.die(err_msg, 1)
 
-    @staticmethod
-    def __append_technical_err_to_predef_class(transcripts_path, out_path):
-        """Append file with predefined classifications."""
-        if not os.path.isfile(transcripts_path):
-            # in this case, we don't have transcripts with tech error
-            # can simply quit the function
-            return
-        with open(transcripts_path, "r") as f:
-            transcripts_list = [x.rstrip() for x in f]
-        f = open(out_path, "a")
-        for elem in transcripts_list:
-            f.write(f"TRANSCRIPT\t{elem}\tM\n")
-        f.close()
-
     def __merge_cesar_output(self):
         """Merge CESAR output, save final fasta and bed."""
         to_log("Merging CESAR output to make fasta and bed files.")
@@ -1155,11 +1130,11 @@ class Toga:
 
         # need to merge files containing transcripts that were not processed
         # for some technical reason, such as intersecting fragments in the query
-        self.__merge_dir(
+        TogaUtil.merge_directory_content(
             self.technical_cesar_err, self.technical_cesar_err_merged, ignore_empty=True
         )
 
-        self.__append_technical_err_to_predef_class(
+        TogaUtil.append_technical_err_to_predefined_class(
             self.technical_cesar_err_merged,
             self.predefined_glp_cesar_split
         )
@@ -1242,25 +1217,6 @@ class Toga:
             orth_scores_arg=self.pred_scores,
         )
 
-    @staticmethod
-    def __merge_dir(dir_name, output, ignore_empty=False):
-        """Merge all files in a directory into one."""
-        files_list = os.listdir(dir_name)
-        if len(files_list) == 0 and ignore_empty is False:
-            sys.exit(f"Error! {dir_name} is empty")
-        elif len(files_list) == 0 and ignore_empty is True:
-            # in this case we allow empty directories
-            # just remove the directory and return
-            shutil.rmtree(dir_name)
-            return
-        buffer = open(output, "w")
-        for filename in files_list:
-            path = os.path.join(dir_name, filename)
-            with open(path, "r") as f:
-                content = f.read()
-            buffer.write(content)
-        buffer.close()
-
     def __check_crashed_cesar_jobs(self):
         """Check whether any CESAR jobs crashed.
 
@@ -1341,27 +1297,21 @@ class Toga:
     def __merge_split_files(self):
         """Merge intermediate/temp files."""
         # merge rejection logs
-        self.__merge_dir(self.rejected_dir, self.rejected_log)
+        TogaUtil.merge_directory_content(self.rejected_dir, self.rejected_log)
         # save inact mutations data
         inact_mut_file = os.path.join(self.wd, "inact_mut_data.txt")
-        self.__merge_dir(self.gene_loss_data, inact_mut_file)
+        TogaUtil.merge_directory_content(self.gene_loss_data, inact_mut_file)
         # save CESAR outputs
         cesar_results_merged = os.path.join(self.temp_wd, "cesar_results.txt")
-        self.__merge_dir(self.cesar_results, cesar_results_merged)
+        TogaUtil.merge_directory_content(self.cesar_results, cesar_results_merged)
         # merge CESAR jobs
         cesar_jobs_merged = os.path.join(self.temp_wd, "cesar_jobs_merged")
-        self.__merge_dir(self.cesar_jobs_dir, cesar_jobs_merged)
+        TogaUtil.merge_directory_content(self.cesar_jobs_dir, cesar_jobs_merged)
         # remove chain classification data
         shutil.rmtree(self.ch_cl_jobs) if os.path.isdir(self.ch_cl_jobs) else None
         shutil.rmtree(self.chain_class_results) if os.path.isdir(
             self.chain_class_results
         ) else None
-
-    @staticmethod
-    def __terminate_parallel_processes(jobs_managers):
-        to_log(f"KeyboardInterrupt: terminating {len(jobs_managers)} running parallel processes")
-        for job_manager in jobs_managers:
-            job_manager.terminate_process()
 
     def __cleanup_parallelizer_files(self):
         if not self.keep_nf_logs and self.nextflow_dir:
@@ -1370,23 +1320,8 @@ class Toga:
         pass
 
 
-def parse_args(arg_strs: list[str]=None):
-    """Parse arguments from the command line, or from a list of strings.
-
-    In this script, parse_args is called with the default arg_strs=None, which
-    leads it to read its argument list from the command line.
-
-    Alternatively, you can also called parse_args interactively by supplying
-    arguments as a list of strings in arg_strs. This is useful for debugging and
-    development. For example:
-
-    >>> args = parse_args([
-    ...     "test_input/align_micro_sample.chain",
-    ...     "test_input/annot_micro_sample.bed",
-    ...     "test_input/hg38.micro_sample.2bit",
-    ...     "test_input/q2bit_micro_sample.2bit", "--pn", "test-HgbCgC2lD3",
-    ...     "--kt", "--cjn", "1", "--chn", "1", "--ms"])
-    >>> toga_manager = Toga(args)"""
+def parse_args(arg_strs: list[str] = None):
+    """Parse arguments from the command line, or from a list of strings."""
     app = argparse.ArgumentParser()
     app.add_argument(
         "chain_input",
