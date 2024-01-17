@@ -87,9 +87,14 @@ Documentation improvements.
 
 # TOGA 1.1.7 (planned) #
 
-* (planned) Step management - now user can rerun TOGA from any desired step.
-* (planned) Using CESAR in the single exon mode for most of the exons to solve the RAM bottleneck (maybe TOGA 1.2.x?)
+* Drafted sanity checker to ensure no temporary directories match necessary directories, see `modules.toga_sanity_checks.TogaSanityChecker.check_dir_args_safety` and issue [132](https://github.com/hillerlab/TOGA/issues/132)
 * Added logging for filtered out reference transcripts
 * Updated library versions - now compatible with python3.11
 * Updated configure.sh -> fixed inability to install CESAR if TOGA is installed from a zip archive + cleanup scenario
 * Fixed bug with parsing intron retention in the CESAR output -> in the prev versions, query chars located vs > were skipped
+* Utility class for TOGA sanity checks
+
+# TOGA 1.1.8
+
+* (planned) Step management - now user can rerun TOGA from any desired step.
+* (planned) Using CESAR in the single exon mode for most of the exons to solve the RAM bottleneck (maybe TOGA 1.2.x?)

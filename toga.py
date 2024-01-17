@@ -35,11 +35,8 @@ from modules.merge_chains_output import merge_chains_output
 from modules.orthology_type_map import orthology_type_map
 from modules.parallel_jobs_manager_helpers import get_nextflow_dir
 from modules.parallel_jobs_manager_helpers import monitor_jobs
-from modules.sanity_check_functions import check_2bit_file_completeness
-from modules.sanity_check_functions import check_and_write_u12_file
-from modules.sanity_check_functions import check_chains_classified
-from modules.sanity_check_functions import check_isoforms_file
 from modules.stitch_fragments import stitch_scaffolds
+from modules.toga_sanity_checks import TogaSanityChecker
 from parallel_jobs_manager import CustomStrategy
 from parallel_jobs_manager import NextflowStrategy
 from parallel_jobs_manager import ParaStrategy
@@ -93,7 +90,7 @@ class Toga:
         self.toga_exe_path = os.path.dirname(__file__)
         self.__log_python_version()
         self.version = self.__get_version()
-        self.__check_args_correctness(args)
+        TogaSanityChecker.check_args_correctness(self, args)
         self.__modules_addr()
         self.__check_dependencies()
         self.__check_completeness()
@@ -103,6 +100,9 @@ class Toga:
         self.project_name = self.project_name.replace("/", "")
         os.mkdir(self.temp_wd) if not os.path.isdir(self.temp_wd) else None
         self.__check_nf_config()
+
+        # check whether nothing necessary is deleted afterwards
+        TogaSanityChecker.check_dir_args_safety(self, LOCATION)
 
         # to avoid crash on filesystem without locks:
         os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
@@ -309,28 +309,6 @@ class Toga:
         jobs_manager = ParallelJobsManager(selected_strategy)
         return jobs_manager
 
-    def __check_args_correctness(self, args):
-        """Check that arguments are correct.
-
-        Error exit if any argument is wrong.
-        """
-        if args.cesar_buckets:
-            # if set, need to check that it could be split into numbers
-            comma_sep = args.cesar_buckets.split(",")
-            all_numeric = [x.isnumeric() for x in comma_sep]
-            if any(x is False for x in all_numeric):
-                # there is some non-numeric value
-                err_msg = (
-                    f"Error! --cesar_buckets value {args.cesar_buckets} is incorrect\n"
-                    f"Expected comma-separated list of integers"
-                )
-                self.die(err_msg)
-        if not os.path.isfile(args.chain_input):
-            self.die(f"Error! Chain file {args.chain_input} does not exist!")
-        if not os.path.isfile(args.bed_input):
-            self.die(f"Error! Bed file {args.bed_input} does not exist!")
-        return
-
     def __check_param_files(self):
         """Check that all parameter files exist."""
         files_to_check = [
@@ -359,17 +337,17 @@ class Toga:
             # None is just a placeholder that indicated that we don't need
             # to compare chrom lengths with 2bit
             chrom_sizes_in_bed = {x: None for x in chroms_in_bed}
-        self.isoforms = check_isoforms_file(self.isoforms_arg, t_in_bed, self.temp_wd)
-        self.u12 = check_and_write_u12_file(self.u12_arg, t_in_bed, self.temp_wd)
-        check_2bit_file_completeness(self.t_2bit, chrom_sizes_in_bed, self.ref_bed)
+        self.isoforms = TogaSanityChecker.check_isoforms_file(self.isoforms_arg, t_in_bed, self.temp_wd)
+        self.u12 = TogaSanityChecker.check_and_write_u12_file(self.u12_arg, t_in_bed, self.temp_wd)
+        TogaSanityChecker.check_2bit_file_completeness(self.t_2bit, chrom_sizes_in_bed, self.ref_bed)
         # need to check that chain chroms and their sizes match 2bit file data
         with open(self.chain_file, "r") as f:
             header_lines = [x.rstrip().split() for x in f if x.startswith("chain")]
             t_chrom_to_size = {x[2]: int(x[3]) for x in header_lines}
             q_chrom_to_size = {x[7]: int(x[8]) for x in header_lines}
         f.close()
-        check_2bit_file_completeness(self.t_2bit, t_chrom_to_size, self.chain_file)
-        check_2bit_file_completeness(self.q_2bit, q_chrom_to_size, self.chain_file)
+        TogaSanityChecker.check_2bit_file_completeness(self.t_2bit, t_chrom_to_size, self.chain_file)
+        TogaSanityChecker.check_2bit_file_completeness(self.q_2bit, q_chrom_to_size, self.chain_file)
 
     def die(self, msg, rc=1):
         """Show msg in stderr, exit with the rc given."""
@@ -559,7 +537,7 @@ class Toga:
             return os.path.abspath(os.readlink(with_alias))
         self.die(f"Two bit file {db} not found! Abort")
 
-    def run(self, up_to_and_incl: Optional[int]=None) -> None:
+    def run(self, up_to_and_incl: Optional[int] = None) -> None:
         """Run TOGA from start to finish, or from start to a certain step.
 
         When run as a script, Toga.run executes the TOGA pipeline from start to
@@ -676,8 +654,8 @@ class Toga:
             )
             to_log(cesar_not_ok_message)
         self.__cleanup_parallelizer_files()
-        self.__left_done_mark()
         tot_runtime = dt.now() - self.t0
+        self.__left_done_mark()
         self.__time_mark("Everything is done")
         to_log(f"TOGA pipeline is done in {tot_runtime}")
 
@@ -844,7 +822,7 @@ class Toga:
 
         if self.stop_at_chain_class:
             self.die("User requested to halt TOGA after chain features extraction", rc=0)
-        check_chains_classified(self.chain_results_df)
+        TogaSanityChecker.check_chains_classified(self.chain_results_df)
 
     def __get_proc_pseudogenes_track(self):
         """Create annotation of processed genes in query."""
@@ -1064,6 +1042,7 @@ class Toga:
         """If TOGA has to re-run CESAR jobs we still need some buckets."""
         bucket_to_jobs = defaultdict(list)
         buckets = [int(x) for x in self.cesar_buckets.split(",") if x != ""]
+
         if len(buckets) == 0:
             buckets.append(self.cesar_mem_limit)
 
@@ -1395,17 +1374,25 @@ class Toga:
         """Write a file confirming that everything is done."""
         mark_file = os.path.join(self.wd, "done.status")
         start_mark = os.path.join(self.wd, Constants.RUNNING)
-        f = open(mark_file, "w")
-        now_ = str(dt.now())
-        f.write(f"Done at {now_}\n")
-        if not self.cesar_ok_merged:
-            f.write("\n:Some CESAR batches produced an empty result, please see:\n")
-            f.write(f"{self.cesar_crashed_batches_log}\n")
-        if len(self.crashed_cesar_jobs) > 0:
-            num_ = len(self.crashed_cesar_jobs)
-            f.write(f"Some individual CESAR jobs ({num_} jobs) crashed\n")
-            f.write(f"Please see:\n{self.cesar_crashed_jobs_log}\n")
-        f.close()
+        try:
+            f = open(mark_file, "w")
+            now_ = str(dt.now())
+            f.write(f"Done at {now_}\n")
+            if not self.cesar_ok_merged:
+                f.write("\n:Some CESAR batches produced an empty result, please see:\n")
+                f.write(f"{self.cesar_crashed_batches_log}\n")
+            if len(self.crashed_cesar_jobs) > 0:
+                num_ = len(self.crashed_cesar_jobs)
+                f.write(f"Some individual CESAR jobs ({num_} jobs) crashed\n")
+                f.write(f"Please see:\n{self.cesar_crashed_jobs_log}\n")
+            f.close()
+        except FileNotFoundError:
+            msg = (
+                f"* It does not affect the pipeline results, but "
+                f"cannot write to {mark_file} to leave \"everything is done\"\n"
+                f"Please report to developers the command you used and this message."
+            )
+            to_log(msg)
         os.remove(start_mark) if os.path.isfile(start_mark) else None
 
     def __get_version(self):

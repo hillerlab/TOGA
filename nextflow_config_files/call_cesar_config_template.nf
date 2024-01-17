@@ -1,4 +1,4 @@
-// SLURM config file for CESAR jobs (not bigmem)
+// SLURM config file for CESAR jobs
 // since CESAR have various memory requirements, this
 // is just a template, TOGA will fill this itself
 // depending on the CESAR job bucket
