@@ -45,7 +45,7 @@ from version import __version__
 
 
 __author__ = "Bogdan M. Kirilenko"
-__email__ = "kirilenkobm [at] google mail"
+__github__ = "https://github.com/kirilenkobm"
 __credits__ = ["Michael Hiller", "Virag Sharma", "David Jebb"]
 
 LOCATION = os.path.dirname(__file__)

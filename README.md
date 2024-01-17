@@ -3,7 +3,7 @@
 <img src="https://github.com/hillerlab/TOGA/blob/master/supply/logo.png" width="500">
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-![version](https://img.shields.io/badge/version-1.1.7.dev-blue)
+![version](https://img.shields.io/badge/version-1.1.7-blue)
 [![DOI](https://zenodo.org/badge/277817661.svg)](https://zenodo.org/badge/latestdoi/277817661)
 [![License](https://img.shields.io/github/license/hillerlab/TOGA.svg)](https://github.com/hillerlab/TOGA/blob/master/LICENSE)
 [![made-with-Nextflow](https://img.shields.io/badge/Made%20with-Nextflow-23aa62.svg)](https://www.nextflow.io/)
@@ -59,16 +59,23 @@ To get TOGA do the following:
 # clone the repository
 git clone https://github.com/hillerlab/TOGA.git
 cd TOGA
-# install necessary python packages:
-python3 -m pip install -r requirements.txt --user
-# call configure to:
-# 1) train xgboost models
-# 2) download CESAR2.0
-# 3) compile C code
-./configure.sh
-# run a test, it will take a couple of minutes
-./run_test.sh micro
 ```
+
+Install necessary python packages using pip:
+
+```shell
+python3 -m pip install -r requirements.txt --user
+```
+
+Alternatively, if you use poetry, just do `poetry install`
+
+Call `configure.sh` to:
+1) train xgboost models
+2) download CESAR2.0
+3) compile C code
+
+
+Run a test, it will take a couple of minutes: `./run_test.sh micro`
 
 If you see something like this at the very end, then TOGA is almost ready to go:
 

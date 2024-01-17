@@ -77,7 +77,7 @@ Documentation improvements.
 * (started): better code organisation - constants class
 * Replaced CESAR2.0 submodule with Kirilenko's lightweight fork (without Kent, etc.)
 
-# TOGA 1.1.6 (current release) #
+# TOGA 1.1.6 #
 
 * Removed obsolete optimised CESAR path.
 * Fixed a minor bug with re-running CESAR jobs memory parameter if no buckets were specified.
@@ -85,7 +85,7 @@ Documentation improvements.
 * (by shjenkins94) fixed U12 argument check bug
 * minor code style improvements
 
-# TOGA 1.1.7 (planned) #
+# TOGA 1.1.7 (current release) #
 
 * Drafted sanity checker to ensure no temporary directories match necessary directories, see `modules.toga_sanity_checks.TogaSanityChecker.check_dir_args_safety` and issue [132](https://github.com/hillerlab/TOGA/issues/132)
 * Added logging for filtered out reference transcripts
@@ -95,8 +95,9 @@ Documentation improvements.
 * Utility class for TOGA sanity checks
 * Added argument to control cluster queue name (before, it was just `batch`).
 * `GLP_values.py` content merged with `constants.py`
+* Added support for the Poetry package manager through the inclusion of a `pyproject.toml` file.
 
-# TOGA 1.1.8
+# TOGA 1.1.8 (planned)
 
 * (planned) Step management - now user can rerun TOGA from any desired step.
 * (planned) Using CESAR in the single exon mode for most of the exons to solve the RAM bottleneck (maybe TOGA 1.2.x?)
