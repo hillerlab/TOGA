@@ -93,6 +93,8 @@ Documentation improvements.
 * Updated configure.sh -> fixed inability to install CESAR if TOGA is installed from a zip archive + cleanup scenario
 * Fixed bug with parsing intron retention in the CESAR output -> in the prev versions, query chars located vs > were skipped
 * Utility class for TOGA sanity checks
+* Added argument to control cluster queue name (before, it was just `batch`).
+* `GLP_values.py` content merged with `constants.py`
 
 # TOGA 1.1.8
 

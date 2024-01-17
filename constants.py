@@ -2,9 +2,7 @@
 import os
 
 __author__ = "Bogdan M. Kirilenko"
-
-# TODO: complete and organise the class
-# TODO: think about splitting into subclasses
+__github__ = "https://github.com/kirilenkobm"
 
 
 class Constants:
@@ -81,6 +79,31 @@ class InactMutClassesConst:
     # (ag)acceptor-EXON-donor(gt)
     SSM_D = "SSMD"  # Donor, right, GT,GC
     SSM_A = "SSMA"  # Acceptor, left, AG
+
+    START_MISSING = "START_MISSING"
+    ATG = "ATG"
+    FS_DEL = "FS_DEL"
+    FS_INS = "FS_INS"
+    BIG_DEL = "BIG_DEL"
+    BIG_INS = "BIG_INS"
+    STOP = "STOP"
+
+    STOPS = {"TAG", "TAA", "TGA"}
+    D_M = {"D", "M"}
+    LEFT_SPLICE_CORR = ("ag",)  # acceptor
+    RIGHT_SPLICE_CORR = (
+        "gt",
+        "gc",
+    )  # donor
+    LEFT_SSID = 0
+    RIGHT_SSID = 1
+    ACCEPTOR = 0
+    DONOR = 1
+
+    BIG_INDEL_SIZE = 50
+    SAFE_EXON_DEL_SIZE = 40  # actually 39
+    FIRST_LAST_DEL_SIZE = 20
+    BIG_EXON_THR = BIG_INDEL_SIZE * 5
 
 
 # Standalone constants #

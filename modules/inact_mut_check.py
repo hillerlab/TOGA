@@ -5,16 +5,13 @@ import argparse
 from collections import defaultdict
 from dataclasses import dataclass
 from dataclasses import asdict
-from constants import Constants
+from constants import Constants, InactMutClassesConst
 from constants import InactMutClassesConst as MutClasses
 from modules.parse_cesar_output import (parse_cesar_out)
 from modules.parse_cesar_output import classify_exon
 from modules.common import die
 from modules.common import eprint
 from modules.common import parts
-# please look for all named constants in the
-# modules/GLP_values.py  # TODO: revise it later
-from modules.GLP_values import *
 
 __author__ = "Bogdan Kirilenko, 2020."
 __email__ = "bogdan.kirilenko@senckenberg.de"
@@ -195,8 +192,8 @@ def analyse_splice_sites(
         donor_codon_num = codon_pos_at_exon[-1] if len(codon_pos_at_exon) > 0 else None
 
         # check that splice sites are canonical
-        acceptor_site_wrong = acceptor_splice_site not in LEFT_SPLICE_CORR
-        donor_site_wrong = donor_splice_site not in RIGHT_SPLICE_CORR
+        acceptor_site_wrong = acceptor_splice_site not in InactMutClassesConst.LEFT_SPLICE_CORR
+        donor_site_wrong = donor_splice_site not in InactMutClassesConst.RIGHT_SPLICE_CORR
 
         eprint(
             f"Exon {exon_num}; L_SPS: {acceptor_splice_site}; R_SPS: {donor_splice_site}"
@@ -226,7 +223,7 @@ def analyse_splice_sites(
             mask = True if atg_mask is True else mask
 
             # create mutation object, describe what happened
-            mut_ = f"{LEFT_SPLICE_CORR}->{acceptor_splice_site}"
+            mut_ = f"{InactMutClassesConst.LEFT_SPLICE_CORR}->{acceptor_splice_site}"
             mut_id = f"{MutClasses.SSM_A}_{mut_counter}"
             # print(mut_id)
             mut_counter += 1
@@ -261,7 +258,7 @@ def analyse_splice_sites(
             mask = True if atg_mask is True else mask
 
             # create mutation object
-            mut_ = f"{RIGHT_SPLICE_CORR}->{donor_splice_site}"
+            mut_ = f"{InactMutClassesConst.RIGHT_SPLICE_CORR}->{donor_splice_site}"
             mut_id = f"{MutClasses.SSM_D}_{mut_counter}"
             # print(mut_id)
             mut_counter += 1
@@ -484,7 +481,7 @@ def scan_rf(
         que_codon = codon["que_codon"]
         codon_is_split = codon["split_"] > 0  # if > 0 - codon split between exons
         # it depends on the exon length:
-        big_indel_thr = big_indel_thrs[ex_num] if big_indel_thrs else BIG_INDEL_SIZE
+        big_indel_thr = big_indel_thrs[ex_num] if big_indel_thrs else InactMutClassesConst.BIG_INDEL_SIZE
 
         if que_codon == "---" and codon_is_split is False:
             # count number of deletions in a row
@@ -499,7 +496,7 @@ def scan_rf(
                 position = num - q_dels_in_a_row  # -1 +1
                 # if FS and big ins at the same time???
                 mut_ = f"-{q_dels_in_a_row * 3}"
-                mclass = BIG_DEL
+                mclass = InactMutClassesConst.BIG_DEL
                 mut_id = f"BI_{mut_number_big_indel}"
                 mut_number_big_indel += 1
                 mut = Mutation(
@@ -526,7 +523,7 @@ def scan_rf(
                 chain=chain,
                 exon=ex_num,
                 position=1,
-                mclass=START_MISSING,
+                mclass=InactMutClassesConst.START_MISSING,
                 mut=que_codon_,
                 # this mutation should not affect the classification
                 # so it's always masked, but saved to indicate that
@@ -545,7 +542,7 @@ def scan_rf(
         if fs:
             # we have a frame-shifting indel!
             mut_ = f"+{delta}" if delta > 0 else f"{delta}"
-            mclass = FS_INS if delta > 0 else FS_DEL
+            mclass = InactMutClassesConst.FS_INS if delta > 0 else InactMutClassesConst.FS_DEL
             mut_id = f"FS_{mut_number_fs}"
             mut_number_fs += 1
             if not codon_is_split:
@@ -579,7 +576,7 @@ def scan_rf(
             # big insertion!
             # if FS and big ins at the same time???
             mut_ = f"+{delta}"
-            mclass = BIG_INS
+            mclass = InactMutClassesConst.BIG_INS
             mut_id = f"BI_{mut_number_big_indel}"
             mut_number_big_indel += 1
             if not codon_is_split:
@@ -616,7 +613,7 @@ def scan_rf(
         if len(stop_triplets) > 0 and not last_codon:
             # we have premature stop codon
             mut_ = f"{ref_codon.replace('-', '')}->{stop_triplets[0]}"
-            mclass = STOP
+            mclass = InactMutClassesConst.STOP
             mut_id = f"STOP_{mut_number_stop}"
             # need to detect which exon is affected
             if not codon_is_split:
@@ -627,7 +624,7 @@ def scan_rf(
                 prev_exon = ex_num - 1
                 prev_exon_stat = exon_stat[prev_exon] if exon_stat else "I"
                 this_exon_stat = exon_stat[ex_num] if exon_stat else "I"
-                if this_exon_stat in D_M or prev_exon_stat in D_M:
+                if this_exon_stat in InactMutClassesConst.D_M or prev_exon_stat in InactMutClassesConst.D_M:
                     # one of the exons is deleted: don't do anything
                     # might be a false signal
                     continue
@@ -661,7 +658,7 @@ def scan_rf(
         if len(start_triplets) > 0:
             # not an inactivating mutation but needs to be saved
             mut_ = f"{ref_codon.replace('-', '')}->ATG"
-            mclass = ATG
+            mclass = InactMutClassesConst.ATG
             mut_id = f"ATG_{mut_number_atg}"
             st_ex_num = ex_num
             mut_number_atg += 1
@@ -693,7 +690,7 @@ def detect_compensations(inact_mut, codon_table):
     """
     m_counter = 1  # for mut IDs
     answer = []  # collect compensated events here
-    fs = [mut for mut in inact_mut if mut.mclass in {FS_DEL, FS_INS}]
+    fs = [mut for mut in inact_mut if mut.mclass in {InactMutClassesConst.FS_DEL, InactMutClassesConst.FS_INS}]
     fs_num = len(fs)
     if fs_num <= 1:
         # need at least 2 frameshifs, otherwise there is nothing to compensate
@@ -1127,7 +1124,7 @@ def compute_intact_perc(
             if codon_status[affected_num] != "M":
                 codon_status[affected_num] = "L"
             continue
-        elif m.mclass == START_MISSING:
+        elif m.mclass == InactMutClassesConst.START_MISSING:
             # start missing -> do not participate
             continue
         # the rest of mutations: mark corresponding codon
@@ -1318,9 +1315,9 @@ def find_safe_ex_dels(mut_list, ex_stat_, ex_lens, no_fpi=False):
         # if we ignore FP indels at all: then any exon size fits, always true
         # no fpi is True -> frame-pres indels not ignored -> ignore deletions of short exons only
         # no fpi is False -> ignore all frame-preserving exon deletions
-        fp_ex_len_cond = ex_len < SAFE_EXON_DEL_SIZE if no_fpi is True else True
+        fp_ex_len_cond = ex_len < InactMutClassesConst.SAFE_EXON_DEL_SIZE if no_fpi is True else True
 
-        if last_or_first and ex_len < FIRST_LAST_DEL_SIZE:
+        if last_or_first and ex_len < InactMutClassesConst.FIRST_LAST_DEL_SIZE:
             # then we say it's missing, short last or first exon
             # create a new mutation object
             new_m = Mutation(
@@ -1357,8 +1354,8 @@ def infer_big_indel_thresholds(ex_lens):
         return {}
     for ex_num, ex_len in ex_lens.items():
         # if exon is small enough: use standard 40bp
-        if ex_len <= BIG_EXON_THR:
-            ex_T[ex_num] = BIG_INDEL_SIZE
+        if ex_len <= InactMutClassesConst.BIG_EXON_THR:
+            ex_T[ex_num] = InactMutClassesConst.BIG_INDEL_SIZE
             continue
         # exon is quite long, require 20% of it's length
         # to call indel inactivating
@@ -1479,7 +1476,7 @@ def detect_split_stops(
             chain=q_name,
             exon=second_exon,
             position=position,
-            mclass=STOP,
+            mclass=InactMutClassesConst.STOP,
             mut=mut_,
             masked=atg_mask,
             mut_id=mut_id,

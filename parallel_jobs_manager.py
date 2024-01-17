@@ -60,6 +60,7 @@ class NextflowStrategy(ParallelizationStrategy):
     CHAIN_JOBS_PREFIX = "chain_feats__"
     CESAR_JOBS_PREFIX = "cesar_jobs__"
     CESAR_CONFIG_MEM_TEMPLATE = "${_MEMORY_}"
+    DEFAULT_QUEUE_NAME = "batch"
 
     def __init__(self):
         super().__init__()
@@ -76,6 +77,7 @@ class NextflowStrategy(ParallelizationStrategy):
         self.nf_master_script = None
         self.config_path = None
         self.return_code = None
+        self.queue_name = None
 
     def execute(self, joblist_path, manager_data, label, wait=False, **kwargs):
         """Implementation for Nextflow."""
@@ -91,8 +93,9 @@ class NextflowStrategy(ParallelizationStrategy):
         self.nf_master_script = manager_data["NF_EXECUTE"]  # NF script that calls everything
         self.nextflow_config_dir = manager_data.get("nextflow_config_dir", None)
         self.config_path = self.__create_config_file()
-        # create the nextflow process
+        self.queue_name = manager_data.get("queue_name", self.DEFAULT_QUEUE_NAME)
 
+        # create the nextflow process
         cmd = f"nextflow {self.nf_master_script} --joblist {joblist_path}"
         if self.config_path:
             cmd += f" -c {self.config_path}"
@@ -112,14 +115,18 @@ class NextflowStrategy(ParallelizationStrategy):
 
     def __create_config_file(self):
         """Create config file and return path to it if needed"""
+        config_path = None
         if self.use_local_executor:
             # for local executor, no config file is needed
-            return None
-        if self.label.startswith(self.CHAIN_JOBS_PREFIX):
-            config_path = os.path.abspath(os.path.join(self.nextflow_config_dir,
-                                                       self.CHAIN_CONFIG_TEMPLATE_FILENAME))
             return config_path
-        if self.label.startswith(self.CESAR_JOBS_PREFIX):
+        if self.label.startswith(self.CHAIN_JOBS_PREFIX):
+            original_config_path = os.path.abspath(os.path.join(self.nextflow_config_dir,
+                                                       self.CHAIN_CONFIG_TEMPLATE_FILENAME))
+            config_filename = "extract_chain_features_queue.nf"
+            config_path = os.path.join(self.nextflow_config_dir, config_filename)
+            with open(original_config_path) as in_, open(config_path, "w") as out_:
+                out_.write(in_.read())
+        elif self.label.startswith(self.CESAR_JOBS_PREFIX):
             # need to craft CESAR joblist first
             config_template_path = os.path.abspath(os.path.join(self.nextflow_config_dir,
                                                                 self.CESAR_CONFIG_TEMPLATE_FILENAME))
@@ -132,9 +139,11 @@ class NextflowStrategy(ParallelizationStrategy):
             config_path = os.path.abspath(os.path.join(toga_temp_dir, config_filename))
             with open(config_path, "w") as f:
                 f.write(config_string)
-            return config_path
-        self.use_local_executor = True  # ??? should not be reachable normally
-        return None  # using local executor again
+        if self.queue_name:
+            # in this case, the queue name should be specified
+            with open(config_path, "a") as f:
+                f.write(f"\nprocess.queue = '{self.queue_name}'\n")
+        return config_path  # using local executor again
 
     def check_status(self):
         """Check if nextflow jobs are done."""

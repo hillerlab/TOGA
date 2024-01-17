@@ -10,26 +10,25 @@ import argparse
 import sys
 from collections import defaultdict
 import networkx as nx
-from version import __version__
+
+from constants import ConstColors
 
 try:
     from modules.common import flatten
     from modules.common import get_graph_components
     from modules.common import to_log
     from modules.common import setup_logger
-    from modules.GLP_values import *
 except ImportError:
     from common import flatten
     from common import get_graph_components
     from common import to_log
     from common import setup_logger
-    from GLP_values import *
 
 __author__ = "Bogdan M. Kirilenko"
 
 # Intact, Partially Intact, and UL annotations are marked
 # with these colors
-BED_COLORS_TO_KEEP = {BLUE, LIGHT_BLUE, SALMON}
+BED_COLORS_TO_KEEP = {ConstColors.BLUE, ConstColors.LIGHT_BLUE, ConstColors.SALMON}
 MODULE_NAME_FOR_LOG = "make_query_isoforms"
 TOGA_GENE_PREFIX = "TOGA"
 

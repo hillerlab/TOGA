@@ -10,7 +10,8 @@ import os
 from collections import defaultdict
 from collections import Counter
 from datetime import datetime as dt
-from version import __version__
+
+from constants import ConstColors, InactMutClassesConst
 
 try:
     from modules.common import make_cds_track
@@ -19,7 +20,6 @@ try:
     from modules.common import read_isoforms_file
     from modules.common import setup_logger
     from modules.common import to_log
-    from modules.GLP_values import *
 except ImportError:
     from common import make_cds_track
     from common import split_proj_name
@@ -27,10 +27,9 @@ except ImportError:
     from common import read_isoforms_file
     from common import setup_logger
     from common import to_log
-    from GLP_values import *
-
 
 __author__ = "Bogdan M. Kirilenko"
+__github__ = "https://github.com/kirilenkobm"
 
 # GLP classes
 # kind of enum
@@ -51,19 +50,16 @@ I = 6  # Intact
 NUM_TO_CLASS = {-1: "N", 0: "PG", 1: "PM", 2: "M", 3: "L", 4: "UL", 5: "PI", 6: "I"}
 CLASS_TO_NUM = {v: k for k, v in NUM_TO_CLASS.items()}
 
-
 # link GLP class to color
 CLASS_TO_COL = {
-    N_: BLACK,
-    PG: BROWN,
-    PM: GREY,
-    L: LIGHT_RED,
-    M: GREY,
-    UL: SALMON,
-    PI: LIGHT_BLUE,
-    I: BLUE,
+    PG: ConstColors.BROWN,
+    PM: ConstColors.GREY,
+    L: ConstColors.LIGHT_RED,
+    M: ConstColors.GREY,
+    UL: ConstColors.SALMON,
+    PI: ConstColors.LIGHT_BLUE,
+    I: ConstColors.BLUE,
 }
-
 
 REM_T_L = 0.35  # less than REM_T_L of CDS left -> it's lost
 REM_T_G = 0.49  # less than REM_T_G of CDS left -> it's UL
@@ -240,17 +236,17 @@ def get_l_exon_num(exon_num):
 
 
 def get_projection_classes(
-    all_projections,
-    trans_exon_sizes,
-    p_to_pint_m_ign,
-    p_to_pint_m_int,
-    projection_to_mutations,
-    p_to_i_codon_prop,
-    p_to_p_out_of_bord,
-    p_80_int,
-    p_80_pre,
-    trace=None,
-    paral_=None,
+        all_projections,
+        trans_exon_sizes,
+        p_to_pint_m_ign,
+        p_to_pint_m_int,
+        projection_to_mutations,
+        p_to_i_codon_prop,
+        p_to_p_out_of_bord,
+        p_80_int,
+        p_80_pre,
+        trace=None,
+        paral_=None,
 ):
     """Classify projections as intact, lost, uncertain, etc."""
     to_log(f"{MODULE_NAME_FOR_LOG}: classifying query projections: decision tree part")
@@ -299,9 +295,9 @@ def get_projection_classes(
         all_mutations = projection_to_mutations.get(projection, [])
         # get only inactivating mutations, which are not compensations and not masked
         mutations = [
-            m for m in all_mutations if m[4] is False or m[2] == MISS_EXON
+            m for m in all_mutations if m[4] is False or m[2] == InactMutClassesConst.MISS_EXON
         ]  # m[4]: bool MASKED
-        mutations = [m for m in mutations if m[2] != COMPENSATION]
+        mutations = [m for m in mutations if m[2] != InactMutClassesConst.COMPENSATION]
 
         if tracing_:
             # verbosity
@@ -353,8 +349,8 @@ def get_projection_classes(
         exon_40_p_nums = [k for k, v in exon_40_p.items() if v is True]
 
         # select missing and deleted exons
-        missing_exons = [m[0] for m in mutations if m[2] == MISS_EXON]
-        deleted_exons = [m[0] for m in mutations if m[2] == DEL_EXON]
+        missing_exons = [m[0] for m in mutations if m[2] == InactMutClassesConst.MISS_EXON]
+        deleted_exons = [m[0] for m in mutations if m[2] == InactMutClassesConst.DEL_EXON]
         # update status for deleted and missing exons:
         for me in missing_exons:
             exon_status[me] = "M"
@@ -366,7 +362,9 @@ def get_projection_classes(
         other_muts = [
             m
             for m in mutations
-            if m[2] != MISS_EXON and m[2] != DEL_EXON and m[2] != COMPENSATION
+            if m[2] != InactMutClassesConst.MISS_EXON
+            and m[2] != InactMutClassesConst.DEL_EXON
+            and m[2] != InactMutClassesConst.COMPENSATION
         ]
         # don't need events happened in the deleted/missing exons
         other_muts = [
@@ -713,16 +711,16 @@ def read_predefined_glp_data(predef_class):
 
 
 def gene_losses_summary(
-    loss_data_arg,
-    ref_bed,
-    pre_final_bed_arg,
-    bed_out,
-    summary_arg,
-    trace_arg=None,
-    iforms_file=None,
-    paral=None,
-    exclude_arg=None,
-    predefined_class=None,
+        loss_data_arg,
+        ref_bed,
+        pre_final_bed_arg,
+        bed_out,
+        summary_arg,
+        trace_arg=None,
+        iforms_file=None,
+        paral=None,
+        exclude_arg=None,
+        predefined_class=None,
 ):
     """Gene losses summary core function."""
     t0 = dt.now()

@@ -28,7 +28,7 @@ from modules.common import setup_logger
 from modules.common import to_log
 from modules.filter_bed import prepare_bed_file
 from modules.gene_losses_summary import gene_losses_summary
-from modules.make_pr_pseudogenes_anno import create_ppgene_track
+from modules.make_pr_pseudogenes_annotation import create_ppgene_track
 from modules.make_query_isoforms import get_query_isoforms_data
 from modules.merge_cesar_output import merge_cesar_output
 from modules.merge_chains_output import merge_chains_output
@@ -86,6 +86,7 @@ class Toga:
         to_log("#### Initiating TOGA class ####")
         self.nextflow_config_dir = args.nextflow_config_dir
         self.para_strategy = args.parallelization_strategy
+        self.cluster_queue_name = args.cluster_queue_name
 
         self.toga_exe_path = os.path.dirname(__file__)
         self.__log_python_version()
@@ -771,7 +772,8 @@ class Toga:
             "local_executor": self.local_executor,
             "keep_nf_logs": self.keep_nf_logs,
             "nextflow_config_dir": self.nextflow_config_dir,
-            "temp_wd": self.temp_wd
+            "temp_wd": self.temp_wd,
+            "queue_name": self.cluster_queue_name
         }
 
         # Execute jobs via the Strategy pattern
@@ -1019,7 +1021,8 @@ class Toga:
                         "local_executor": self.local_executor,
                         "keep_nf_logs": self.keep_nf_logs,
                         "nextflow_config_dir": self.nextflow_config_dir,
-                        "temp_wd": self.temp_wd
+                        "temp_wd": self.temp_wd,
+                        "queue_name": self.cluster_queue_name
                     }
     
                     jobs_manager = self.__get_paralellizer(self.para_strategy)
@@ -1160,7 +1163,8 @@ class Toga:
                     "local_executor": self.local_executor,
                     "keep_nf_logs": self.keep_nf_logs,
                     "nextflow_config_dir": self.nextflow_config_dir,
-                    "temp_wd": self.temp_wd
+                    "temp_wd": self.temp_wd,
+                    "queue_name": self.cluster_queue_name
                 }
                 jobs_manager = self.__get_paralellizer(self.para_strategy)
                 jobs_manager.execute_jobs(bucket_batch_file,
@@ -1707,6 +1711,17 @@ def parse_args(arg_strs: list[str]=None):
             "Automatically mask all inactivating mutations in first 10 percent of "
             "the reading frame, ignoring ATG codons distribution. "
             "(Default mode in V1.0, not recommended to use in later versions)"
+        )
+    )
+    app.add_argument(
+        "--cluster_queue_name",
+        "--cqn",
+        default="batch",
+        help=(
+            "Specify cluster partition/queue, default batch. "
+            "Another popular option is 'long'. Please consult "
+            "with your system administrator to figure out which "
+            "parameter is the most suitable for your HPC system."
         )
     )
     # print help if there are no args
