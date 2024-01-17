@@ -5,7 +5,6 @@ Perform all operations from the beginning to the end.
 If you need to call TOGA: most likely this is what you need.
 """
 import argparse
-import importlib.metadata as metadata
 import json
 import os
 import shutil
@@ -20,7 +19,7 @@ from modules.chain_bst_index import chain_bst_index
 from modules.classify_chains import classify_chains
 from modules.collect_prefefined_glp_classes import add_transcripts_to_missing
 from modules.collect_prefefined_glp_classes import collect_predefined_glp_cases
-from modules.common import get_bucket_value
+from modules.common import get_bucket_value, call_process
 from modules.common import get_fst_col
 from modules.common import make_symlink
 from modules.common import read_chain_arg
@@ -93,8 +92,8 @@ class Toga:
         self.version = self.__get_version()
         TogaSanityChecker.check_args_correctness(self, args)
         self.__modules_addr()
-        self.__check_dependencies()
-        self.__check_completeness()
+        TogaSanityChecker.check_dependencies(self)
+        TogaSanityChecker.check_completeness(self)
         self.nextflow_dir = get_nextflow_dir(self.LOCATION, args.nextflow_dir)
 
         self.temp_wd = os.path.join(self.wd, Constants.TEMP)
@@ -150,7 +149,7 @@ class Toga:
             )
 
         # filter chains with score < threshold
-        self.__call_proc(
+        call_process(
             chain_filter_cmd, "Please check if you use a proper chain file."
         )
 
@@ -363,7 +362,7 @@ class Toga:
     def __modules_addr(self):
         """Define addresses of modules."""
         self.LOCATION = os.path.dirname(__file__)  # folder containing pipeline scripts
-        self.CONFIGURE = os.path.join(self.LOCATION, "configure.sh")
+        self.CONFIGURE_SCRIPT = os.path.join(self.LOCATION, "configure.sh")
         self.CHAIN_SCORE_FILTER = os.path.join(
             self.LOCATION, Constants.MODULES_DIR, "chain_score_filter"
         )
@@ -415,75 +414,6 @@ class Toga:
         self.nextflow_rel_ = os.path.join(self.LOCATION, "execute_joblist.nf")
         self.NF_EXECUTE = os.path.abspath(self.nextflow_rel_)
 
-    def __check_dependencies(self):
-        """Check all dependencies."""
-        # TODO: refactor this part - different checks depending on the selected strategy
-        not_nf = shutil.which(Constants.NEXTFLOW) is None
-        if self.para_strategy == "nextflow" and not_nf:
-            msg = (
-                "Error! Cannot fild nextflow executable. Please make sure you "
-                "have a nextflow binary in a directory listed in your $PATH"
-            )
-            self.die(msg)
-
-        c_not_compiled = any(
-            os.path.isfile(f) is False
-            for f in [
-                self.CHAIN_SCORE_FILTER,
-                self.CHAIN_COORDS_CONVERT_LIB,
-                self.CHAIN_FILTER_BY_ID,
-                self.EXTRACT_SUBCHAIN_LIB,
-                self.CHAIN_INDEX_SLIB,
-            ]
-        )
-        if c_not_compiled:
-            to_log("Warning! C code is not compiled, trying to compile...")
-
-        imports_not_found = False
-        required_libraries = [
-            'twobitreader',
-            'networkx',
-            'pandas',
-            'numpy',
-            'xgboost',
-            'scikit-learn',
-            'joblib',
-            'h5py'
-        ]
-
-        to_log("# Python package versions")
-        for lib in required_libraries:
-            try:
-                lib_version = metadata.version(lib)
-                to_log(f"* {lib}: {lib_version}")
-            except metadata.PackageNotFoundError:
-                imports_not_found = True
-                to_log(f"! {lib}: Not installed - will try to install")
-
-        not_all_found = any([c_not_compiled, imports_not_found])
-        self.__call_proc(
-            self.CONFIGURE, "Could not call configure.sh!"
-        ) if not_all_found else None
-
-    def __check_completeness(self):
-        """Check if all modules are presented."""
-        files_must_be = [
-            self.CONFIGURE,
-            self.CHAIN_BDB_INDEX,
-            self.BED_BDB_INDEX,
-            self.SPLIT_CHAIN_JOBS,
-            self.MERGE_CHAINS_OUTPUT,
-            self.CLASSIFY_CHAINS,
-            self.SPLIT_EXON_REALIGN_JOBS,
-            self.MERGE_CESAR_OUTPUT,
-            self.GENE_LOSS_SUMMARY,
-            self.ORTHOLOGY_TYPE_MAP,
-        ]
-        for _file in files_must_be:
-            if os.path.isfile(_file):
-                continue
-            self.die(f"Error! File {_file} not found!")
-
     def __check_nf_config(self):
         """Check that nextflow configure files are here."""
         if self.nextflow_config_dir is None:
@@ -515,15 +445,6 @@ class Toga:
                 f"Error! File {nf_chain_extr_config_file} not found!\n{err_msg}"
             )
         self.local_executor = False
-
-    def __call_proc(self, cmd, extra_msg=None):
-        """Call a subprocess and catch errors."""
-        to_log(f"Calling cmd:\n{cmd}\n")
-        rc = subprocess.call(cmd, shell=True)
-        if rc != 0:
-            to_log(extra_msg) if extra_msg else None
-            self.die(f"Error! Process:\n{cmd}\ndied! Abort.")
-        to_log("Command finished with exit code 0.")
 
     def __find_two_bit(self, db):
         """Find a 2bit file."""
@@ -749,7 +670,7 @@ class Toga:
             f"{'--quiet' if self.quiet else ''}"
         )
 
-        self.__call_proc(split_jobs_cmd, "Could not split chain jobs!")
+        call_process(split_jobs_cmd, "Could not split chain jobs!")
         # collect transcripts not intersected at all here
         self._transcripts_not_intersected = get_fst_col(rejected_path)
 
@@ -806,7 +727,7 @@ class Toga:
         ld_arg_ = self.ld_model if self.ld_model_arg else None
 
         if not os.path.isfile(self.se_model) or not os.path.isfile(self.me_model):
-            self.__call_proc(self.MODEL_TRAINER, "Models not found, training...")
+            call_process(self.MODEL_TRAINER, "Models not found, training...")
 
         classify_chains(
             self.chain_results_df,
@@ -920,7 +841,7 @@ class Toga:
             split_cesar_cmd += f" --check_loss {self.gene_loss_data}"
         if fragm_dict_file:
             split_cesar_cmd += f" --fragments_data {fragm_dict_file}"
-        self.__call_proc(split_cesar_cmd, "Could not split CESAR jobs!")
+        call_process(split_cesar_cmd, "Could not split CESAR jobs!")
 
     def __get_cesar_jobs_for_bucket(self, comb_file, bucket_req):
         """Extract all cesar jobs belong to the bucket."""

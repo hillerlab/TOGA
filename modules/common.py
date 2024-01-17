@@ -1,5 +1,6 @@
 """TOGA common functions."""
 import os
+import subprocess
 import sys
 import ctypes
 from collections import defaultdict
@@ -387,3 +388,13 @@ def get_bucket_value(mem_val, buckets):
         if b > mem_val:
             return b
     return None
+
+
+def call_process(cmd, extra_msg=None):
+    """Call a subprocess and catch errors."""
+    to_log(f"Calling cmd:\n{cmd}\n")
+    rc = subprocess.call(cmd, shell=True)
+    if rc != 0:
+        to_log(extra_msg) if extra_msg else None
+        sys.exit(f"Error! Process:\n{cmd}\ndied! Abort.")
+    to_log("Command finished with exit code 0.")

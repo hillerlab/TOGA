@@ -1,8 +1,11 @@
 """This module contains functions to ensure TOGA arguments correctness."""
 import os
+import shutil
 from itertools import islice
 from twobitreader import TwoBitFile
-from modules.common import to_log
+
+from constants import Constants
+from modules.common import to_log, call_process
 from modules.common import read_isoforms_file
 
 __author__ = "Bogdan M. Kirilenko, 2024"
@@ -212,3 +215,78 @@ class TogaSanityChecker:
             msg = f"Chain results file {chain_results_df} is empty! Abort."
             to_log(msg)
             raise ValueError(msg)
+
+    @staticmethod
+    def check_dependencies(toga_cls):
+        """Check all dependencies."""
+        # TODO: refactor this part - different checks depending on the selected strategy
+        not_nf = shutil.which(Constants.NEXTFLOW) is None
+        if toga_cls.para_strategy == "nextflow" and not_nf:
+            msg = (
+                "Error! Cannot fild nextflow executable. Please make sure you "
+                "have a nextflow binary in a directory listed in your $PATH"
+            )
+            toga_cls.die(msg)
+
+        c_not_compiled = any(
+            os.path.isfile(f) is False
+            for f in [
+                toga_cls.CHAIN_SCORE_FILTER,
+                toga_cls.CHAIN_COORDS_CONVERT_LIB,
+                toga_cls.CHAIN_FILTER_BY_ID,
+                toga_cls.EXTRACT_SUBCHAIN_LIB,
+                toga_cls.CHAIN_INDEX_SLIB,
+            ]
+        )
+        if c_not_compiled:
+            to_log("Warning! C code is not compiled, trying to compile...")
+
+        imports_not_found = False
+        required_libraries = [
+            'twobitreader',
+            'networkx',
+            'pandas',
+            'numpy',
+            'xgboost',
+            'scikit-learn',
+            'joblib',
+            'h5py'
+        ]
+
+        to_log("# Python package versions")
+        for lib in required_libraries:
+            try:
+                lib_module = __import__(lib)
+                if hasattr(lib_module, '__version__'):
+                    lib_version = lib_module.__version__
+                else:
+                    lib_version = 'unknown version'
+                to_log(f"* {lib}: {lib_version}")
+            except ImportError:
+                imports_not_found = True
+                to_log(f"! {lib}: Not installed - will try to install")
+
+        not_all_found = any([c_not_compiled, imports_not_found])
+        call_process(
+            toga_cls.CONFIGURE_SCRIPT, "Could not call configure.sh!"
+        ) if not_all_found else None
+
+    @staticmethod
+    def check_completeness(toga_cls):
+        """Check if all modules are presented."""
+        files_must_be = [
+            toga_cls.CONFIGURE_SCRIPT,
+            toga_cls.CHAIN_BDB_INDEX,
+            toga_cls.BED_BDB_INDEX,
+            toga_cls.SPLIT_CHAIN_JOBS,
+            toga_cls.MERGE_CHAINS_OUTPUT,
+            toga_cls.CLASSIFY_CHAINS,
+            toga_cls.SPLIT_EXON_REALIGN_JOBS,
+            toga_cls.MERGE_CESAR_OUTPUT,
+            toga_cls.GENE_LOSS_SUMMARY,
+            toga_cls.ORTHOLOGY_TYPE_MAP,
+        ]
+        for _file in files_must_be:
+            if os.path.isfile(_file):
+                continue
+            toga_cls.die(f"Error! File {_file} not found!")
