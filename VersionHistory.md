@@ -101,4 +101,9 @@ Documentation improvements.
 
 * Continue moving static functions of the Toga class to dedicated utility class.
 * (planned) Step management - now user can rerun TOGA from any desired step.
-* (planned) Using CESAR in the single exon mode for most of the exons to solve the RAM bottleneck (maybe TOGA 1.2.x?)
+
+# TOGA 1.5 (planned; major new release)
+* (planned) Using CESAR in the single exon mode to reduce memory requirements and increase runtime
+* (planned) Improved prediction of splice sites
+* (planned) Detection of introns present in the query but not the reference
+* (planned) Updated set of reference introns with non-canonical splice sites
