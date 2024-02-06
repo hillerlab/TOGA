@@ -29,12 +29,13 @@ HELP=f"""USAGE: ONE of the following
             {sys.argv[0]} <assemblies_file> -m merge  (optional: -ances <ancestral_gene_file>, -pre <TOGAclass1#TOGAclass2#TOGAclass3...> )
 
     To make the summary statistics of TOGA classification
-            {sys.argv[0]} <assemblies_file> -m stats -ances <ancestral_gene_file>  (optional: -aN <assembly_names_file>, -d)
+            {sys.argv[0]} <assemblies_file> -m stats -ances <ancestral_gene_file>  (optional: -aN <assembly_names_file>, -d, -i)
 
             -pre is I#PI#UL#L#M#PM#PG#abs by default, it's to change the order in which classes are considered
             -ances is a file where each line is a gene you want to keep
             -aN is to specify the names of the assemblies, otherwise TOGA directory names will be used
             -d is to display the statistics for each class TOGA recognizes
+            -i is to output the full matrix with the class of each gene in each assembly (use with -m stats)
 
           """
 
@@ -45,6 +46,7 @@ parser.add_argument('-ances', '--ancestral',default=False)
 parser.add_argument('-pre', '--precedence',default="I#PI#UL#L#M#PM#PG#N#abs")
 parser.add_argument('-aN', '--assemblyNames',default=False)
 parser.add_argument('-d', '--detailed',action='store_true')  # on/off flag
+parser.add_argument('-i', '--intermediate',action='store_true')
 ARGS = parser.parse_args()
 
 
@@ -160,6 +162,8 @@ def stats(df):
 if ARGS.mode=="stats":
     print("Calculating statistics")
     stats(CLASSES)
+    if ARGS.intermediate!=False:
+        CLASSES.rename(columns=NAMES).to_csv(filename+"_full.tsv",sep="\t")
 elif ARGS.mode=="merge":
     print("Merging in progress")
     genes=merge(CLASSES, "genes")
