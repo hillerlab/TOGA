@@ -7,6 +7,7 @@ Created on Tue Jul  6 00:25:17 2021
 """
 
 import sys
+import os
 import pandas as pd
 import tqdm
 import matplotlib.pyplot as plt
@@ -31,6 +32,7 @@ HELP=f"""USAGE: ONE of the following
     To make the summary statistics of TOGA classification
             {sys.argv[0]} <assemblies_file> -m stats -ances <ancestral_gene_file>  (optional: -aN <assembly_names_file>, -d, -i)
 
+            <assemblies_file> is a file listing the paths (relative or absolute) to the TOGA directories of interest
             -pre is I#PI#UL#L#M#PM#PG#abs by default, it's to change the order in which classes are considered
             -ances is a file where each line is a gene you want to keep
             -aN is to specify the names of the assemblies, otherwise TOGA directory names will be used
@@ -52,26 +54,35 @@ ARGS = parser.parse_args()
 
 
 ####get file name for saving
-if len(ARGS.file.split("."))<2:
-    filename=ARGS.file
+if "/" in ARGS.file:
+    if len(ARGS.file.split("."))<2:
+        filename=ARGS.file.split("/")[-1]
+    else:
+        filename=".".join(ARGS.file.split("/")[-1].split(".")[0:-1])
 else:
-    filename=".".join(ARGS.file.split(".")[0:-1])
+    if len(ARGS.file.split("."))<2:
+        filename=ARGS.file
+    else:
+        filename=".".join(ARGS.file.split(".")[0:-1])
 
 ####create list of species then dataframe of classes
 ASSEMBLIES=[]
 with open(ARGS.file,"r") as f:
     for line in f:
-        if line.startswith("vs_"):
+        if os.path.isdir(line.rstrip()):
             ASSEMBLIES.append(line.rstrip())
-        else:
+        elif os.path.isdir("vs_"+line.rstrip()):
             ASSEMBLIES.append("vs_"+line.rstrip())
+        else:
+            print(line.rstrip()," does not exist as a directory, or the path is misspecified")
 
-NAMES={x:x for x in ASSEMBLIES}
+
+NAMES={x.split("/")[-1]:x.split("/")[-1] for x in ASSEMBLIES}
 if ARGS.assemblyNames!=False:
     with open(ARGS.assemblyNames,"r") as f:
         for line in f:
             line=line.rstrip().split("\t")
-            NAMES["vs_"+line[0]]=line[1]
+            NAMES[line[0]]=line[1]
 
 
 labels=set()
@@ -80,14 +91,17 @@ def get_classes(X,typ):
 
     for x in tqdm.tqdm(X):
         temp={}
-        try:
-            df=pd.read_csv(x+"/loss_summ_data.tsv",sep="\t",header=0,index_col=0).loc[typ.upper()]
-            for l in range(len(df.iloc[:,0])):
-                temp[df.iloc[l,0]]=df.iloc[l,1]
-                labels.add(df.iloc[l,1])
-            new[x]=temp
-        except:
-            print("no "+typ+"s in "+x)
+        if os.path.isdir(x):
+            try:
+                df=pd.read_csv(x+"/loss_summ_data.tsv",sep="\t",header=0,index_col=0).loc[typ.upper()]
+                for l in range(len(df.iloc[:,0])):
+                    temp[df.iloc[l,0]]=df.iloc[l,1]
+                    labels.add(df.iloc[l,1])
+                new[x.split("/")[-1]]=temp
+            except:
+                print("ERROR: No loss_summ_data.tsv file in "+x)
+        else:
+            print("ERROR: You likely call this script from the wrong directory, as "+x+" does not exist as a subdirectory")
 
     new=pd.DataFrame(new)
     new=new.fillna("abs")
@@ -143,7 +157,7 @@ def stats(df):
             stats[m][df.loc[x,m]]+=1
     #stats={NAMES[x]:stats[x] for x in stats}
     stats=pd.DataFrame(stats).T
-    stats=stats.loc[ASSEMBLIES]
+    stats=stats.loc[[x.split("/")[-1] for x in ASSEMBLIES]]
 
     if ARGS.detailed:
         stats.rename(index=NAMES).to_csv(filename+"_stats.tsv",sep="\t")
@@ -173,4 +187,5 @@ elif ARGS.mode=="merge":
             f.write("\t".join(["GENE",n,genes.loc[n,"status"]])+"\n")
         for n in transcripts.index:
             f.write("\t".join(["TRANSCRIPT",n,transcripts.loc[n,"status"]])+"\n")
+
 
