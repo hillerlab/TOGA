@@ -1085,7 +1085,7 @@ class Toga:
                 jobs_managers.append(jobs_manager)
                 time.sleep(Constants.CESAR_PUSH_INTERVAL)
             to_log(f"Monitoring CESAR jobs rerun")
-            monitor_jobs(jobs_managers, die_if_sc_1=True)
+            monitor_jobs(jobs_managers, die_if_sc_1=False)  # todo: come up with a better strategy here
         except KeyboardInterrupt:
             TogaUtil.terminate_parallel_processes(jobs_managers)
 
