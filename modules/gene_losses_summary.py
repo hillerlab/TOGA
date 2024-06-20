@@ -59,6 +59,7 @@ CLASS_TO_COL = {
     UL: ConstColors.SALMON,
     PI: ConstColors.LIGHT_BLUE,
     I: ConstColors.BLUE,
+    N_: ConstColors.BLACK
 }
 
 REM_T_L = 0.35  # less than REM_T_L of CDS left -> it's lost
