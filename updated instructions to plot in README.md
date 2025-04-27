@@ -563,24 +563,18 @@ several orthologous chains you can visualize them all at once.
 
 To make visualisations you need:
 
-Merge all inactivating mutations data into a single file.
+Your inactivating mutations should all be in a single file called geneInactivatingMutations.tsv.
+If this is gzipped, pls unzip it. 
 
+Then index the file using "mut_index.py" script in the "supply" directory:
 ```shell
-cat ${PROJECT_DIR}/inact_mut_data/* > ${PROJECT_DIR}/inact_mut_data.txt
-```
-
-Since the merged file could be huge you can index it.
-It would also be helpful if you plan to plot numerous genes.
-You can do it using "mut_index.py" script in the "supply" directory:
-
-```shell
-./supply/mut_index.py ${PROJECT_DIR}/inact_mut_data.txt ${PROJECT_DIR}/inact_mut_data.hdf5
+./supply/mut_index.py ${PROJECT_DIR}/geneInactivatingMutations.tsv ${PROJECT_DIR}/inact_mut_data.hdf5
 ```
 
 Then use "./supply/plot_mutations.py" script to create a visualization.
 This script requires the following:
 
-1) Reference bed file.
+1) Reference bed file (e.g. for human, use /TOGAInput/human_hg38/toga.transcripts.bed).
 2) List of mutations: either text file of an indexed one.
 3) Transcript identifier to plot (or a gene identifier, see below)
 4) Path to output file: script creates a svg figure
@@ -590,6 +584,7 @@ For example:
 ```shell
 /supply/plot_mutations.py ${REFERENCE_BED_FILE} ${PROJECT_DIR}/inact_mut_data.hdf5 ENST0000011111 test.svg
 ```
+
 
 This will create a plot of all inactivating mutations detected for all projections of the ENST0000011111
 transcript.
