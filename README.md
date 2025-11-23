@@ -9,6 +9,9 @@
 [![made-with-Nextflow](https://img.shields.io/badge/Made%20with-Nextflow-23aa62.svg)](https://www.nextflow.io/)
 [![Published in Science](https://img.shields.io/badge/Published%20in-Science-blue.svg)](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10193443/)
 
+## ⚠️ TOGA1 is no longer maintained. We strongly encourage users to switch to [TOGA2](https://github.com/hillerlab/TOGA2), which is faster, much more memory efficient, more accurate and offers numerous improvements over TOGA1.
+
+
 TOGA is a new method that integrates gene annotation, inferring orthologs and classifying
 genes as intact or lost.
 
